@@ -650,3 +650,50 @@ jobs:
             --stack-name "$STACK_NAME" \
             --query 'Stacks[0].Outputs' \
             --region "$AWS_REGION"
+
+
+      # =====================================================
+      # AUTOMATIC DATABASE INITIALIZATION
+      # =====================================================
+
+      - name: Initialize RDS Database
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          FUNCTION_NAME="${PROJECT}-${DEPLOY_ENV}-db-init"
+
+          echo "Checking database initialization status..."
+
+          # Wait until the Lambda is ready
+          aws lambda wait function-active-v2 \
+            --function-name "$FUNCTION_NAME" \
+            --region "$AWS_REGION"
+
+          echo "Invoking database initialization Lambda..."
+
+          aws lambda invoke \
+            --function-name "$FUNCTION_NAME" \
+            --payload '{}' \
+            --cli-binary-format raw-in-base64-out \
+            --region "$AWS_REGION" \
+            response.json > invoke-metadata.json
+
+          echo "Lambda response:"
+          cat response.json
+
+          # Check Lambda execution errors
+          if jq -e '.FunctionError != null' invoke-metadata.json > /dev/null; then
+            echo "::error::Lambda execution failed"
+            exit 1
+          fi
+
+          # Check application response
+          STATUS_CODE=$(jq -r '.statusCode // empty' response.json)
+
+          if [[ "$STATUS_CODE" != "200" ]]; then
+            echo "::error::Database initialization failed"
+            exit 1
+          fi
+
+          echo "Database initialization completed successfully"
