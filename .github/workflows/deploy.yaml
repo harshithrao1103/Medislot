@@ -601,6 +601,43 @@ jobs:
           fi
           echo "ARTIFACT_BUCKET=$ARTIFACT_BUCKET" >> "$GITHUB_ENV"
 
+
+      # =====================================================
+      # 4. RESOLVE DEPLOYMENT RESOURCES
+      # =====================================================
+
+      - name: Resolve Deployment Resources
+        shell: bash
+        run: |
+          # Keep your existing code here
+
+      # =====================================================
+      # 5. SET UP PYTHON 3.12
+      # =====================================================
+
+      - name: Set Up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      # =====================================================
+      # 6. PACKAGE LAMBDA FUNCTIONS
+      # =====================================================
+
+      - name: Package Lambda Functions
+        shell: bash
+        run: |
+          bash scripts/package_lambdas.sh
+
+      # =====================================================
+      # 7. UPLOAD LAMBDA PACKAGES TO S3
+      # =====================================================
+
+      - name: Upload Lambda Packages to S3
+        shell: bash
+        run: |
+          # Keep your existing upload code here
+
       - name: Package Lambda Functions
         shell: bash
         run: |
