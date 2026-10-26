@@ -162,6 +162,101 @@ Resources:
         - Key: Environment
           Value: !Ref Environment
 
+
+
+    # =====================================================
+  # 5. DATABASE INITIALIZATION LAMBDA EXECUTION ROLE
+  # =====================================================
+
+  DBInitLambdaExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub medislot-${Environment}-db-init-lambda-role
+
+      Description: Execution role for MediSlot database initialization Lambda
+
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - lambda.amazonaws.com
+            Action:
+              - sts:AssumeRole
+
+      Policies:
+        - PolicyName: DBInitLambdaPolicy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+
+              # =====================================================
+              # 1. SECRETS MANAGER - READ RDS CREDENTIALS
+              # =====================================================
+
+              - Sid: ReadRDSMasterSecret
+                Effect: Allow
+                Action:
+                  - secretsmanager:GetSecretValue
+                Resource:
+                  - !Sub arn:${AWS::Partition}:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:rds!db-*
+
+              # =====================================================
+              # 2. KMS - DECRYPT RDS SECRET
+              # =====================================================
+
+              - Sid: DecryptRDSSecret
+                Effect: Allow
+                Action:
+                  - kms:Decrypt
+                Resource:
+                  - !Sub arn:${AWS::Partition}:kms:${AWS::Region}:${AWS::AccountId}:key/3437e1a5-332d-49a7-a5f6-73cb084d0070
+                Condition:
+                  StringEquals:
+                    kms:ViaService: !Sub secretsmanager.${AWS::Region}.amazonaws.com
+
+              # =====================================================
+              # 3. CLOUDWATCH LOGS - CREATE LOG GROUP
+              # =====================================================
+
+              - Sid: CreateCloudWatchLogGroup
+                Effect: Allow
+                Action:
+                  - logs:CreateLogGroup
+                Resource: "*"
+
+              # =====================================================
+              # 4. CLOUDWATCH LOGS - CREATE STREAM AND WRITE LOGS
+              # =====================================================
+
+              - Sid: WriteCloudWatchLogs
+                Effect: Allow
+                Action:
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                Resource:
+                  - !Sub arn:${AWS::Partition}:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/medislot-${Environment}-db-init:*
+
+              # =====================================================
+              # 5. VPC - LAMBDA NETWORK INTERFACE PERMISSIONS
+              # =====================================================
+
+              - Sid: LambdaVPCNetworkAccess
+                Effect: Allow
+                Action:
+                  - ec2:CreateNetworkInterface
+                  - ec2:DescribeNetworkInterfaces
+                  - ec2:DeleteNetworkInterface
+                  - ec2:AssignPrivateIpAddresses
+                  - ec2:UnassignPrivateIpAddresses
+                Resource: "*"
+
+      Tags:
+        - Key: Project
+          Value: MediSlot
+        - Key: Environment
+          Value: !Ref Environment
 # =====================================================
 # OUTPUTS
 # =====================================================
@@ -191,3 +286,12 @@ Outputs:
     Value: !Ref SSMInterfaceEndpoint
     Export:
       Name: !Sub medislot-${Environment}-SSMEndpointId
+  # =====================================================
+  # DATABASE INITIALIZATION LAMBDA EXECUTION ROLE ARN
+  # =====================================================
+
+  DBInitLambdaExecutionRoleArn:
+    Description: IAM execution role ARN for database initialization Lambda
+    Value: !GetAtt DBInitLambdaExecutionRole.Arn
+    Export:
+      Name: !Sub medislot-${Environment}-DBInitLambdaExecutionRoleArn

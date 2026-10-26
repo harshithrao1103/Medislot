@@ -9,9 +9,10 @@ on:
     branches:
       - main
     paths:
-      - "Cloudformation/Network_Stack.yaml"
-      - "Cloudformation/Security_IAM_Stack.yaml"
-      - "Cloudformation/parameters.json"
+      - "Cloudformation/**"
+      - "database/**"
+      - "lambdas/**"
+      - "scripts/**"
       - ".github/workflows/deploy.yaml"
 
   workflow_dispatch:
@@ -348,6 +349,7 @@ jobs:
             --parameter-overrides \
               Environment="$DEPLOY_ENV" \
               VpcCIDR="$VPC_CIDR" \
+            --capabilities CAPABILITY_NAMED_IAM \
             --role-arn "$CFN_EXECUTION_ROLE_ARN" \
             --region "$AWS_REGION" \
             --no-fail-on-empty-changeset
@@ -547,4 +549,104 @@ jobs:
           aws cloudformation describe-stacks \
             --stack-name "$STACK_NAME" \
             --query "Stacks[0].Outputs" \
+            --region "$AWS_REGION"
+
+  # =====================================================
+  # JOB 4: PACKAGE AND DEPLOY APPLICATION STACK
+  # =====================================================
+
+  deploy-application:
+    name: Deploy Application Stack
+    runs-on: ubuntu-latest
+    needs:
+      - deploy-data
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Load Configuration
+        shell: bash
+        run: |
+          set -euo pipefail
+          CONFIG="Cloudformation/parameters.json"
+          jq -e . "$CONFIG" >/dev/null
+          PROJECT=$(jq -er '.project' "$CONFIG")
+          DEPLOY_ENV=$(jq -er '.environment' "$CONFIG")
+          AWS_REGION=$(jq -er '.region' "$CONFIG")
+          echo "PROJECT=$PROJECT" >> "$GITHUB_ENV"
+          echo "DEPLOY_ENV=$DEPLOY_ENV" >> "$GITHUB_ENV"
+          echo "AWS_REGION=$AWS_REGION" >> "$GITHUB_ENV"
+          echo "STACK_NAME=${PROJECT}-${DEPLOY_ENV}-application" >> "$GITHUB_ENV"
+
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Resolve Deployment Resources
+        shell: bash
+        run: |
+          set -euo pipefail
+          ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
+          PARTITION=$(aws sts get-caller-identity --query Arn --output text | cut -d: -f2)
+          echo "CFN_EXECUTION_ROLE_ARN=arn:${PARTITION}:iam::${ACCOUNT_ID}:role/medislot_cloudformation_execution" >> "$GITHUB_ENV"
+          ARTIFACT_BUCKET=$(aws cloudformation list-exports \
+            --query "Exports[?Name=='${PROJECT}-${DEPLOY_ENV}-SAMArtifactsBucketName'].Value | [0]" \
+            --output text --region "$AWS_REGION")
+          if [[ -z "$ARTIFACT_BUCKET" || "$ARTIFACT_BUCKET" == "None" ]]; then
+            echo "::error::SAM artifacts bucket export not found"
+            exit 1
+          fi
+          echo "ARTIFACT_BUCKET=$ARTIFACT_BUCKET" >> "$GITHUB_ENV"
+
+      - name: Package Lambda Functions
+        shell: bash
+        run: |
+          set -euo pipefail
+          bash scripts/package_lambdas.sh
+
+      - name: Upload Lambda Packages to S3
+        shell: bash
+        run: |
+          set -euo pipefail
+          for zip_file in build/*.zip; do
+            [ -f "$zip_file" ] || { echo "::error::No Lambda ZIP packages found"; exit 1; }
+            lambda_name=$(basename "$zip_file" .zip)
+            aws s3 cp "$zip_file" \
+              "s3://${ARTIFACT_BUCKET}/lambda/${lambda_name}/${GITHUB_SHA}.zip" \
+              --region "$AWS_REGION"
+          done
+
+      - name: Validate Application Template
+        shell: bash
+        run: |
+          set -euo pipefail
+          aws cloudformation validate-template \
+            --template-body file://Cloudformation/Application_Stack.yaml \
+            --region "$AWS_REGION"
+
+      - name: Deploy Application Stack
+        shell: bash
+        run: |
+          set -euo pipefail
+          aws cloudformation deploy \
+            --template-file Cloudformation/Application_Stack.yaml \
+            --stack-name "$STACK_NAME" \
+            --parameter-overrides \
+              Environment="$DEPLOY_ENV" \
+              ArtifactBucketName="$ARTIFACT_BUCKET" \
+              CodeVersion="$GITHUB_SHA" \
+            --role-arn "$CFN_EXECUTION_ROLE_ARN" \
+            --region "$AWS_REGION" \
+            --no-fail-on-empty-changeset
+
+      - name: Display Application Stack Outputs
+        shell: bash
+        run: |
+          set -euo pipefail
+          aws cloudformation describe-stacks \
+            --stack-name "$STACK_NAME" \
+            --query 'Stacks[0].Outputs' \
             --region "$AWS_REGION"
