@@ -112,6 +112,7 @@ Resources:
       StorageType: gp3
 
       StorageEncrypted: true
+      KmsKeyId: !Sub "arn:${AWS::Partition}:kms:${AWS::Region}:${AWS::AccountId}:key/c73acad8-2834-4e89-96fe-e49523415470"
 
       DBName: MediSlotDB
 
