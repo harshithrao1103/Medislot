@@ -365,3 +365,186 @@ jobs:
             --stack-name "$STACK_NAME" \
             --query "Stacks[0].Outputs" \
             --region "$AWS_REGION"
+
+
+
+  # =====================================================
+  # JOB 3: DEPLOY DATA STACK
+  # =====================================================
+
+  deploy-data:
+    name: Deploy Data Stack
+    runs-on: ubuntu-latest
+
+    needs:
+      - deploy-security-iam
+
+    steps:
+
+      # =====================================================
+      # 1. CHECKOUT REPOSITORY
+      # =====================================================
+
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      # =====================================================
+      # 2. LOAD DATA CONFIGURATION
+      # =====================================================
+
+      - name: Load Data Configuration
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          CONFIG="Cloudformation/parameters.json"
+
+          jq -e . "$CONFIG" > /dev/null
+
+          PROJECT=$(jq -er '.project' "$CONFIG")
+          DEPLOY_ENV=$(jq -er '.environment' "$CONFIG")
+          AWS_REGION=$(jq -er '.region' "$CONFIG")
+
+          if [[ ! "$PROJECT" =~ ^[a-z][a-z0-9-]*$ ]]; then
+            echo "::error::Invalid project name"
+            exit 1
+          fi
+
+          if [[ ! "$DEPLOY_ENV" =~ ^(dev|staging|prod)$ ]]; then
+            echo "::error::Invalid environment"
+            exit 1
+          fi
+
+          if [[ -z "$AWS_REGION" ]]; then
+            echo "::error::AWS Region is required"
+            exit 1
+          fi
+
+          jq -e '
+            .data as $d |
+            ($d.DBInstanceClass | type == "string" and length > 0) and
+            ($d.DBAllocatedStorage | type == "number" and . >= 20) and
+            ($d.DBBackupRetentionDays | type == "number" and . >= 0 and . <= 35) and
+            ($d.JWTAccessTokenMinutes | type == "number" and . >= 1) and
+            ($d.RefreshTokenDays | type == "number" and . >= 1) and
+            ($d.BcryptWorkFactor | type == "number" and . >= 12) and
+            ($d.WaitlistHoldMinutes | type == "number" and . >= 1)
+          ' "$CONFIG" > /dev/null || {
+            echo "::error::Invalid or missing data configuration"
+            exit 1
+          }
+
+          echo "PROJECT=$PROJECT" >> "$GITHUB_ENV"
+          echo "DEPLOY_ENV=$DEPLOY_ENV" >> "$GITHUB_ENV"
+          echo "AWS_REGION=$AWS_REGION" >> "$GITHUB_ENV"
+
+          echo "STACK_NAME=${PROJECT}-${DEPLOY_ENV}-data" >> "$GITHUB_ENV"
+
+          echo "Data configuration loaded successfully"
+
+      # =====================================================
+      # 3. CONFIGURE AWS CREDENTIALS USING OIDC
+      # =====================================================
+
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      # =====================================================
+      # 4. VERIFY AWS IDENTITY
+      # =====================================================
+
+      - name: Verify AWS Identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          aws sts get-caller-identity
+
+      # =====================================================
+      # 5. RESOLVE CLOUDFORMATION EXECUTION ROLE
+      # =====================================================
+
+      - name: Resolve CloudFormation Execution Role
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          ACCOUNT_ID=$(aws sts get-caller-identity \
+            --query Account \
+            --output text)
+
+          PARTITION=$(aws sts get-caller-identity \
+            --query Arn \
+            --output text | cut -d: -f2)
+
+          ROLE_NAME="medislot_cloudformation_execution"
+
+          ROLE_ARN="arn:${PARTITION}:iam::${ACCOUNT_ID}:role/${ROLE_NAME}"
+
+          echo "CFN_EXECUTION_ROLE_ARN=$ROLE_ARN" >> "$GITHUB_ENV"
+
+          echo "CloudFormation execution role resolved"
+
+      # =====================================================
+      # 6. VALIDATE DATA TEMPLATE
+      # =====================================================
+
+      - name: Validate Data Template
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          aws cloudformation validate-template \
+            --template-body file://Cloudformation/Data_Stack.yaml \
+            --region "$AWS_REGION"
+
+      # =====================================================
+      # 7. DEPLOY DATA STACK
+      # =====================================================
+
+      - name: Deploy Data Stack
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          CONFIG="Cloudformation/parameters.json"
+
+          DB_CLASS=$(jq -er '.data.DBInstanceClass' "$CONFIG")
+          DB_STORAGE=$(jq -er '.data.DBAllocatedStorage' "$CONFIG")
+          DB_BACKUP_DAYS=$(jq -er '.data.DBBackupRetentionDays' "$CONFIG")
+          ACCESS_MINUTES=$(jq -er '.data.JWTAccessTokenMinutes' "$CONFIG")
+          REFRESH_DAYS=$(jq -er '.data.RefreshTokenDays' "$CONFIG")
+          BCRYPT_FACTOR=$(jq -er '.data.BcryptWorkFactor' "$CONFIG")
+          WAITLIST_MINUTES=$(jq -er '.data.WaitlistHoldMinutes' "$CONFIG")
+
+          aws cloudformation deploy \
+            --template-file Cloudformation/Data_Stack.yaml \
+            --stack-name "$STACK_NAME" \
+            --parameter-overrides \
+              Environment="$DEPLOY_ENV" \
+              DBInstanceClass="$DB_CLASS" \
+              DBAllocatedStorage="$DB_STORAGE" \
+              DBBackupRetentionDays="$DB_BACKUP_DAYS" \
+              JWTAccessTokenMinutes="$ACCESS_MINUTES" \
+              RefreshTokenDays="$REFRESH_DAYS" \
+              BcryptWorkFactor="$BCRYPT_FACTOR" \
+              WaitlistHoldMinutes="$WAITLIST_MINUTES" \
+            --role-arn "$CFN_EXECUTION_ROLE_ARN" \
+            --region "$AWS_REGION" \
+            --no-fail-on-empty-changeset
+
+      # =====================================================
+      # 8. DISPLAY DATA STACK OUTPUTS
+      # =====================================================
+
+      - name: Display Data Stack Outputs
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          aws cloudformation describe-stacks \
+            --stack-name "$STACK_NAME" \
+            --query "Stacks[0].Outputs" \
+            --region "$AWS_REGION"

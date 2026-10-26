@@ -1,0 +1,640 @@
+AWSTemplateFormatVersion: '2010-09-09'
+
+Description: >
+  MediSlot Milestone 2 Data Infrastructure -
+  RDS MySQL, DynamoDB, S3 and SSM Parameters.
+
+# ============================================================
+# PARAMETERS
+# ============================================================
+
+Parameters:
+
+  Environment:
+    Type: String
+    AllowedValues:
+      - dev
+      - staging
+      - prod
+
+  DBInstanceClass:
+    Type: String
+    Description: RDS instance class
+
+  DBAllocatedStorage:
+    Type: Number
+    MinValue: 20
+
+  DBBackupRetentionDays:
+    Type: Number
+    MinValue: 0
+    MaxValue: 35
+
+  JWTAccessTokenMinutes:
+    Type: Number
+    MinValue: 1
+
+  RefreshTokenDays:
+    Type: Number
+    MinValue: 1
+
+  BcryptWorkFactor:
+    Type: Number
+    MinValue: 12
+
+  WaitlistHoldMinutes:
+    Type: Number
+    MinValue: 1
+
+
+# ============================================================
+# CONDITIONS
+# ============================================================
+
+Conditions:
+
+  IsProduction: !Equals
+    - !Ref Environment
+    - prod
+
+
+# ============================================================
+# RESOURCES
+# ============================================================
+
+Resources:
+
+  # ==========================================================
+  # 1. RDS MYSQL
+  # ==========================================================
+
+  DatabaseSubnetGroup:
+    Type: AWS::RDS::DBSubnetGroup
+
+    Properties:
+
+      DBSubnetGroupDescription: !Sub
+        'MediSlot ${Environment} private database subnets'
+
+      SubnetIds:
+
+        - Fn::ImportValue:
+            !Sub 'medislot-${Environment}-PrivateSubnetAId'
+
+        - Fn::ImportValue:
+            !Sub 'medislot-${Environment}-PrivateSubnetBId'
+
+      Tags:
+        - Key: Project
+          Value: MediSlot
+
+        - Key: Environment
+          Value: !Ref Environment
+
+
+  MySQLDatabase:
+    Type: AWS::RDS::DBInstance
+
+    DeletionPolicy: Snapshot
+    UpdateReplacePolicy: Snapshot
+
+    Properties:
+
+      DBInstanceIdentifier: !Sub
+        'medislot-${Environment}-mysql'
+
+      Engine: mysql
+
+      DBInstanceClass: !Ref DBInstanceClass
+
+      AllocatedStorage: !Ref DBAllocatedStorage
+
+      StorageType: gp3
+
+      StorageEncrypted: true
+
+      DBName: MediSlotDB
+
+      MasterUsername: medislotadmin
+
+      ManageMasterUserPassword: true
+
+      DBSubnetGroupName: !Ref DatabaseSubnetGroup
+
+      VPCSecurityGroups:
+
+        - Fn::ImportValue:
+            !Sub 'medislot-${Environment}-RDSSecurityGroupId'
+
+      PubliclyAccessible: false
+
+      MultiAZ: !If
+        - IsProduction
+        - true
+        - false
+
+      BackupRetentionPeriod: !Ref DBBackupRetentionDays
+
+      DeletionProtection: !If
+        - IsProduction
+        - true
+        - false
+
+      AutoMinorVersionUpgrade: true
+
+      CopyTagsToSnapshot: true
+
+      Tags:
+        - Key: Project
+          Value: MediSlot
+
+        - Key: Environment
+          Value: !Ref Environment
+
+
+  # ==========================================================
+  # 2. DYNAMODB - SLOT INVENTORY
+  # ==========================================================
+
+  SlotInventoryTable:
+    Type: AWS::DynamoDB::Table
+
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+
+    Properties:
+
+      TableName: !Sub 'medislot-${Environment}-slots'
+
+      BillingMode: PAY_PER_REQUEST
+
+      SSESpecification:
+        SSEEnabled: true
+
+      PointInTimeRecoverySpecification:
+        PointInTimeRecoveryEnabled: true
+
+      AttributeDefinitions:
+        - AttributeName: slotId
+          AttributeType: S
+
+      KeySchema:
+        - AttributeName: slotId
+          KeyType: HASH
+
+
+  # ==========================================================
+  # 3. DYNAMODB - IDEMPOTENCY
+  # ==========================================================
+
+  IdempotencyTable:
+    Type: AWS::DynamoDB::Table
+
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+
+    Properties:
+
+      TableName: !Sub 'medislot-${Environment}-idempotency'
+
+      BillingMode: PAY_PER_REQUEST
+
+      SSESpecification:
+        SSEEnabled: true
+
+      AttributeDefinitions:
+        - AttributeName: idempotencyKey
+          AttributeType: S
+
+      KeySchema:
+        - AttributeName: idempotencyKey
+          KeyType: HASH
+
+      TimeToLiveSpecification:
+        AttributeName: expiresAt
+        Enabled: true
+
+
+  # ==========================================================
+  # 4. DYNAMODB - REFRESH TOKENS
+  # ==========================================================
+
+  RefreshTokensTable:
+    Type: AWS::DynamoDB::Table
+
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+
+    Properties:
+
+      TableName: !Sub 'medislot-${Environment}-refresh-tokens'
+
+      BillingMode: PAY_PER_REQUEST
+
+      SSESpecification:
+        SSEEnabled: true
+
+      AttributeDefinitions:
+        - AttributeName: tokenHash
+          AttributeType: S
+
+      KeySchema:
+        - AttributeName: tokenHash
+          KeyType: HASH
+
+      TimeToLiveSpecification:
+        AttributeName: expiresAt
+        Enabled: true
+
+
+  # ==========================================================
+  # 5. DYNAMODB - REVOKED JWT TOKENS
+  # ==========================================================
+
+  RevokedTokensTable:
+    Type: AWS::DynamoDB::Table
+
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+
+    Properties:
+
+      TableName: !Sub 'medislot-${Environment}-revoked-jwts'
+
+      BillingMode: PAY_PER_REQUEST
+
+      SSESpecification:
+        SSEEnabled: true
+
+      AttributeDefinitions:
+        - AttributeName: jti
+          AttributeType: S
+
+      KeySchema:
+        - AttributeName: jti
+          KeyType: HASH
+
+      TimeToLiveSpecification:
+        AttributeName: expiresAt
+        Enabled: true
+
+
+  # ==========================================================
+  # 6. DYNAMODB - WAITLIST
+  # ==========================================================
+
+  WaitlistTable:
+    Type: AWS::DynamoDB::Table
+
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+
+    Properties:
+
+      TableName: !Sub 'medislot-${Environment}-waitlist'
+
+      BillingMode: PAY_PER_REQUEST
+
+      SSESpecification:
+        SSEEnabled: true
+
+      AttributeDefinitions:
+
+        - AttributeName: slotId
+          AttributeType: S
+
+        - AttributeName: entryId
+          AttributeType: S
+
+      KeySchema:
+
+        - AttributeName: slotId
+          KeyType: HASH
+
+        - AttributeName: entryId
+          KeyType: RANGE
+
+      TimeToLiveSpecification:
+        AttributeName: expiresAt
+        Enabled: true
+
+
+  # ==========================================================
+  # 7. DYNAMODB - NOTIFICATION DISPATCH
+  # ==========================================================
+
+  NotificationDispatchTable:
+    Type: AWS::DynamoDB::Table
+
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+
+    Properties:
+
+      TableName: !Sub
+        'medislot-${Environment}-notification-dispatch'
+
+      BillingMode: PAY_PER_REQUEST
+
+      SSESpecification:
+        SSEEnabled: true
+
+      AttributeDefinitions:
+        - AttributeName: dispatchId
+          AttributeType: S
+
+      KeySchema:
+        - AttributeName: dispatchId
+          KeyType: HASH
+
+
+  # ==========================================================
+  # 8. S3 - PROFILE PHOTOS BUCKET
+  # ==========================================================
+
+  ProfilePhotosBucket:
+    Type: AWS::S3::Bucket
+
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+
+    Properties:
+
+      BucketName: !Sub
+        'medislot-${Environment}-profile-photos-${AWS::AccountId}-${AWS::Region}'
+
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+
+      VersioningConfiguration:
+        Status: Enabled
+
+      OwnershipControls:
+        Rules:
+          - ObjectOwnership: BucketOwnerEnforced
+
+      Tags:
+        - Key: Project
+          Value: MediSlot
+
+        - Key: Environment
+          Value: !Ref Environment
+
+
+  # ==========================================================
+  # 9. S3 - PROFILE PHOTOS BUCKET POLICY
+  # ==========================================================
+
+  ProfilePhotosBucketPolicy:
+    Type: AWS::S3::BucketPolicy
+
+    Properties:
+
+      Bucket: !Ref ProfilePhotosBucket
+
+      PolicyDocument:
+
+        Version: '2012-10-17'
+
+        Statement:
+
+          - Sid: DenyInsecureTransport
+
+            Effect: Deny
+
+            Principal: '*'
+
+            Action: 's3:*'
+
+            Resource:
+
+              - !GetAtt ProfilePhotosBucket.Arn
+
+              - !Sub '${ProfilePhotosBucket.Arn}/*'
+
+            Condition:
+              Bool:
+                'aws:SecureTransport': 'false'
+
+
+  # ==========================================================
+  # 10. S3 - SAM ARTIFACTS BUCKET
+  # ==========================================================
+
+  SAMArtifactsBucket:
+    Type: AWS::S3::Bucket
+
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+
+    Properties:
+
+      BucketName: !Sub
+        'medislot-${Environment}-sam-artifacts-${AWS::AccountId}-${AWS::Region}'
+
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+
+      VersioningConfiguration:
+        Status: Enabled
+
+      OwnershipControls:
+        Rules:
+          - ObjectOwnership: BucketOwnerEnforced
+
+      Tags:
+        - Key: Project
+          Value: MediSlot
+
+        - Key: Environment
+          Value: !Ref Environment
+
+
+  # ==========================================================
+  # 11. S3 - SAM ARTIFACTS BUCKET POLICY
+  # ==========================================================
+
+  SAMArtifactsBucketPolicy:
+    Type: AWS::S3::BucketPolicy
+
+    Properties:
+
+      Bucket: !Ref SAMArtifactsBucket
+
+      PolicyDocument:
+
+        Version: '2012-10-17'
+
+        Statement:
+
+          - Sid: DenyInsecureTransport
+
+            Effect: Deny
+
+            Principal: '*'
+
+            Action: 's3:*'
+
+            Resource:
+
+              - !GetAtt SAMArtifactsBucket.Arn
+
+              - !Sub '${SAMArtifactsBucket.Arn}/*'
+
+            Condition:
+              Bool:
+                'aws:SecureTransport': 'false'
+
+
+  # ==========================================================
+  # 12. SSM - JWT ACCESS TOKEN EXPIRY
+  # ==========================================================
+
+  AccessTokenMinutesParameter:
+    Type: AWS::SSM::Parameter
+
+    Properties:
+
+      Name: !Sub
+        '/medislot/${Environment}/auth/access-token-minutes'
+
+      Type: String
+
+      Value: !Sub '${JWTAccessTokenMinutes}'
+
+
+  # ==========================================================
+  # 13. SSM - REFRESH TOKEN EXPIRY
+  # ==========================================================
+
+  RefreshTokenDaysParameter:
+    Type: AWS::SSM::Parameter
+
+    Properties:
+
+      Name: !Sub
+        '/medislot/${Environment}/auth/refresh-token-days'
+
+      Type: String
+
+      Value: !Sub '${RefreshTokenDays}'
+
+
+  # ==========================================================
+  # 14. SSM - BCRYPT WORK FACTOR
+  # ==========================================================
+
+  BcryptWorkFactorParameter:
+    Type: AWS::SSM::Parameter
+
+    Properties:
+
+      Name: !Sub
+        '/medislot/${Environment}/auth/bcrypt-work-factor'
+
+      Type: String
+
+      Value: !Sub '${BcryptWorkFactor}'
+
+
+  # ==========================================================
+  # 15. SSM - WAITLIST HOLD DURATION
+  # ==========================================================
+
+  WaitlistHoldMinutesParameter:
+    Type: AWS::SSM::Parameter
+
+    Properties:
+
+      Name: !Sub
+        '/medislot/${Environment}/waitlist/hold-minutes'
+
+      Type: String
+
+      Value: !Sub '${WaitlistHoldMinutes}'
+
+
+# ============================================================
+# OUTPUTS
+# ============================================================
+
+Outputs:
+
+  DatabaseEndpoint:
+    Description: RDS MySQL endpoint
+    Value: !GetAtt MySQLDatabase.Endpoint.Address
+
+    Export:
+      Name: !Sub 'medislot-${Environment}-DBEndpoint'
+
+
+  DatabasePort:
+    Description: RDS MySQL port
+    Value: !GetAtt MySQLDatabase.Endpoint.Port
+
+    Export:
+      Name: !Sub 'medislot-${Environment}-DBPort'
+
+
+  DatabaseName:
+    Description: MySQL database name
+    Value: MediSlotDB
+
+    Export:
+      Name: !Sub 'medislot-${Environment}-DBName'
+
+
+  DatabaseMasterSecretArn:
+    Description: RDS managed master credentials secret ARN
+    Value: !GetAtt MySQLDatabase.MasterUserSecret.SecretArn
+
+    Export:
+      Name: !Sub 'medislot-${Environment}-DBMasterSecretArn'
+
+
+  ProfilePhotosBucketName:
+    Description: S3 bucket for patient and doctor profile photos
+    Value: !Ref ProfilePhotosBucket
+
+    Export:
+      Name: !Sub 'medislot-${Environment}-ProfilePhotosBucketName'
+
+
+  SAMArtifactsBucketName:
+    Description: S3 bucket for SAM deployment artifacts
+    Value: !Ref SAMArtifactsBucket
+
+    Export:
+      Name: !Sub 'medislot-${Environment}-SAMArtifactsBucketName'
+
+
+  SlotInventoryTableName:
+    Description: DynamoDB slot inventory table
+    Value: !Ref SlotInventoryTable
+
+    Export:
+      Name: !Sub 'medislot-${Environment}-SlotInventoryTableName'
+
+
+  RefreshTokensTableName:
+    Description: DynamoDB refresh tokens table
+    Value: !Ref RefreshTokensTable
+
+    Export:
+      Name: !Sub 'medislot-${Environment}-RefreshTokensTableName'
