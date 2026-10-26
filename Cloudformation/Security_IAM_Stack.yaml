@@ -1,0 +1,193 @@
+AWSTemplateFormatVersion: '2010-09-09'
+
+Description: >
+  MediSlot Security Infrastructure -
+  Lambda Security Group, RDS MySQL Security Group,
+  SSM Endpoint Security Group and SSM Interface Endpoint.
+
+# =====================================================
+# PARAMETERS
+# =====================================================
+
+Parameters:
+
+  Environment:
+    Type: String
+    AllowedValues:
+      - dev
+      - staging
+      - prod
+    Description: Deployment environment
+
+  VpcCIDR:
+    Type: String
+    Description: CIDR block of the existing MediSlot VPC
+
+# =====================================================
+# RESOURCES
+# =====================================================
+
+Resources:
+
+  # =====================================================
+  # 1. LAMBDA SECURITY GROUP
+  # =====================================================
+
+  LambdaSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Network access for MediSlot Lambda functions
+
+      VpcId:
+        Fn::ImportValue:
+          Fn::Sub: medislot-${Environment}-VpcId
+
+      SecurityGroupEgress:
+
+        # MySQL traffic within the VPC
+        - IpProtocol: tcp
+          FromPort: 3306
+          ToPort: 3306
+          CidrIp: !Ref VpcCIDR
+          Description: MySQL connections within MediSlot VPC
+
+        # HTTPS to reachable AWS service endpoints
+        - IpProtocol: tcp
+          FromPort: 443
+          ToPort: 443
+          CidrIp: 0.0.0.0/0
+          Description: HTTPS to reachable AWS service endpoints
+
+      Tags:
+        - Key: Name
+          Value: !Sub medislot-${Environment}-lambda-sg
+        - Key: Project
+          Value: MediSlot
+        - Key: Environment
+          Value: !Ref Environment
+
+  # =====================================================
+  # 2. RDS MYSQL SECURITY GROUP
+  # =====================================================
+
+  RDSSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: MySQL access from MediSlot Lambda functions
+
+      VpcId:
+        Fn::ImportValue:
+          Fn::Sub: medislot-${Environment}-VpcId
+
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 3306
+          ToPort: 3306
+          SourceSecurityGroupId: !Ref LambdaSecurityGroup
+          Description: Allow MySQL from Lambda Security Group
+
+      SecurityGroupEgress: []
+
+      Tags:
+        - Key: Name
+          Value: !Sub medislot-${Environment}-rds-sg
+        - Key: Project
+          Value: MediSlot
+        - Key: Environment
+          Value: !Ref Environment
+
+  # =====================================================
+  # 3. SSM ENDPOINT SECURITY GROUP
+  # =====================================================
+
+  SSMEndpointSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: HTTPS access to SSM endpoint from Lambda
+
+      VpcId:
+        Fn::ImportValue:
+          Fn::Sub: medislot-${Environment}-VpcId
+
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 443
+          ToPort: 443
+          SourceSecurityGroupId: !Ref LambdaSecurityGroup
+          Description: HTTPS from MediSlot Lambda
+
+      SecurityGroupEgress: []
+
+      Tags:
+        - Key: Name
+          Value: !Sub medislot-${Environment}-ssm-endpoint-sg
+        - Key: Project
+          Value: MediSlot
+        - Key: Environment
+          Value: !Ref Environment
+
+  # =====================================================
+  # 4. SSM INTERFACE VPC ENDPOINT
+  # =====================================================
+
+  SSMInterfaceEndpoint:
+    Type: AWS::EC2::VPCEndpoint
+    Properties:
+
+      VpcId:
+        Fn::ImportValue:
+          Fn::Sub: medislot-${Environment}-VpcId
+
+      ServiceName: !Sub com.amazonaws.${AWS::Region}.ssm
+
+      VpcEndpointType: Interface
+
+      PrivateDnsEnabled: true
+
+      SubnetIds:
+        - Fn::ImportValue:
+            Fn::Sub: medislot-${Environment}-PrivateSubnetAId
+
+        - Fn::ImportValue:
+            Fn::Sub: medislot-${Environment}-PrivateSubnetBId
+
+      SecurityGroupIds:
+        - !Ref SSMEndpointSecurityGroup
+
+      Tags:
+        - Key: Name
+          Value: !Sub medislot-${Environment}-ssm-endpoint
+        - Key: Project
+          Value: MediSlot
+        - Key: Environment
+          Value: !Ref Environment
+
+# =====================================================
+# OUTPUTS
+# =====================================================
+
+Outputs:
+
+  LambdaSecurityGroupId:
+    Description: Lambda Security Group ID
+    Value: !Ref LambdaSecurityGroup
+    Export:
+      Name: !Sub medislot-${Environment}-LambdaSecurityGroupId
+
+  RDSSecurityGroupId:
+    Description: RDS MySQL Security Group ID
+    Value: !Ref RDSSecurityGroup
+    Export:
+      Name: !Sub medislot-${Environment}-RDSSecurityGroupId
+
+  SSMEndpointSecurityGroupId:
+    Description: SSM Endpoint Security Group ID
+    Value: !Ref SSMEndpointSecurityGroup
+    Export:
+      Name: !Sub medislot-${Environment}-SSMEndpointSecurityGroupId
+
+  SSMEndpointId:
+    Description: SSM Interface VPC Endpoint ID
+    Value: !Ref SSMInterfaceEndpoint
+    Export:
+      Name: !Sub medislot-${Environment}-SSMEndpointId

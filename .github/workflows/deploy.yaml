@@ -1,4 +1,8 @@
-name: MediSlot Network Deployment
+name: MediSlot Infrastructure Deployment
+
+# =====================================================
+# WORKFLOW TRIGGERS
+# =====================================================
 
 on:
   push:
@@ -6,16 +10,30 @@ on:
       - main
     paths:
       - "Cloudformation/Network_Stack.yaml"
+      - "Cloudformation/Security_IAM_Stack.yaml"
       - "Cloudformation/parameters.json"
       - ".github/workflows/deploy.yaml"
 
   workflow_dispatch:
 
+# =====================================================
+# GITHUB PERMISSIONS
+# =====================================================
+
 permissions:
   id-token: write
   contents: read
 
+# =====================================================
+# JOBS
+# =====================================================
+
 jobs:
+
+  # =====================================================
+  # JOB 1: DEPLOY NETWORK STACK
+  # =====================================================
+
   deploy-network:
     name: Deploy Network Stack
     runs-on: ubuntu-latest
@@ -184,10 +202,161 @@ jobs:
             --no-fail-on-empty-changeset
 
       # =====================================================
-      # 8. DISPLAY STACK OUTPUTS
+      # 8. DISPLAY NETWORK STACK OUTPUTS
       # =====================================================
 
-      - name: Display Stack Outputs
+      - name: Display Network Stack Outputs
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          aws cloudformation describe-stacks \
+            --stack-name "$STACK_NAME" \
+            --query "Stacks[0].Outputs" \
+            --region "$AWS_REGION"
+
+  # =====================================================
+  # JOB 2: DEPLOY SECURITY/IAM STACK
+  # =====================================================
+
+  deploy-security-iam:
+    name: Deploy Security IAM Stack
+    runs-on: ubuntu-latest
+
+    # Network Stack must finish successfully first
+    needs:
+      - deploy-network
+
+    steps:
+
+      # =====================================================
+      # 1. CHECKOUT REPOSITORY
+      # =====================================================
+
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      # =====================================================
+      # 2. LOAD CONFIGURATION FROM PARAMETERS.JSON
+      # =====================================================
+
+      - name: Load Configuration
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          CONFIG="Cloudformation/parameters.json"
+
+          jq -e . "$CONFIG" > /dev/null
+
+          PROJECT=$(jq -er '.project' "$CONFIG")
+          DEPLOY_ENV=$(jq -er '.environment' "$CONFIG")
+          AWS_REGION=$(jq -er '.region' "$CONFIG")
+          VPC_CIDR=$(jq -er '.network.VpcCIDR' "$CONFIG")
+
+          if [[ ! "$PROJECT" =~ ^[a-z][a-z0-9-]*$ ]]; then
+            echo "::error::Invalid project name"
+            exit 1
+          fi
+
+          if [[ ! "$DEPLOY_ENV" =~ ^(dev|staging|prod)$ ]]; then
+            echo "::error::Invalid environment"
+            exit 1
+          fi
+
+          if [[ -z "$AWS_REGION" || -z "$VPC_CIDR" ]]; then
+            echo "::error::Missing AWS Region or VPC CIDR"
+            exit 1
+          fi
+
+          echo "PROJECT=$PROJECT" >> "$GITHUB_ENV"
+          echo "DEPLOY_ENV=$DEPLOY_ENV" >> "$GITHUB_ENV"
+          echo "AWS_REGION=$AWS_REGION" >> "$GITHUB_ENV"
+          echo "VPC_CIDR=$VPC_CIDR" >> "$GITHUB_ENV"
+
+          echo "STACK_NAME=${PROJECT}-${DEPLOY_ENV}-security-iam" >> "$GITHUB_ENV"
+
+          echo "Security configuration loaded successfully"
+
+      # =====================================================
+      # 3. CONFIGURE AWS CREDENTIALS USING OIDC
+      # =====================================================
+
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      # =====================================================
+      # 4. VERIFY AWS IDENTITY
+      # =====================================================
+
+      - name: Verify AWS Identity
+        run: aws sts get-caller-identity
+
+      # =====================================================
+      # 5. RESOLVE CLOUDFORMATION EXECUTION ROLE
+      # =====================================================
+
+      - name: Resolve CloudFormation Execution Role
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          ACCOUNT_ID=$(aws sts get-caller-identity \
+            --query Account \
+            --output text)
+
+          PARTITION=$(aws sts get-caller-identity \
+            --query Arn \
+            --output text | cut -d: -f2)
+
+          ROLE_NAME="medislot_cloudformation_execution"
+
+          ROLE_ARN="arn:${PARTITION}:iam::${ACCOUNT_ID}:role/${ROLE_NAME}"
+
+          echo "CFN_EXECUTION_ROLE_ARN=$ROLE_ARN" >> "$GITHUB_ENV"
+
+          echo "CloudFormation execution role resolved"
+
+      # =====================================================
+      # 6. VALIDATE SECURITY IAM TEMPLATE
+      # =====================================================
+
+      - name: Validate Security IAM Template
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          aws cloudformation validate-template \
+            --template-body file://Cloudformation/Security_IAM_Stack.yaml \
+            --region "$AWS_REGION"
+
+      # =====================================================
+      # 7. DEPLOY SECURITY IAM STACK
+      # =====================================================
+
+      - name: Deploy Security IAM Stack
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          aws cloudformation deploy \
+            --template-file Cloudformation/Security_IAM_Stack.yaml \
+            --stack-name "$STACK_NAME" \
+            --parameter-overrides \
+              Environment="$DEPLOY_ENV" \
+              VpcCIDR="$VPC_CIDR" \
+            --role-arn "$CFN_EXECUTION_ROLE_ARN" \
+            --region "$AWS_REGION" \
+            --no-fail-on-empty-changeset
+
+      # =====================================================
+      # 8. DISPLAY SECURITY IAM STACK OUTPUTS
+      # =====================================================
+
+      - name: Display Security IAM Stack Outputs
         shell: bash
         run: |
           set -euo pipefail
