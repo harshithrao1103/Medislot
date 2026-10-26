@@ -253,6 +253,67 @@ Resources:
         - Key: Environment
           Value: !Ref Environment
 
+  # =====================================================
+  # 14. SECRETS MANAGER ENDPOINT SECURITY GROUP
+  # =====================================================
+
+  SecretsManagerEndpointSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Allow HTTPS from MediSlot private subnets
+      VpcId: !Ref MediSlotVPC
+
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 443
+          ToPort: 443
+          CidrIp: !Ref PrivateSubnetACIDR
+          Description: Allow HTTPS from private subnet A
+
+        - IpProtocol: tcp
+          FromPort: 443
+          ToPort: 443
+          CidrIp: !Ref PrivateSubnetBCIDR
+          Description: Allow HTTPS from private subnet B
+
+      Tags:
+        - Key: Name
+          Value: !Sub medislot-${Environment}-secretsmanager-endpoint-sg
+        - Key: Project
+          Value: MediSlot
+        - Key: Environment
+          Value: !Ref Environment
+
+  # =====================================================
+  # 15. SECRETS MANAGER INTERFACE VPC ENDPOINT
+  # =====================================================
+
+  SecretsManagerVPCEndpoint:
+    Type: AWS::EC2::VPCEndpoint
+    Properties:
+      VpcEndpointType: Interface
+
+      ServiceName: !Sub "com.amazonaws.${AWS::Region}.secretsmanager"
+
+      VpcId: !Ref MediSlotVPC
+
+      SubnetIds:
+        - !Ref PrivateSubnetA
+        - !Ref PrivateSubnetB
+
+      SecurityGroupIds:
+        - !Ref SecretsManagerEndpointSecurityGroup
+
+      PrivateDnsEnabled: true
+
+      Tags:
+        - Key: Name
+          Value: !Sub medislot-${Environment}-secretsmanager-endpoint
+        - Key: Project
+          Value: MediSlot
+        - Key: Environment
+          Value: !Ref Environment
+
 # =====================================================
 # OUTPUTS
 # =====================================================
@@ -300,3 +361,9 @@ Outputs:
     Value: !Ref DynamoDBGatewayEndpoint
     Export:
       Name: !Sub medislot-${Environment}-DynamoDBEndpointId
+
+  SecretsManagerVPCEndpointId:
+    Description: Secrets Manager Interface VPC Endpoint ID
+    Value: !Ref SecretsManagerVPCEndpoint
+    Export:
+      Name: !Sub medislot-${Environment}-SecretsManagerVPCEndpointId
