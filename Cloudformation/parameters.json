@@ -19,7 +19,7 @@
   "data": {
     "DBInstanceClass": "db.t3.micro",
     "DBAllocatedStorage": 20,
-    "DBBackupRetentionDays": 7,
+    "DBBackupRetentionDays": 1,
     "JWTAccessTokenMinutes": 15,
     "RefreshTokenDays": 7,
     "BcryptWorkFactor": 12,
