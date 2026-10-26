@@ -1,0 +1,302 @@
+AWSTemplateFormatVersion: '2010-09-09'
+
+Description: >
+  MediSlot Network Infrastructure -
+  VPC, Public and Private Subnets, Internet Gateway,
+  Route Tables, Associations and DynamoDB Gateway Endpoint.
+
+# =====================================================
+# PARAMETERS
+# =====================================================
+
+Parameters:
+
+  Environment:
+    Type: String
+    AllowedValues:
+      - dev
+      - staging
+      - prod
+    Description: Deployment environment
+
+  VpcCIDR:
+    Type: String
+    Description: CIDR block for MediSlot VPC
+
+  PublicSubnetCIDR:
+    Type: String
+    Description: CIDR block for public subnet
+
+  PrivateSubnetACIDR:
+    Type: String
+    Description: CIDR block for private subnet A
+
+  PrivateSubnetBCIDR:
+    Type: String
+    Description: CIDR block for private subnet B
+
+  AvailabilityZoneA:
+    Type: AWS::EC2::AvailabilityZone::Name
+    Description: Availability Zone for public and private subnet A
+
+  AvailabilityZoneB:
+    Type: AWS::EC2::AvailabilityZone::Name
+    Description: Availability Zone for private subnet B
+
+# =====================================================
+# RESOURCES
+# =====================================================
+
+Resources:
+
+  # =====================================================
+  # 1. VPC
+  # =====================================================
+
+  MediSlotVPC:
+    Type: AWS::EC2::VPC
+    Properties:
+      CidrBlock: !Ref VpcCIDR
+      EnableDnsSupport: true
+      EnableDnsHostnames: true
+
+      Tags:
+        - Key: Name
+          Value: !Sub medislot-${Environment}-vpc
+        - Key: Project
+          Value: MediSlot
+        - Key: Environment
+          Value: !Ref Environment
+
+  # =====================================================
+  # 2. INTERNET GATEWAY
+  # =====================================================
+
+  InternetGateway:
+    Type: AWS::EC2::InternetGateway
+    Properties:
+      Tags:
+        - Key: Name
+          Value: !Sub medislot-${Environment}-igw
+        - Key: Project
+          Value: MediSlot
+        - Key: Environment
+          Value: !Ref Environment
+
+  # =====================================================
+  # 3. INTERNET GATEWAY ATTACHMENT
+  # =====================================================
+
+  InternetGatewayAttachment:
+    Type: AWS::EC2::VPCGatewayAttachment
+    Properties:
+      VpcId: !Ref MediSlotVPC
+      InternetGatewayId: !Ref InternetGateway
+
+  # =====================================================
+  # 4. PUBLIC SUBNET - AZ A
+  # =====================================================
+
+  PublicSubnet:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref MediSlotVPC
+      AvailabilityZone: !Ref AvailabilityZoneA
+      CidrBlock: !Ref PublicSubnetCIDR
+      MapPublicIpOnLaunch: true
+
+      Tags:
+        - Key: Name
+          Value: !Sub medislot-${Environment}-public-subnet
+        - Key: Project
+          Value: MediSlot
+        - Key: Environment
+          Value: !Ref Environment
+
+  # =====================================================
+  # 5. PRIVATE SUBNET A - AZ A
+  # =====================================================
+
+  PrivateSubnetA:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref MediSlotVPC
+      AvailabilityZone: !Ref AvailabilityZoneA
+      CidrBlock: !Ref PrivateSubnetACIDR
+      MapPublicIpOnLaunch: false
+
+      Tags:
+        - Key: Name
+          Value: !Sub medislot-${Environment}-private-subnet-a
+        - Key: Project
+          Value: MediSlot
+        - Key: Environment
+          Value: !Ref Environment
+
+  # =====================================================
+  # 6. PRIVATE SUBNET B - AZ B
+  # =====================================================
+
+  PrivateSubnetB:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref MediSlotVPC
+      AvailabilityZone: !Ref AvailabilityZoneB
+      CidrBlock: !Ref PrivateSubnetBCIDR
+      MapPublicIpOnLaunch: false
+
+      Tags:
+        - Key: Name
+          Value: !Sub medislot-${Environment}-private-subnet-b
+        - Key: Project
+          Value: MediSlot
+        - Key: Environment
+          Value: !Ref Environment
+
+  # =====================================================
+  # 7. PUBLIC ROUTE TABLE
+  # =====================================================
+
+  PublicRouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref MediSlotVPC
+
+      Tags:
+        - Key: Name
+          Value: !Sub medislot-${Environment}-public-rt
+        - Key: Project
+          Value: MediSlot
+        - Key: Environment
+          Value: !Ref Environment
+
+  # =====================================================
+  # 8. PRIVATE ROUTE TABLE
+  # =====================================================
+
+  PrivateRouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref MediSlotVPC
+
+      Tags:
+        - Key: Name
+          Value: !Sub medislot-${Environment}-private-rt
+        - Key: Project
+          Value: MediSlot
+        - Key: Environment
+          Value: !Ref Environment
+
+  # =====================================================
+  # 9. PUBLIC INTERNET ROUTE
+  # =====================================================
+
+  PublicRoute:
+    Type: AWS::EC2::Route
+    DependsOn: InternetGatewayAttachment
+    Properties:
+      RouteTableId: !Ref PublicRouteTable
+      DestinationCidrBlock: 0.0.0.0/0
+      GatewayId: !Ref InternetGateway
+
+  # =====================================================
+  # 10. PUBLIC SUBNET ASSOCIATION
+  # =====================================================
+
+  PublicSubnetAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref PublicSubnet
+      RouteTableId: !Ref PublicRouteTable
+
+  # =====================================================
+  # 11. PRIVATE SUBNET A ASSOCIATION
+  # =====================================================
+
+  PrivateSubnetAAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref PrivateSubnetA
+      RouteTableId: !Ref PrivateRouteTable
+
+  # =====================================================
+  # 12. PRIVATE SUBNET B ASSOCIATION
+  # =====================================================
+
+  PrivateSubnetBAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref PrivateSubnetB
+      RouteTableId: !Ref PrivateRouteTable
+
+  # =====================================================
+  # 13. DYNAMODB GATEWAY VPC ENDPOINT
+  # =====================================================
+
+  DynamoDBGatewayEndpoint:
+    Type: AWS::EC2::VPCEndpoint
+    Properties:
+      VpcId: !Ref MediSlotVPC
+
+      ServiceName: !Sub com.amazonaws.${AWS::Region}.dynamodb
+
+      VpcEndpointType: Gateway
+
+      RouteTableIds:
+        - !Ref PrivateRouteTable
+
+      Tags:
+        - Key: Name
+          Value: !Sub medislot-${Environment}-dynamodb-endpoint
+        - Key: Project
+          Value: MediSlot
+        - Key: Environment
+          Value: !Ref Environment
+
+# =====================================================
+# OUTPUTS
+# =====================================================
+
+Outputs:
+
+  VpcId:
+    Description: MediSlot VPC ID
+    Value: !Ref MediSlotVPC
+    Export:
+      Name: !Sub medislot-${Environment}-VpcId
+
+  PublicSubnetId:
+    Description: Public Subnet ID
+    Value: !Ref PublicSubnet
+    Export:
+      Name: !Sub medislot-${Environment}-PublicSubnetId
+
+  PrivateSubnetAId:
+    Description: Private Subnet A ID
+    Value: !Ref PrivateSubnetA
+    Export:
+      Name: !Sub medislot-${Environment}-PrivateSubnetAId
+
+  PrivateSubnetBId:
+    Description: Private Subnet B ID
+    Value: !Ref PrivateSubnetB
+    Export:
+      Name: !Sub medislot-${Environment}-PrivateSubnetBId
+
+  PublicRouteTableId:
+    Description: Public Route Table ID
+    Value: !Ref PublicRouteTable
+    Export:
+      Name: !Sub medislot-${Environment}-PublicRouteTableId
+
+  PrivateRouteTableId:
+    Description: Private Route Table ID
+    Value: !Ref PrivateRouteTable
+    Export:
+      Name: !Sub medislot-${Environment}-PrivateRouteTableId
+
+  DynamoDBEndpointId:
+    Description: DynamoDB Gateway VPC Endpoint ID
+    Value: !Ref DynamoDBGatewayEndpoint
+    Export:
+      Name: !Sub medislot-${Environment}-DynamoDBEndpointId

@@ -1,0 +1,14 @@
+{
+  "project": "medislot",
+  "environment": "dev",
+  "region": "us-east-1",
+
+  "network": {
+    "VpcCIDR": "10.0.0.0/16",
+    "PublicSubnetCIDR": "10.0.1.0/24",
+    "PrivateSubnetACIDR": "10.0.11.0/24",
+    "PrivateSubnetBCIDR": "10.0.12.0/24",
+    "AvailabilityZoneA": "us-east-1a",
+    "AvailabilityZoneB": "us-east-1b"
+  }
+}

@@ -1,0 +1,198 @@
+name: MediSlot Network Deployment
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "Cloudformation/Network_Stack.yaml"
+      - "Cloudformation/parameters.json"
+      - ".github/workflows/deploy.yaml"
+
+  workflow_dispatch:
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  deploy-network:
+    name: Deploy Network Stack
+    runs-on: ubuntu-latest
+
+    steps:
+
+      # =====================================================
+      # 1. CHECKOUT REPOSITORY
+      # =====================================================
+
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      # =====================================================
+      # 2. LOAD CONFIGURATION FROM PARAMETERS.JSON
+      # =====================================================
+
+      - name: Load Configuration
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          CONFIG="Cloudformation/parameters.json"
+
+          jq -e . "$CONFIG" > /dev/null
+
+          PROJECT=$(jq -er '.project' "$CONFIG")
+          DEPLOY_ENV=$(jq -er '.environment' "$CONFIG")
+          AWS_REGION=$(jq -er '.region' "$CONFIG")
+
+          if [[ ! "$PROJECT" =~ ^[a-z][a-z0-9-]*$ ]]; then
+            echo "::error::Invalid project name"
+            exit 1
+          fi
+
+          if [[ ! "$DEPLOY_ENV" =~ ^(dev|staging|prod)$ ]]; then
+            echo "::error::Invalid environment"
+            exit 1
+          fi
+
+          if [[ -z "$AWS_REGION" ]]; then
+            echo "::error::AWS Region is required"
+            exit 1
+          fi
+
+          echo "PROJECT=$PROJECT" >> "$GITHUB_ENV"
+          echo "DEPLOY_ENV=$DEPLOY_ENV" >> "$GITHUB_ENV"
+          echo "AWS_REGION=$AWS_REGION" >> "$GITHUB_ENV"
+
+          echo "STACK_NAME=${PROJECT}-${DEPLOY_ENV}-network" >> "$GITHUB_ENV"
+
+          jq -e '
+            .network |
+            [
+              .VpcCIDR,
+              .PublicSubnetCIDR,
+              .PrivateSubnetACIDR,
+              .PrivateSubnetBCIDR,
+              .AvailabilityZoneA,
+              .AvailabilityZoneB
+            ] |
+            all(. != null and type == "string" and length > 0)
+          ' "$CONFIG" > /dev/null
+
+          AZ_A=$(jq -r '.network.AvailabilityZoneA' "$CONFIG")
+          AZ_B=$(jq -r '.network.AvailabilityZoneB' "$CONFIG")
+
+          if [[ "$AZ_A" == "$AZ_B" ]]; then
+            echo "::error::Availability Zones must be different"
+            exit 1
+          fi
+
+          if [[ "$AZ_A" != "$AWS_REGION"* || "$AZ_B" != "$AWS_REGION"* ]]; then
+            echo "::error::Availability Zones must belong to the configured region"
+            exit 1
+          fi
+
+          echo "Configuration loaded successfully"
+
+      # =====================================================
+      # 3. CONFIGURE AWS CREDENTIALS USING OIDC
+      # =====================================================
+
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      # =====================================================
+      # 4. VERIFY AWS IDENTITY
+      # =====================================================
+
+      - name: Verify AWS Identity
+        run: aws sts get-caller-identity
+
+      # =====================================================
+      # 5. RESOLVE CLOUDFORMATION EXECUTION ROLE
+      # =====================================================
+
+      - name: Resolve CloudFormation Execution Role
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          ACCOUNT_ID=$(aws sts get-caller-identity \
+            --query Account \
+            --output text)
+
+          PARTITION=$(aws sts get-caller-identity \
+            --query Arn \
+            --output text | cut -d: -f2)
+
+          ROLE_NAME="medislot_cloudformation_execution"
+
+          ROLE_ARN="arn:${PARTITION}:iam::${ACCOUNT_ID}:role/${ROLE_NAME}"
+
+          echo "CFN_EXECUTION_ROLE_ARN=$ROLE_ARN" >> "$GITHUB_ENV"
+
+          echo "CloudFormation execution role resolved"
+
+      # =====================================================
+      # 6. VALIDATE NETWORK TEMPLATE
+      # =====================================================
+
+      - name: Validate Network Template
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          aws cloudformation validate-template \
+            --template-body file://Cloudformation/Network_Stack.yaml \
+            --region "$AWS_REGION"
+
+      # =====================================================
+      # 7. DEPLOY NETWORK STACK
+      # =====================================================
+
+      - name: Deploy Network Stack
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          CONFIG="Cloudformation/parameters.json"
+
+          VPC_CIDR=$(jq -r '.network.VpcCIDR' "$CONFIG")
+          PUBLIC_SUBNET_CIDR=$(jq -r '.network.PublicSubnetCIDR' "$CONFIG")
+          PRIVATE_SUBNET_A_CIDR=$(jq -r '.network.PrivateSubnetACIDR' "$CONFIG")
+          PRIVATE_SUBNET_B_CIDR=$(jq -r '.network.PrivateSubnetBCIDR' "$CONFIG")
+          AZ_A=$(jq -r '.network.AvailabilityZoneA' "$CONFIG")
+          AZ_B=$(jq -r '.network.AvailabilityZoneB' "$CONFIG")
+
+          aws cloudformation deploy \
+            --template-file Cloudformation/Network_Stack.yaml \
+            --stack-name "$STACK_NAME" \
+            --parameter-overrides \
+              Environment="$DEPLOY_ENV" \
+              VpcCIDR="$VPC_CIDR" \
+              PublicSubnetCIDR="$PUBLIC_SUBNET_CIDR" \
+              PrivateSubnetACIDR="$PRIVATE_SUBNET_A_CIDR" \
+              PrivateSubnetBCIDR="$PRIVATE_SUBNET_B_CIDR" \
+              AvailabilityZoneA="$AZ_A" \
+              AvailabilityZoneB="$AZ_B" \
+            --role-arn "$CFN_EXECUTION_ROLE_ARN" \
+            --region "$AWS_REGION" \
+            --no-fail-on-empty-changeset
+
+      # =====================================================
+      # 8. DISPLAY STACK OUTPUTS
+      # =====================================================
+
+      - name: Display Stack Outputs
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          aws cloudformation describe-stacks \
+            --stack-name "$STACK_NAME" \
+            --query "Stacks[0].Outputs" \
+            --region "$AWS_REGION"
