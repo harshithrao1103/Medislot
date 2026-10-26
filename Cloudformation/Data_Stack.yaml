@@ -570,6 +570,13 @@ Resources:
 
       Value: !Sub '${WaitlistHoldMinutes}'
 
+  PasswordMinLengthParameter:
+    Type: AWS::SSM::Parameter
+    Properties:
+      Name: !Sub /medislot/${Environment}/auth/password-min-length
+      Type: String
+      Value: '10'
+
 
 # ============================================================
 # OUTPUTS
