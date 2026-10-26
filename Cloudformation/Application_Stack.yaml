@@ -82,6 +82,504 @@ Resources:
         - Key: Environment
           Value: !Ref Environment
 
+
+  # =====================================================
+  # MILESTONE 2: AUTHENTICATION LAMBDAS AND LOG GROUPS
+  # =====================================================
+  DoctorRegisterLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub /aws/lambda/medislot-${Environment}-doctor-register
+      RetentionInDays: 14
+
+  DoctorRegisterLambda:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Sub medislot-${Environment}-doctor-register
+      Runtime: python3.12
+      Handler: doctor_register_lambda.lambda_handler
+      Role:
+        Fn::ImportValue: !Sub medislot-${Environment}-DoctorRegisterLambdaExecutionRoleArn
+      Code:
+        S3Bucket: !Ref ArtifactBucketName
+        S3Key: !Sub lambda/doctor_register/${CodeVersion}.zip
+      Timeout: 30
+      MemorySize: 256
+      Environment:
+        Variables:
+          AUTH_SSM_PREFIX: !Sub /medislot/${Environment}/auth
+          REFRESH_TABLE: !Sub medislot-${Environment}-refresh-tokens
+          REVOKED_TABLE: !Sub medislot-${Environment}-revoked-jwts
+          DB_HOST:
+            Fn::ImportValue: !Sub medislot-${Environment}-DBEndpoint
+          DB_PORT:
+            Fn::ImportValue: !Sub medislot-${Environment}-DBPort
+          DB_NAME:
+            Fn::ImportValue: !Sub medislot-${Environment}-DBName
+          DB_SECRET_ARN:
+            Fn::ImportValue: !Sub medislot-${Environment}-DBMasterSecretArn
+      VpcConfig:
+        SecurityGroupIds:
+          - Fn::ImportValue: !Sub medislot-${Environment}-LambdaSecurityGroupId
+        SubnetIds:
+          - Fn::ImportValue: !Sub medislot-${Environment}-PrivateSubnetAId
+          - Fn::ImportValue: !Sub medislot-${Environment}-PrivateSubnetBId
+      Tags:
+        - Key: Project
+          Value: MediSlot
+        - Key: Environment
+          Value: !Ref Environment
+
+  PatientRegisterLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub /aws/lambda/medislot-${Environment}-patient-register
+      RetentionInDays: 14
+
+  PatientRegisterLambda:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Sub medislot-${Environment}-patient-register
+      Runtime: python3.12
+      Handler: patient_register_lambda.lambda_handler
+      Role:
+        Fn::ImportValue: !Sub medislot-${Environment}-PatientRegisterLambdaExecutionRoleArn
+      Code:
+        S3Bucket: !Ref ArtifactBucketName
+        S3Key: !Sub lambda/patient_register/${CodeVersion}.zip
+      Timeout: 30
+      MemorySize: 256
+      Environment:
+        Variables:
+          AUTH_SSM_PREFIX: !Sub /medislot/${Environment}/auth
+          REFRESH_TABLE: !Sub medislot-${Environment}-refresh-tokens
+          REVOKED_TABLE: !Sub medislot-${Environment}-revoked-jwts
+          DB_HOST:
+            Fn::ImportValue: !Sub medislot-${Environment}-DBEndpoint
+          DB_PORT:
+            Fn::ImportValue: !Sub medislot-${Environment}-DBPort
+          DB_NAME:
+            Fn::ImportValue: !Sub medislot-${Environment}-DBName
+          DB_SECRET_ARN:
+            Fn::ImportValue: !Sub medislot-${Environment}-DBMasterSecretArn
+      VpcConfig:
+        SecurityGroupIds:
+          - Fn::ImportValue: !Sub medislot-${Environment}-LambdaSecurityGroupId
+        SubnetIds:
+          - Fn::ImportValue: !Sub medislot-${Environment}-PrivateSubnetAId
+          - Fn::ImportValue: !Sub medislot-${Environment}-PrivateSubnetBId
+      Tags:
+        - Key: Project
+          Value: MediSlot
+        - Key: Environment
+          Value: !Ref Environment
+
+  LoginLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub /aws/lambda/medislot-${Environment}-login
+      RetentionInDays: 14
+
+  LoginLambda:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Sub medislot-${Environment}-login
+      Runtime: python3.12
+      Handler: login_lambda.lambda_handler
+      Role:
+        Fn::ImportValue: !Sub medislot-${Environment}-LoginLambdaExecutionRoleArn
+      Code:
+        S3Bucket: !Ref ArtifactBucketName
+        S3Key: !Sub lambda/login/${CodeVersion}.zip
+      Timeout: 30
+      MemorySize: 256
+      Environment:
+        Variables:
+          AUTH_SSM_PREFIX: !Sub /medislot/${Environment}/auth
+          REFRESH_TABLE: !Sub medislot-${Environment}-refresh-tokens
+          REVOKED_TABLE: !Sub medislot-${Environment}-revoked-jwts
+          DB_HOST:
+            Fn::ImportValue: !Sub medislot-${Environment}-DBEndpoint
+          DB_PORT:
+            Fn::ImportValue: !Sub medislot-${Environment}-DBPort
+          DB_NAME:
+            Fn::ImportValue: !Sub medislot-${Environment}-DBName
+          DB_SECRET_ARN:
+            Fn::ImportValue: !Sub medislot-${Environment}-DBMasterSecretArn
+      VpcConfig:
+        SecurityGroupIds:
+          - Fn::ImportValue: !Sub medislot-${Environment}-LambdaSecurityGroupId
+        SubnetIds:
+          - Fn::ImportValue: !Sub medislot-${Environment}-PrivateSubnetAId
+          - Fn::ImportValue: !Sub medislot-${Environment}-PrivateSubnetBId
+      Tags:
+        - Key: Project
+          Value: MediSlot
+        - Key: Environment
+          Value: !Ref Environment
+
+  TokenLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub /aws/lambda/medislot-${Environment}-token
+      RetentionInDays: 14
+
+  TokenLambda:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Sub medislot-${Environment}-token
+      Runtime: python3.12
+      Handler: token_lambda.lambda_handler
+      Role:
+        Fn::ImportValue: !Sub medislot-${Environment}-TokenLambdaExecutionRoleArn
+      Code:
+        S3Bucket: !Ref ArtifactBucketName
+        S3Key: !Sub lambda/token/${CodeVersion}.zip
+      Timeout: 30
+      MemorySize: 256
+      Environment:
+        Variables:
+          AUTH_SSM_PREFIX: !Sub /medislot/${Environment}/auth
+          REFRESH_TABLE: !Sub medislot-${Environment}-refresh-tokens
+          REVOKED_TABLE: !Sub medislot-${Environment}-revoked-jwts
+      Tags:
+        - Key: Project
+          Value: MediSlot
+        - Key: Environment
+          Value: !Ref Environment
+
+  AuthorizerLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub /aws/lambda/medislot-${Environment}-authorizer
+      RetentionInDays: 14
+
+  AuthorizerLambda:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Sub medislot-${Environment}-authorizer
+      Runtime: python3.12
+      Handler: authorizer_lambda.lambda_handler
+      Role:
+        Fn::ImportValue: !Sub medislot-${Environment}-AuthorizerLambdaExecutionRoleArn
+      Code:
+        S3Bucket: !Ref ArtifactBucketName
+        S3Key: !Sub lambda/authorizer/${CodeVersion}.zip
+      Timeout: 30
+      MemorySize: 256
+      Environment:
+        Variables:
+          AUTH_SSM_PREFIX: !Sub /medislot/${Environment}/auth
+          REFRESH_TABLE: !Sub medislot-${Environment}-refresh-tokens
+          REVOKED_TABLE: !Sub medislot-${Environment}-revoked-jwts
+      Tags:
+        - Key: Project
+          Value: MediSlot
+        - Key: Environment
+          Value: !Ref Environment
+
+  AuthTestLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub /aws/lambda/medislot-${Environment}-auth-test
+      RetentionInDays: 14
+
+  AuthTestLambda:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Sub medislot-${Environment}-auth-test
+      Runtime: python3.12
+      Handler: auth_test_lambda.lambda_handler
+      Role:
+        Fn::ImportValue: !Sub medislot-${Environment}-AuthTestLambdaExecutionRoleArn
+      Code:
+        S3Bucket: !Ref ArtifactBucketName
+        S3Key: !Sub lambda/auth_test/${CodeVersion}.zip
+      Timeout: 30
+      MemorySize: 256
+      Environment:
+        Variables:
+          AUTH_SSM_PREFIX: !Sub /medislot/${Environment}/auth
+          REFRESH_TABLE: !Sub medislot-${Environment}-refresh-tokens
+          REVOKED_TABLE: !Sub medislot-${Environment}-revoked-jwts
+      Tags:
+        - Key: Project
+          Value: MediSlot
+        - Key: Environment
+          Value: !Ref Environment
+
+  AuthRestApi:
+    Type: AWS::ApiGateway::RestApi
+    Properties:
+      Name: !Sub medislot-${Environment}-auth-api
+      EndpointConfiguration:
+        Types: [REGIONAL]
+
+  AuthResource:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      RestApiId: !Ref AuthRestApi
+      ParentId: !GetAtt AuthRestApi.RootResourceId
+      PathPart: auth
+
+  DoctorsResource:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      RestApiId: !Ref AuthRestApi
+      ParentId: !Ref AuthResource
+      PathPart: doctors
+
+  PatientsResource:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      RestApiId: !Ref AuthRestApi
+      ParentId: !Ref AuthResource
+      PathPart: patients
+
+  DoctorCheckResource:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      RestApiId: !Ref AuthRestApi
+      ParentId: !GetAtt AuthRestApi.RootResourceId
+      PathPart: doctor-auth-check
+
+  JwtAuthorizer:
+    Type: AWS::ApiGateway::Authorizer
+    Properties:
+      Name: !Sub medislot-${Environment}-jwt-authorizer
+      Type: TOKEN
+      RestApiId: !Ref AuthRestApi
+      IdentitySource: method.request.header.Authorization
+      AuthorizerResultTtlInSeconds: 0
+      AuthorizerUri: !Sub arn:${AWS::Partition}:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${AuthorizerLambda.Arn}/invocations
+
+  AuthorizerInvokePermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref AuthorizerLambda
+      Action: lambda:InvokeFunction
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub arn:${AWS::Partition}:execute-api:${AWS::Region}:${AWS::AccountId}:${AuthRestApi}/authorizers/${JwtAuthorizer}
+
+  DoctorRegisterResource:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      RestApiId: !Ref AuthRestApi
+      ParentId: !Ref DoctorsResource
+      PathPart: register
+
+  DoctorLoginResource:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      RestApiId: !Ref AuthRestApi
+      ParentId: !Ref DoctorsResource
+      PathPart: login
+
+  PatientRegisterResource:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      RestApiId: !Ref AuthRestApi
+      ParentId: !Ref PatientsResource
+      PathPart: register
+
+  PatientLoginResource:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      RestApiId: !Ref AuthRestApi
+      ParentId: !Ref PatientsResource
+      PathPart: login
+
+  RefreshResource:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      RestApiId: !Ref AuthRestApi
+      ParentId: !Ref AuthResource
+      PathPart: refresh
+
+  LogoutResource:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      RestApiId: !Ref AuthRestApi
+      ParentId: !Ref AuthResource
+      PathPart: logout
+
+  DoctorRegisterMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref AuthRestApi
+      ResourceId: !Ref DoctorRegisterResource
+      HttpMethod: POST
+      AuthorizationType: NONE
+      Integration:
+        Type: AWS_PROXY
+        IntegrationHttpMethod: POST
+        Uri: !Sub arn:${AWS::Partition}:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${DoctorRegisterLambda.Arn}/invocations
+
+  DoctorRegisterInvokePermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref DoctorRegisterLambda
+      Action: lambda:InvokeFunction
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub arn:${AWS::Partition}:execute-api:${AWS::Region}:${AWS::AccountId}:${AuthRestApi}/*/POST/*
+
+  PatientRegisterMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref AuthRestApi
+      ResourceId: !Ref PatientRegisterResource
+      HttpMethod: POST
+      AuthorizationType: NONE
+      Integration:
+        Type: AWS_PROXY
+        IntegrationHttpMethod: POST
+        Uri: !Sub arn:${AWS::Partition}:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${PatientRegisterLambda.Arn}/invocations
+
+  PatientRegisterInvokePermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref PatientRegisterLambda
+      Action: lambda:InvokeFunction
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub arn:${AWS::Partition}:execute-api:${AWS::Region}:${AWS::AccountId}:${AuthRestApi}/*/POST/*
+
+  DoctorLoginMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref AuthRestApi
+      ResourceId: !Ref DoctorLoginResource
+      HttpMethod: POST
+      AuthorizationType: NONE
+      Integration:
+        Type: AWS_PROXY
+        IntegrationHttpMethod: POST
+        Uri: !Sub arn:${AWS::Partition}:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${LoginLambda.Arn}/invocations
+
+  DoctorLoginInvokePermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref LoginLambda
+      Action: lambda:InvokeFunction
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub arn:${AWS::Partition}:execute-api:${AWS::Region}:${AWS::AccountId}:${AuthRestApi}/*/POST/*
+
+  PatientLoginMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref AuthRestApi
+      ResourceId: !Ref PatientLoginResource
+      HttpMethod: POST
+      AuthorizationType: NONE
+      Integration:
+        Type: AWS_PROXY
+        IntegrationHttpMethod: POST
+        Uri: !Sub arn:${AWS::Partition}:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${LoginLambda.Arn}/invocations
+
+  PatientLoginInvokePermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref LoginLambda
+      Action: lambda:InvokeFunction
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub arn:${AWS::Partition}:execute-api:${AWS::Region}:${AWS::AccountId}:${AuthRestApi}/*/POST/*
+
+  RefreshMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref AuthRestApi
+      ResourceId: !Ref RefreshResource
+      HttpMethod: POST
+      AuthorizationType: NONE
+      Integration:
+        Type: AWS_PROXY
+        IntegrationHttpMethod: POST
+        Uri: !Sub arn:${AWS::Partition}:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${TokenLambda.Arn}/invocations
+
+  RefreshInvokePermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref TokenLambda
+      Action: lambda:InvokeFunction
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub arn:${AWS::Partition}:execute-api:${AWS::Region}:${AWS::AccountId}:${AuthRestApi}/*/POST/*
+
+  LogoutMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref AuthRestApi
+      ResourceId: !Ref LogoutResource
+      HttpMethod: POST
+      AuthorizationType: NONE
+      Integration:
+        Type: AWS_PROXY
+        IntegrationHttpMethod: POST
+        Uri: !Sub arn:${AWS::Partition}:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${TokenLambda.Arn}/invocations
+
+  LogoutInvokePermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref TokenLambda
+      Action: lambda:InvokeFunction
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub arn:${AWS::Partition}:execute-api:${AWS::Region}:${AWS::AccountId}:${AuthRestApi}/*/POST/*
+
+  DoctorCheckMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref AuthRestApi
+      ResourceId: !Ref DoctorCheckResource
+      HttpMethod: GET
+      AuthorizationType: CUSTOM
+      AuthorizerId: !Ref JwtAuthorizer
+      Integration:
+        Type: AWS_PROXY
+        IntegrationHttpMethod: POST
+        Uri: !Sub arn:${AWS::Partition}:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${AuthTestLambda.Arn}/invocations
+
+  DoctorCheckInvokePermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref AuthTestLambda
+      Action: lambda:InvokeFunction
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub arn:${AWS::Partition}:execute-api:${AWS::Region}:${AWS::AccountId}:${AuthRestApi}/*/GET/*
+
+  AuthDeployment:
+    Type: AWS::ApiGateway::Deployment
+    DependsOn:
+      - DoctorRegisterMethod
+      - PatientRegisterMethod
+      - DoctorLoginMethod
+      - PatientLoginMethod
+      - RefreshMethod
+      - LogoutMethod
+      - DoctorCheckMethod
+    Properties:
+      RestApiId: !Ref AuthRestApi
+      Description: !Sub Authentication API deployment ${CodeVersion}
+
+  AuthStage:
+    Type: AWS::ApiGateway::Stage
+    Properties:
+      RestApiId: !Ref AuthRestApi
+      DeploymentId: !Ref AuthDeployment
+      StageName: !Ref Environment
+      MethodSettings:
+        - ResourcePath: '/*'
+          HttpMethod: '*'
+          ThrottlingBurstLimit: 20
+          ThrottlingRateLimit: 10
+
+  # API Gateway default 401 for invalid/missing authorizer token.
+  AuthUnauthorizedResponse:
+    Type: AWS::ApiGateway::GatewayResponse
+    Properties:
+      RestApiId: !Ref AuthRestApi
+      ResponseType: UNAUTHORIZED
+      StatusCode: '401'
+      ResponseTemplates:
+        application/json: '{"error":"Unauthorized"}'
+
 Outputs:
 
   DBInitLambdaArn:
@@ -89,3 +587,32 @@ Outputs:
     Value: !GetAtt DBInitLambda.Arn
     Export:
       Name: !Sub medislot-${Environment}-DBInitLambdaArn
+  AuthApiBaseUrl:
+    Description: Authentication API base URL
+    Value: !Sub https://${AuthRestApi}.execute-api.${AWS::Region}.amazonaws.com/${Environment}
+    Export:
+      Name: !Sub medislot-${Environment}-AuthApiBaseUrl
+  DoctorRegisterLambdaArn:
+    Value: !GetAtt DoctorRegisterLambda.Arn
+    Export:
+      Name: !Sub medislot-${Environment}-DoctorRegisterLambdaArn
+  PatientRegisterLambdaArn:
+    Value: !GetAtt PatientRegisterLambda.Arn
+    Export:
+      Name: !Sub medislot-${Environment}-PatientRegisterLambdaArn
+  LoginLambdaArn:
+    Value: !GetAtt LoginLambda.Arn
+    Export:
+      Name: !Sub medislot-${Environment}-LoginLambdaArn
+  TokenLambdaArn:
+    Value: !GetAtt TokenLambda.Arn
+    Export:
+      Name: !Sub medislot-${Environment}-TokenLambdaArn
+  AuthorizerLambdaArn:
+    Value: !GetAtt AuthorizerLambda.Arn
+    Export:
+      Name: !Sub medislot-${Environment}-AuthorizerLambdaArn
+  AuthTestLambdaArn:
+    Value: !GetAtt AuthTestLambda.Arn
+    Export:
+      Name: !Sub medislot-${Environment}-AuthTestLambdaArn

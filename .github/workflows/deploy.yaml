@@ -31,6 +31,32 @@ permissions:
 
 jobs:
 
+  ci-gate:
+    name: Validate, Test and Scan
+    runs-on: ubuntu-latest
+    env:
+      AWS_DEFAULT_REGION: us-east-1
+      AWS_EC2_METADATA_DISABLED: "true"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install validation dependencies
+        run: python -m pip install -r tests/requirements.txt
+      - name: Compile and unit test
+        run: |
+          python -m compileall -q lambdas tests
+          python -m pytest -q tests
+      - name: IaC scan
+        run: |
+          cfn-lint Cloudformation/*.yaml
+          checkov -d Cloudformation --framework cloudformation --quiet
+      - name: Secret scan
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
   # =====================================================
   # JOB 1: DEPLOY NETWORK STACK
   # =====================================================
@@ -38,6 +64,7 @@ jobs:
   deploy-network:
     name: Deploy Network Stack
     runs-on: ubuntu-latest
+    needs: [ci-gate]
 
     steps:
 
@@ -632,6 +659,29 @@ jobs:
           echo "Deployment resources resolved successfully"
 
       # =====================================================
+      # JWT signing secret: SecureString provisioned through CI/CD.
+      # Secret must be set in GitHub Actions secrets; never print it.
+      # =====================================================
+
+      - name: Provision JWT signing secret securely
+        shell: bash
+        env:
+          JWT_SIGNING_SECRET: ${{ secrets.JWT_SIGNING_SECRET }}
+        run: |
+          set -euo pipefail
+          if [[ ${#JWT_SIGNING_SECRET} -lt 32 ]]; then
+            echo "::error::JWT_SIGNING_SECRET GitHub secret must be set (32+ characters)"
+            exit 1
+          fi
+          aws ssm put-parameter \
+            --name "/medislot/${DEPLOY_ENV}/auth/jwt-signing-secret" \
+            --type SecureString \
+            --value "$JWT_SIGNING_SECRET" \
+            --overwrite \
+            --region "$AWS_REGION" > /dev/null
+          echo "JWT SecureString provisioned (value hidden)"
+
+      # =====================================================
       # 5. SET UP PYTHON 3.12
       # =====================================================
 
@@ -769,3 +819,20 @@ jobs:
           fi
 
           echo "Database initialization completed successfully"
+      # =====================================================
+      # 12. AUTHENTICATION INTEGRATION SMOKE TESTS
+      # =====================================================
+
+      - name: Live authentication smoke tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          API_BASE=$(aws cloudformation describe-stacks \
+            --stack-name "$STACK_NAME" \
+            --query "Stacks[0].Outputs[?OutputKey=='AuthApiBaseUrl'].OutputValue | [0]" \
+            --output text --region "$AWS_REGION")
+          if [[ -z "$API_BASE" || "$API_BASE" == "None" ]]; then
+            echo "::error::Missing authentication API output"
+            exit 1
+          fi
+          MEDISLOT_API_BASE_URL="$API_BASE" python tests/smoke_auth.py
