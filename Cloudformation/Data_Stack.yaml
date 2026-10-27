@@ -198,6 +198,8 @@ Resources:
 
       TableName: !Sub 'medislot-${Environment}-idempotency'
 
+      PointInTimeRecoverySpecification:
+        PointInTimeRecoveryEnabled: true
       BillingMode: PAY_PER_REQUEST
 
       SSESpecification:
@@ -230,6 +232,8 @@ Resources:
 
       TableName: !Sub 'medislot-${Environment}-refresh-tokens'
 
+      PointInTimeRecoverySpecification:
+        PointInTimeRecoveryEnabled: true
       BillingMode: PAY_PER_REQUEST
 
       SSESpecification:
@@ -262,6 +266,8 @@ Resources:
 
       TableName: !Sub 'medislot-${Environment}-revoked-jwts'
 
+      PointInTimeRecoverySpecification:
+        PointInTimeRecoveryEnabled: true
       BillingMode: PAY_PER_REQUEST
 
       SSESpecification:
@@ -294,6 +300,8 @@ Resources:
 
       TableName: !Sub 'medislot-${Environment}-waitlist'
 
+      PointInTimeRecoverySpecification:
+        PointInTimeRecoveryEnabled: true
       BillingMode: PAY_PER_REQUEST
 
       SSESpecification:
@@ -335,6 +343,8 @@ Resources:
       TableName: !Sub
         'medislot-${Environment}-notification-dispatch'
 
+      PointInTimeRecoverySpecification:
+        PointInTimeRecoveryEnabled: true
       BillingMode: PAY_PER_REQUEST
 
       SSESpecification:
