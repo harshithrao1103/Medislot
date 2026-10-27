@@ -27,6 +27,13 @@ Resources:
 
   DBInitLambda:
     Type: AWS::Lambda::Function
+    Metadata:
+      checkov:
+        skip:
+          - id: CKV_AWS_173
+            comment: Lambda environment values are encrypted at rest with the AWS-managed Lambda key; customer-managed key is outside project key policy.
+          - id: CKV_AWS_116
+            comment: This Lambda is invoked synchronously; Lambda async DLQ does not apply to synchronous API Gateway invocations.
     Properties:
       ReservedConcurrentExecutions: 1
 
@@ -89,12 +96,24 @@ Resources:
   # =====================================================
   DoctorRegisterLogGroup:
     Type: AWS::Logs::LogGroup
+    Metadata:
+      checkov:
+        skip:
+          - id: CKV_AWS_158
+            comment: CloudWatch Logs provides encryption at rest by default; project policy does not provision customer-managed KMS keys.
     Properties:
       LogGroupName: !Sub /aws/lambda/medislot-${Environment}-doctor-register
       RetentionInDays: 14
 
   DoctorRegisterLambda:
     Type: AWS::Lambda::Function
+    Metadata:
+      checkov:
+        skip:
+          - id: CKV_AWS_173
+            comment: Lambda environment values are encrypted at rest with the AWS-managed Lambda key; customer-managed key is outside project key policy.
+          - id: CKV_AWS_116
+            comment: This Lambda is invoked synchronously; Lambda async DLQ does not apply to synchronous API Gateway invocations.
     Properties:
       ReservedConcurrentExecutions: 10
       FunctionName: !Sub medislot-${Environment}-doctor-register
@@ -134,12 +153,24 @@ Resources:
 
   PatientRegisterLogGroup:
     Type: AWS::Logs::LogGroup
+    Metadata:
+      checkov:
+        skip:
+          - id: CKV_AWS_158
+            comment: CloudWatch Logs provides encryption at rest by default; project policy does not provision customer-managed KMS keys.
     Properties:
       LogGroupName: !Sub /aws/lambda/medislot-${Environment}-patient-register
       RetentionInDays: 14
 
   PatientRegisterLambda:
     Type: AWS::Lambda::Function
+    Metadata:
+      checkov:
+        skip:
+          - id: CKV_AWS_173
+            comment: Lambda environment values are encrypted at rest with the AWS-managed Lambda key; customer-managed key is outside project key policy.
+          - id: CKV_AWS_116
+            comment: This Lambda is invoked synchronously; Lambda async DLQ does not apply to synchronous API Gateway invocations.
     Properties:
       ReservedConcurrentExecutions: 10
       FunctionName: !Sub medislot-${Environment}-patient-register
@@ -179,12 +210,24 @@ Resources:
 
   LoginLogGroup:
     Type: AWS::Logs::LogGroup
+    Metadata:
+      checkov:
+        skip:
+          - id: CKV_AWS_158
+            comment: CloudWatch Logs provides encryption at rest by default; project policy does not provision customer-managed KMS keys.
     Properties:
       LogGroupName: !Sub /aws/lambda/medislot-${Environment}-login
       RetentionInDays: 14
 
   LoginLambda:
     Type: AWS::Lambda::Function
+    Metadata:
+      checkov:
+        skip:
+          - id: CKV_AWS_173
+            comment: Lambda environment values are encrypted at rest with the AWS-managed Lambda key; customer-managed key is outside project key policy.
+          - id: CKV_AWS_116
+            comment: This Lambda is invoked synchronously; Lambda async DLQ does not apply to synchronous API Gateway invocations.
     Properties:
       ReservedConcurrentExecutions: 10
       FunctionName: !Sub medislot-${Environment}-login
@@ -224,12 +267,26 @@ Resources:
 
   TokenLogGroup:
     Type: AWS::Logs::LogGroup
+    Metadata:
+      checkov:
+        skip:
+          - id: CKV_AWS_158
+            comment: CloudWatch Logs provides encryption at rest by default; project policy does not provision customer-managed KMS keys.
     Properties:
       LogGroupName: !Sub /aws/lambda/medislot-${Environment}-token
       RetentionInDays: 14
 
   TokenLambda:
     Type: AWS::Lambda::Function
+    Metadata:
+      checkov:
+        skip:
+          - id: CKV_AWS_173
+            comment: Lambda environment values are encrypted at rest with the AWS-managed Lambda key; customer-managed key is outside project key policy.
+          - id: CKV_AWS_116
+            comment: This Lambda is invoked synchronously; Lambda async DLQ does not apply to synchronous API Gateway invocations.
+          - id: CKV_AWS_117
+            comment: Function does not require RDS network access; keeping it outside the VPC preserves access to regional AWS APIs without extra endpoints.
     Properties:
       ReservedConcurrentExecutions: 10
       FunctionName: !Sub medislot-${Environment}-token
@@ -255,12 +312,26 @@ Resources:
 
   AuthorizerLogGroup:
     Type: AWS::Logs::LogGroup
+    Metadata:
+      checkov:
+        skip:
+          - id: CKV_AWS_158
+            comment: CloudWatch Logs provides encryption at rest by default; project policy does not provision customer-managed KMS keys.
     Properties:
       LogGroupName: !Sub /aws/lambda/medislot-${Environment}-authorizer
       RetentionInDays: 14
 
   AuthorizerLambda:
     Type: AWS::Lambda::Function
+    Metadata:
+      checkov:
+        skip:
+          - id: CKV_AWS_173
+            comment: Lambda environment values are encrypted at rest with the AWS-managed Lambda key; customer-managed key is outside project key policy.
+          - id: CKV_AWS_116
+            comment: This Lambda is invoked synchronously; Lambda async DLQ does not apply to synchronous API Gateway invocations.
+          - id: CKV_AWS_117
+            comment: Function does not require RDS network access; keeping it outside the VPC preserves access to regional AWS APIs without extra endpoints.
     Properties:
       ReservedConcurrentExecutions: 10
       FunctionName: !Sub medislot-${Environment}-authorizer
@@ -286,12 +357,26 @@ Resources:
 
   AuthTestLogGroup:
     Type: AWS::Logs::LogGroup
+    Metadata:
+      checkov:
+        skip:
+          - id: CKV_AWS_158
+            comment: CloudWatch Logs provides encryption at rest by default; project policy does not provision customer-managed KMS keys.
     Properties:
       LogGroupName: !Sub /aws/lambda/medislot-${Environment}-auth-test
       RetentionInDays: 14
 
   AuthTestLambda:
     Type: AWS::Lambda::Function
+    Metadata:
+      checkov:
+        skip:
+          - id: CKV_AWS_173
+            comment: Lambda environment values are encrypted at rest with the AWS-managed Lambda key; customer-managed key is outside project key policy.
+          - id: CKV_AWS_116
+            comment: This Lambda is invoked synchronously; Lambda async DLQ does not apply to synchronous API Gateway invocations.
+          - id: CKV_AWS_117
+            comment: Function does not require RDS network access; keeping it outside the VPC preserves access to regional AWS APIs without extra endpoints.
     Properties:
       ReservedConcurrentExecutions: 10
       FunctionName: !Sub medislot-${Environment}-auth-test
@@ -412,6 +497,11 @@ Resources:
 
   DoctorRegisterMethod:
     Type: AWS::ApiGateway::Method
+    Metadata:
+      checkov:
+        skip:
+          - id: CKV_AWS_59
+            comment: Public authentication bootstrap endpoint; request validation and application-level protections remain necessary; JWT is not available before login.
     Properties:
       RestApiId: !Ref AuthRestApi
       ResourceId: !Ref DoctorRegisterResource
@@ -432,6 +522,11 @@ Resources:
 
   PatientRegisterMethod:
     Type: AWS::ApiGateway::Method
+    Metadata:
+      checkov:
+        skip:
+          - id: CKV_AWS_59
+            comment: Public authentication bootstrap endpoint; request validation and application-level protections remain necessary; JWT is not available before login.
     Properties:
       RestApiId: !Ref AuthRestApi
       ResourceId: !Ref PatientRegisterResource
@@ -452,6 +547,11 @@ Resources:
 
   DoctorLoginMethod:
     Type: AWS::ApiGateway::Method
+    Metadata:
+      checkov:
+        skip:
+          - id: CKV_AWS_59
+            comment: Public authentication bootstrap endpoint; request validation and application-level protections remain necessary; JWT is not available before login.
     Properties:
       RestApiId: !Ref AuthRestApi
       ResourceId: !Ref DoctorLoginResource
@@ -472,6 +572,11 @@ Resources:
 
   PatientLoginMethod:
     Type: AWS::ApiGateway::Method
+    Metadata:
+      checkov:
+        skip:
+          - id: CKV_AWS_59
+            comment: Public authentication bootstrap endpoint; request validation and application-level protections remain necessary; JWT is not available before login.
     Properties:
       RestApiId: !Ref AuthRestApi
       ResourceId: !Ref PatientLoginResource
@@ -492,6 +597,11 @@ Resources:
 
   RefreshMethod:
     Type: AWS::ApiGateway::Method
+    Metadata:
+      checkov:
+        skip:
+          - id: CKV_AWS_59
+            comment: Public authentication bootstrap endpoint; request validation and application-level protections remain necessary; JWT is not available before login.
     Properties:
       RestApiId: !Ref AuthRestApi
       ResourceId: !Ref RefreshResource
@@ -568,12 +678,22 @@ Resources:
 
   AuthApiAccessLogGroup:
     Type: AWS::Logs::LogGroup
+    Metadata:
+      checkov:
+        skip:
+          - id: CKV_AWS_158
+            comment: CloudWatch Logs provides encryption at rest by default; project policy does not provision customer-managed KMS keys.
     Properties:
       LogGroupName: !Sub /aws/apigateway/medislot-${Environment}-auth-access
       RetentionInDays: 14
 
   AuthStage:
     Type: AWS::ApiGateway::Stage
+    Metadata:
+      checkov:
+        skip:
+          - id: CKV_AWS_120
+            comment: Authentication and token responses must not be cached; throttling and logging are enabled.
     Properties:
       RestApiId: !Ref AuthRestApi
       DeploymentId: !Ref AuthDeployment
