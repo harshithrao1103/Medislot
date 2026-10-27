@@ -363,6 +363,66 @@ Resources:
   # 8. S3 - PROFILE PHOTOS BUCKET
   # ==========================================================
 
+  ServerAccessLogsBucket:
+    Type: AWS::S3::Bucket
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      BucketName: !Sub 'medislot-${Environment}-access-logs-${AWS::AccountId}-${AWS::Region}'
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      OwnershipControls:
+        Rules:
+          - ObjectOwnership: BucketOwnerEnforced
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+      LifecycleConfiguration:
+        Rules:
+          - Id: ExpireAccessLogs
+            Status: Enabled
+            ExpirationInDays: 90
+      Tags:
+        - Key: Project
+          Value: MediSlot
+        - Key: Environment
+          Value: !Ref Environment
+
+  ServerAccessLogsBucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref ServerAccessLogsBucket
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Sid: AllowS3ServerAccessLogDelivery
+            Effect: Allow
+            Principal:
+              Service: logging.s3.amazonaws.com
+            Action: s3:PutObject
+            Resource: !Sub '${ServerAccessLogsBucket.Arn}/*'
+            Condition:
+              ArnLike:
+                aws:SourceArn:
+                  - !GetAtt ProfilePhotosBucket.Arn
+                  - !GetAtt SAMArtifactsBucket.Arn
+              StringEquals:
+                aws:SourceAccount: !Ref AWS::AccountId
+          - Sid: DenyInsecureTransport
+            Effect: Deny
+            Principal: '*'
+            Action: 's3:*'
+            Resource:
+              - !GetAtt ServerAccessLogsBucket.Arn
+              - !Sub '${ServerAccessLogsBucket.Arn}/*'
+            Condition:
+              Bool:
+                aws:SecureTransport: 'false'
+
   ProfilePhotosBucket:
     Type: AWS::S3::Bucket
 
@@ -370,6 +430,9 @@ Resources:
     UpdateReplacePolicy: Retain
 
     Properties:
+      LoggingConfiguration:
+        DestinationBucketName: !Ref ServerAccessLogsBucket
+        LogFilePrefix: profile-photos/
 
       BucketName: !Sub
         'medislot-${Environment}-profile-photos-${AWS::AccountId}-${AWS::Region}'
@@ -447,6 +510,9 @@ Resources:
     UpdateReplacePolicy: Retain
 
     Properties:
+      LoggingConfiguration:
+        DestinationBucketName: !Ref ServerAccessLogsBucket
+        LogFilePrefix: sam-artifacts/
 
       BucketName: !Sub
         'medislot-${Environment}-sam-artifacts-${AWS::AccountId}-${AWS::Region}'
