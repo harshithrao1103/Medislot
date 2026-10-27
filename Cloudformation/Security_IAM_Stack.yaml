@@ -162,6 +162,11 @@ Resources:
 
   DBInitLambdaExecutionRole:
     Type: AWS::IAM::Role
+    Metadata:
+      checkov:
+        skip:
+          - id: CKV_AWS_111
+            comment: Lambda ENI management requires EC2 network-interface permissions on wildcard resources; review role scope and AWS condition keys.
     Properties:
       RoleName: !Sub medislot-${Environment}-db-init-lambda-role
 
@@ -236,6 +241,11 @@ Resources:
 
   DoctorRegisterLambdaExecutionRole:
     Type: AWS::IAM::Role
+    Metadata:
+      checkov:
+        skip:
+          - id: CKV_AWS_111
+            comment: VPC Lambda ENI creation requires wildcard EC2 permissions; permissions are limited to network-interface actions.
     Properties:
       RoleName: !Sub medislot-${Environment}-doctor-register-lambda-role
 
@@ -308,6 +318,11 @@ Resources:
 
   PatientRegisterLambdaExecutionRole:
     Type: AWS::IAM::Role
+    Metadata:
+      checkov:
+        skip:
+          - id: CKV_AWS_111
+            comment: VPC Lambda ENI creation requires wildcard EC2 permissions; permissions are limited to network-interface actions.
     Properties:
       RoleName: !Sub medislot-${Environment}-patient-register-lambda-role
 
@@ -380,6 +395,11 @@ Resources:
 
   LoginLambdaExecutionRole:
     Type: AWS::IAM::Role
+    Metadata:
+      checkov:
+        skip:
+          - id: CKV_AWS_111
+            comment: VPC Lambda ENI creation requires wildcard EC2 permissions; permissions are limited to network-interface actions.
     Properties:
       RoleName: !Sub medislot-${Environment}-login-lambda-role
 
