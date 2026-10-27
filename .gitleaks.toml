@@ -1,0 +1,9 @@
+[extend]
+useDefault = true
+
+[[allowlists]]
+description = "Ignore verified fictional password in historical README example"
+commits = ["fe2eeebb4122be49e8fc5dfa41d7c3775d6866ab"]
+paths = ['''(^|/)MILESTONE2_README\.md$''']
+regexTarget = "match"
+regexes = ['''StrongPass123''']
