@@ -387,6 +387,15 @@ Resources:
   # 3. API GATEWAY
   # =====================================================
 
+  # NEW: Configure API Gateway to use the CloudWatch
+  # IAM role created by the Security/IAM Stack.
+
+  ApiGatewayAccount:
+    Type: AWS::ApiGateway::Account
+    Properties:
+      CloudWatchRoleArn:
+        Fn::ImportValue: !Sub medislot-${Environment}-ApiGatewayCloudWatchRoleArn
+
   AuthRestApi:
     Type: AWS::ApiGateway::RestApi
     Properties:
@@ -682,8 +691,12 @@ Resources:
       LogGroupName: !Sub /aws/apigateway/medislot-${Environment}-auth-access
       RetentionInDays: 14
 
+  # UPDATED: AuthStage waits for ApiGatewayAccount.
+
   AuthStage:
     Type: AWS::ApiGateway::Stage
+    DependsOn:
+      - ApiGatewayAccount
     Metadata:
       checkov:
         skip:

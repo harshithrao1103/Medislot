@@ -626,6 +626,25 @@ Resources:
         - Key: Environment
           Value: !Ref Environment
 
+  ApiGatewayCloudWatchRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub medislot-${Environment}-apigateway-cloudwatch-role
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: apigateway.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AmazonAPIGatewayPushToCloudWatchLogs
+      Tags:
+        - Key: Project
+          Value: MediSlot
+        - Key: Environment
+          Value: !Ref Environment
+
 # =====================================================
 # OUTPUTS
 # =====================================================
@@ -697,3 +716,10 @@ Outputs:
     Value: !GetAtt AuthTestLambdaExecutionRole.Arn
     Export:
       Name: !Sub medislot-${Environment}-AuthTestLambdaExecutionRoleArn
+
+
+  ApiGatewayCloudWatchRoleArn:
+    Description: IAM role ARN for API Gateway CloudWatch logging
+    Value: !GetAtt ApiGatewayCloudWatchRole.Arn
+    Export:
+      Name: !Sub medislot-${Environment}-ApiGatewayCloudWatchRoleArn
