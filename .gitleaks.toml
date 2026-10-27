@@ -2,14 +2,8 @@
 useDefault = true
 
 [[allowlists]]
-description = "Ignore verified fictional password in historical README example"
-commits = ["fe2eeebb4122be49e8fc5dfa41d7c3775d6866ab"]
-paths = ['''(^|/)MILESTONE2_README\.md$''']
-regexTarget = "match"
-regexes = ['''StrongPass123''']
-
-[[allowlists]]
-description = "Ignore example password in MediSlot documentation"
-paths = ['''MILESTONE2_README\.md''']
-regexTarget = "match"
-regexes = ['''StrongPass123''']
+description = "Ignore verified fictional password in historical README"
+targetRules = ["generic-api-key"]
+fingerprints = [
+  "747bb61e0e5d783a145ff233ed2ac3db430acb08:MILESTONE2_README.md:generic-api-key:26"
+]
