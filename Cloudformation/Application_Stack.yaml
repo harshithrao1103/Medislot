@@ -95,6 +95,7 @@ Resources:
   DoctorRegisterLambda:
     Type: AWS::Lambda::Function
     Properties:
+      ReservedConcurrentExecutions: 10
       FunctionName: !Sub medislot-${Environment}-doctor-register
       Runtime: python3.12
       Handler: doctor_register_lambda.lambda_handler
@@ -139,6 +140,7 @@ Resources:
   PatientRegisterLambda:
     Type: AWS::Lambda::Function
     Properties:
+      ReservedConcurrentExecutions: 10
       FunctionName: !Sub medislot-${Environment}-patient-register
       Runtime: python3.12
       Handler: patient_register_lambda.lambda_handler
@@ -183,6 +185,7 @@ Resources:
   LoginLambda:
     Type: AWS::Lambda::Function
     Properties:
+      ReservedConcurrentExecutions: 10
       FunctionName: !Sub medislot-${Environment}-login
       Runtime: python3.12
       Handler: login_lambda.lambda_handler
@@ -227,6 +230,7 @@ Resources:
   TokenLambda:
     Type: AWS::Lambda::Function
     Properties:
+      ReservedConcurrentExecutions: 10
       FunctionName: !Sub medislot-${Environment}-token
       Runtime: python3.12
       Handler: token_lambda.lambda_handler
@@ -257,6 +261,7 @@ Resources:
   AuthorizerLambda:
     Type: AWS::Lambda::Function
     Properties:
+      ReservedConcurrentExecutions: 10
       FunctionName: !Sub medislot-${Environment}-authorizer
       Runtime: python3.12
       Handler: authorizer_lambda.lambda_handler
@@ -287,6 +292,7 @@ Resources:
   AuthTestLambda:
     Type: AWS::Lambda::Function
     Properties:
+      ReservedConcurrentExecutions: 10
       FunctionName: !Sub medislot-${Environment}-auth-test
       Runtime: python3.12
       Handler: auth_test_lambda.lambda_handler
@@ -558,12 +564,22 @@ Resources:
       RestApiId: !Ref AuthRestApi
       Description: !Sub Authentication API deployment ${CodeVersion}
 
+  AuthApiAccessLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub /aws/apigateway/medislot-${Environment}-auth-access
+      RetentionInDays: 14
+
   AuthStage:
     Type: AWS::ApiGateway::Stage
     Properties:
       RestApiId: !Ref AuthRestApi
       DeploymentId: !Ref AuthDeployment
       StageName: !Ref Environment
+      TracingEnabled: true
+      AccessLogSetting:
+        DestinationArn: !GetAtt AuthApiAccessLogGroup.Arn
+        Format: '{"requestId":"$context.requestId","ip":"$context.identity.sourceIp","requestTime":"$context.requestTime","httpMethod":"$context.httpMethod","route":"$context.resourcePath","status":"$context.status","latency":"$context.responseLatency"}'
       MethodSettings:
         - ResourcePath: '/*'
           HttpMethod: '*'
