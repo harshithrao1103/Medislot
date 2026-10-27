@@ -17,23 +17,34 @@ jobs:
     env:
       AWS_DEFAULT_REGION: us-east-1
       AWS_EC2_METADATA_DISABLED: "true"
+
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
         with:
           python-version: '3.12'
+
       - name: Install test and scan dependencies
         run: |
           python -m pip install --upgrade pip
           python -m pip install -r tests/requirements.txt
+
       - name: Compile Python source
         run: python -m compileall -q lambdas tests
+
       - name: Unit tests
         run: python -m pytest -q tests
+
       - name: CloudFormation syntax and security scanning
         run: |
           cfn-lint Cloudformation/*.yaml
           checkov -d Cloudformation --framework cloudformation --quiet
+
       - name: Secret scanning
         uses: gitleaks/gitleaks-action@v2
         env:
