@@ -1,9 +1,7 @@
 AWSTemplateFormatVersion: '2010-09-09'
-
 Description: MediSlot Application Infrastructure
 
 Parameters:
-
   Environment:
     Type: String
     AllowedValues:
@@ -30,70 +28,49 @@ Resources:
     Metadata:
       checkov:
         skip:
+          - id: CKV_AWS_115
+            comment: Development environment uses shared Lambda concurrency because account quota cannot support per-function reservations.
           - id: CKV_AWS_173
             comment: Lambda environment values are encrypted at rest with the AWS-managed Lambda key; customer-managed key is outside project key policy.
           - id: CKV_AWS_116
             comment: This Lambda is invoked synchronously; Lambda async DLQ does not apply to synchronous API Gateway invocations.
     Properties:
-   
-
       FunctionName: !Sub medislot-${Environment}-db-init
-
       Runtime: python3.12
       Handler: db_init_lambda.lambda_handler
-
       Role:
-        Fn::ImportValue:
-          !Sub medislot-${Environment}-DBInitLambdaExecutionRoleArn
-
+        Fn::ImportValue: !Sub medislot-${Environment}-DBInitLambdaExecutionRoleArn
       Code:
         S3Bucket: !Ref ArtifactBucketName
         S3Key: !Sub lambda/db_init/${CodeVersion}.zip
-
       Timeout: 60
       MemorySize: 256
-
       VpcConfig:
         SecurityGroupIds:
-          - Fn::ImportValue:
-              !Sub medislot-${Environment}-LambdaSecurityGroupId
-
+          - Fn::ImportValue: !Sub medislot-${Environment}-LambdaSecurityGroupId
         SubnetIds:
-          - Fn::ImportValue:
-              !Sub medislot-${Environment}-PrivateSubnetAId
-
-          - Fn::ImportValue:
-              !Sub medislot-${Environment}-PrivateSubnetBId
-
+          - Fn::ImportValue: !Sub medislot-${Environment}-PrivateSubnetAId
+          - Fn::ImportValue: !Sub medislot-${Environment}-PrivateSubnetBId
       Environment:
         Variables:
-
           DB_HOST:
-            Fn::ImportValue:
-              !Sub medislot-${Environment}-DBEndpoint
-
+            Fn::ImportValue: !Sub medislot-${Environment}-DBEndpoint
           DB_PORT:
-            Fn::ImportValue:
-              !Sub medislot-${Environment}-DBPort
-
+            Fn::ImportValue: !Sub medislot-${Environment}-DBPort
           DB_NAME:
-            Fn::ImportValue:
-              !Sub medislot-${Environment}-DBName
-
+            Fn::ImportValue: !Sub medislot-${Environment}-DBName
           DB_SECRET_ARN:
-            Fn::ImportValue:
-              !Sub medislot-${Environment}-DBMasterSecretArn
-
+            Fn::ImportValue: !Sub medislot-${Environment}-DBMasterSecretArn
       Tags:
         - Key: Project
           Value: MediSlot
         - Key: Environment
           Value: !Ref Environment
 
+  # =====================================================
+  # 2. AUTHENTICATION LAMBDAS AND LOG GROUPS
+  # =====================================================
 
-  # =====================================================
-  # MILESTONE 2: AUTHENTICATION LAMBDAS AND LOG GROUPS
-  # =====================================================
   DoctorRegisterLogGroup:
     Type: AWS::Logs::LogGroup
     Metadata:
@@ -110,12 +87,13 @@ Resources:
     Metadata:
       checkov:
         skip:
+          - id: CKV_AWS_115
+            comment: Development environment uses shared Lambda concurrency because account quota cannot support per-function reservations.
           - id: CKV_AWS_173
             comment: Lambda environment values are encrypted at rest with the AWS-managed Lambda key; customer-managed key is outside project key policy.
           - id: CKV_AWS_116
             comment: This Lambda is invoked synchronously; Lambda async DLQ does not apply to synchronous API Gateway invocations.
     Properties:
-      
       FunctionName: !Sub medislot-${Environment}-doctor-register
       Runtime: python3.12
       Handler: doctor_register_lambda.lambda_handler
@@ -167,12 +145,13 @@ Resources:
     Metadata:
       checkov:
         skip:
+          - id: CKV_AWS_115
+            comment: Development environment uses shared Lambda concurrency because account quota cannot support per-function reservations.
           - id: CKV_AWS_173
             comment: Lambda environment values are encrypted at rest with the AWS-managed Lambda key; customer-managed key is outside project key policy.
           - id: CKV_AWS_116
             comment: This Lambda is invoked synchronously; Lambda async DLQ does not apply to synchronous API Gateway invocations.
     Properties:
-    
       FunctionName: !Sub medislot-${Environment}-patient-register
       Runtime: python3.12
       Handler: patient_register_lambda.lambda_handler
@@ -224,12 +203,13 @@ Resources:
     Metadata:
       checkov:
         skip:
+          - id: CKV_AWS_115
+            comment: Development environment uses shared Lambda concurrency because account quota cannot support per-function reservations.
           - id: CKV_AWS_173
             comment: Lambda environment values are encrypted at rest with the AWS-managed Lambda key; customer-managed key is outside project key policy.
           - id: CKV_AWS_116
             comment: This Lambda is invoked synchronously; Lambda async DLQ does not apply to synchronous API Gateway invocations.
     Properties:
-      
       FunctionName: !Sub medislot-${Environment}-login
       Runtime: python3.12
       Handler: login_lambda.lambda_handler
@@ -281,6 +261,8 @@ Resources:
     Metadata:
       checkov:
         skip:
+          - id: CKV_AWS_115
+            comment: Development environment uses shared Lambda concurrency because account quota cannot support per-function reservations.
           - id: CKV_AWS_173
             comment: Lambda environment values are encrypted at rest with the AWS-managed Lambda key; customer-managed key is outside project key policy.
           - id: CKV_AWS_116
@@ -288,7 +270,6 @@ Resources:
           - id: CKV_AWS_117
             comment: Function does not require RDS network access; keeping it outside the VPC preserves access to regional AWS APIs without extra endpoints.
     Properties:
-      
       FunctionName: !Sub medislot-${Environment}-token
       Runtime: python3.12
       Handler: token_lambda.lambda_handler
@@ -326,6 +307,8 @@ Resources:
     Metadata:
       checkov:
         skip:
+          - id: CKV_AWS_115
+            comment: Development environment uses shared Lambda concurrency because account quota cannot support per-function reservations.
           - id: CKV_AWS_173
             comment: Lambda environment values are encrypted at rest with the AWS-managed Lambda key; customer-managed key is outside project key policy.
           - id: CKV_AWS_116
@@ -333,7 +316,6 @@ Resources:
           - id: CKV_AWS_117
             comment: Function does not require RDS network access; keeping it outside the VPC preserves access to regional AWS APIs without extra endpoints.
     Properties:
-     
       FunctionName: !Sub medislot-${Environment}-authorizer
       Runtime: python3.12
       Handler: authorizer_lambda.lambda_handler
@@ -371,6 +353,8 @@ Resources:
     Metadata:
       checkov:
         skip:
+          - id: CKV_AWS_115
+            comment: Development environment uses shared Lambda concurrency because account quota cannot support per-function reservations.
           - id: CKV_AWS_173
             comment: Lambda environment values are encrypted at rest with the AWS-managed Lambda key; customer-managed key is outside project key policy.
           - id: CKV_AWS_116
@@ -378,7 +362,6 @@ Resources:
           - id: CKV_AWS_117
             comment: Function does not require RDS network access; keeping it outside the VPC preserves access to regional AWS APIs without extra endpoints.
     Properties:
-      
       FunctionName: !Sub medislot-${Environment}-auth-test
       Runtime: python3.12
       Handler: auth_test_lambda.lambda_handler
@@ -399,6 +382,10 @@ Resources:
           Value: MediSlot
         - Key: Environment
           Value: !Ref Environment
+
+  # =====================================================
+  # 3. API GATEWAY
+  # =====================================================
 
   AuthRestApi:
     Type: AWS::ApiGateway::RestApi
@@ -494,6 +481,10 @@ Resources:
       RestApiId: !Ref AuthRestApi
       ParentId: !Ref AuthResource
       PathPart: logout
+
+  # =====================================================
+  # 4. API GATEWAY METHODS AND PERMISSIONS
+  # =====================================================
 
   DoctorRegisterMethod:
     Type: AWS::ApiGateway::Method
@@ -662,6 +653,10 @@ Resources:
       Principal: apigateway.amazonaws.com
       SourceArn: !Sub arn:${AWS::Partition}:execute-api:${AWS::Region}:${AWS::AccountId}:${AuthRestApi}/*/GET/*
 
+  # =====================================================
+  # 5. API DEPLOYMENT AND LOGGING
+  # =====================================================
+
   AuthDeployment:
     Type: AWS::ApiGateway::Deployment
     DependsOn:
@@ -708,7 +703,6 @@ Resources:
           ThrottlingBurstLimit: 20
           ThrottlingRateLimit: 10
 
-  # API Gateway default 401 for invalid/missing authorizer token.
   AuthUnauthorizedResponse:
     Type: AWS::ApiGateway::GatewayResponse
     Properties:
@@ -718,6 +712,10 @@ Resources:
       ResponseTemplates:
         application/json: '{"error":"Unauthorized"}'
 
+# =====================================================
+# OUTPUTS
+# =====================================================
+
 Outputs:
 
   DBInitLambdaArn:
@@ -725,31 +723,38 @@ Outputs:
     Value: !GetAtt DBInitLambda.Arn
     Export:
       Name: !Sub medislot-${Environment}-DBInitLambdaArn
+
   AuthApiBaseUrl:
     Description: Authentication API base URL
     Value: !Sub https://${AuthRestApi}.execute-api.${AWS::Region}.amazonaws.com/${Environment}
     Export:
       Name: !Sub medislot-${Environment}-AuthApiBaseUrl
+
   DoctorRegisterLambdaArn:
     Value: !GetAtt DoctorRegisterLambda.Arn
     Export:
       Name: !Sub medislot-${Environment}-DoctorRegisterLambdaArn
+
   PatientRegisterLambdaArn:
     Value: !GetAtt PatientRegisterLambda.Arn
     Export:
       Name: !Sub medislot-${Environment}-PatientRegisterLambdaArn
+
   LoginLambdaArn:
     Value: !GetAtt LoginLambda.Arn
     Export:
       Name: !Sub medislot-${Environment}-LoginLambdaArn
+
   TokenLambdaArn:
     Value: !GetAtt TokenLambda.Arn
     Export:
       Name: !Sub medislot-${Environment}-TokenLambdaArn
+
   AuthorizerLambdaArn:
     Value: !GetAtt AuthorizerLambda.Arn
     Export:
       Name: !Sub medislot-${Environment}-AuthorizerLambdaArn
+
   AuthTestLambdaArn:
     Value: !GetAtt AuthTestLambda.Arn
     Export:
