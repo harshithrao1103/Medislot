@@ -7,3 +7,9 @@ commits = ["fe2eeebb4122be49e8fc5dfa41d7c3775d6866ab"]
 paths = ['''(^|/)MILESTONE2_README\.md$''']
 regexTarget = "match"
 regexes = ['''StrongPass123''']
+
+[[allowlists]]
+description = "Ignore example password in MediSlot documentation"
+paths = ['''MILESTONE2_README\.md''']
+regexTarget = "match"
+regexes = ['''StrongPass123''']
