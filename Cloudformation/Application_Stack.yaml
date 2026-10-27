@@ -35,7 +35,7 @@ Resources:
           - id: CKV_AWS_116
             comment: This Lambda is invoked synchronously; Lambda async DLQ does not apply to synchronous API Gateway invocations.
     Properties:
-      ReservedConcurrentExecutions: 1
+   
 
       FunctionName: !Sub medislot-${Environment}-db-init
 
@@ -115,7 +115,7 @@ Resources:
           - id: CKV_AWS_116
             comment: This Lambda is invoked synchronously; Lambda async DLQ does not apply to synchronous API Gateway invocations.
     Properties:
-      ReservedConcurrentExecutions: 10
+      
       FunctionName: !Sub medislot-${Environment}-doctor-register
       Runtime: python3.12
       Handler: doctor_register_lambda.lambda_handler
@@ -172,7 +172,7 @@ Resources:
           - id: CKV_AWS_116
             comment: This Lambda is invoked synchronously; Lambda async DLQ does not apply to synchronous API Gateway invocations.
     Properties:
-      ReservedConcurrentExecutions: 10
+    
       FunctionName: !Sub medislot-${Environment}-patient-register
       Runtime: python3.12
       Handler: patient_register_lambda.lambda_handler
@@ -229,7 +229,7 @@ Resources:
           - id: CKV_AWS_116
             comment: This Lambda is invoked synchronously; Lambda async DLQ does not apply to synchronous API Gateway invocations.
     Properties:
-      ReservedConcurrentExecutions: 10
+      
       FunctionName: !Sub medislot-${Environment}-login
       Runtime: python3.12
       Handler: login_lambda.lambda_handler
@@ -288,7 +288,7 @@ Resources:
           - id: CKV_AWS_117
             comment: Function does not require RDS network access; keeping it outside the VPC preserves access to regional AWS APIs without extra endpoints.
     Properties:
-      ReservedConcurrentExecutions: 10
+      
       FunctionName: !Sub medislot-${Environment}-token
       Runtime: python3.12
       Handler: token_lambda.lambda_handler
@@ -333,7 +333,7 @@ Resources:
           - id: CKV_AWS_117
             comment: Function does not require RDS network access; keeping it outside the VPC preserves access to regional AWS APIs without extra endpoints.
     Properties:
-      ReservedConcurrentExecutions: 10
+     
       FunctionName: !Sub medislot-${Environment}-authorizer
       Runtime: python3.12
       Handler: authorizer_lambda.lambda_handler
@@ -378,7 +378,7 @@ Resources:
           - id: CKV_AWS_117
             comment: Function does not require RDS network access; keeping it outside the VPC preserves access to regional AWS APIs without extra endpoints.
     Properties:
-      ReservedConcurrentExecutions: 10
+      
       FunctionName: !Sub medislot-${Environment}-auth-test
       Runtime: python3.12
       Handler: auth_test_lambda.lambda_handler
