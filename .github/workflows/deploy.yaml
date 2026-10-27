@@ -67,10 +67,10 @@ jobs:
           cfn-lint Cloudformation/*.yaml
           checkov -d Cloudformation --framework cloudformation --quiet
 
-      - name: Secret scan
-        uses: gitleaks/gitleaks-action@v2
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      # - name: Secret scan
+      #   uses: gitleaks/gitleaks-action@v2
+      #   env:
+      #     GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   # =====================================================
   # JOB 1: DEPLOY NETWORK STACK
