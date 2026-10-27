@@ -412,7 +412,7 @@ Resources:
     DeletionPolicy: Retain
     UpdateReplacePolicy: Retain
     Properties:
-      BucketName: !Sub 'medislot-${Environment}-access-logs-${AWS::AccountId}-${AWS::Region}'
+      BucketName: !Sub 'medislot-${Environment}-server-access-logs-v2-${AWS::AccountId}-${AWS::Region}'
       VersioningConfiguration:
         Status: Enabled
       PublicAccessBlockConfiguration:
