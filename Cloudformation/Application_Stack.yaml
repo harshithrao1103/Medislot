@@ -28,6 +28,7 @@ Resources:
   DBInitLambda:
     Type: AWS::Lambda::Function
     Properties:
+      ReservedConcurrentExecutions: 1
 
       FunctionName: !Sub medislot-${Environment}-db-init
 
@@ -515,7 +516,8 @@ Resources:
       RestApiId: !Ref AuthRestApi
       ResourceId: !Ref LogoutResource
       HttpMethod: POST
-      AuthorizationType: NONE
+      AuthorizationType: CUSTOM
+      AuthorizerId: !Ref JwtAuthorizer
       Integration:
         Type: AWS_PROXY
         IntegrationHttpMethod: POST
