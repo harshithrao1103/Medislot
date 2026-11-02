@@ -1,3 +1,4 @@
+
 {
   "project": "medislot",
   "environment": "dev",
@@ -24,6 +25,9 @@
     "RefreshTokenDays": 7,
     "BcryptWorkFactor": 12,
     "WaitlistHoldMinutes": 15
-}
+  },
 
+  "artifacts": {
+    "bucketName": "bucketName": "medislot-dev-sam-artifacts-598886663370-us-east-1"
+  }
 }
