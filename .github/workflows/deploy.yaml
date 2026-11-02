@@ -12,6 +12,8 @@ on:
       - "Cloudformation/**"
       - "database/**"
       - "lambdas/**"
+      - "doctor_dashboard/**"
+      - "tests/**"
       - "scripts/**"
       - ".github/workflows/deploy.yaml"
 
@@ -295,14 +297,6 @@ jobs:
           DEPLOY_ENV=$(jq -er '.environment' "$CONFIG")
           AWS_REGION=$(jq -er '.region' "$CONFIG")
           VPC_CIDR=$(jq -er '.network.VpcCIDR' "$CONFIG")
-          ARTIFACT_BUCKET=$(jq -er '.artifacts.bucketName' "$CONFIG")
-          CODE_VERSION="$GITHUB_SHA"
-
-          if [[ -z "$ARTIFACT_BUCKET" || "$ARTIFACT_BUCKET" == "null" ]]; then
-            echo "::error::Missing artifacts.bucketName in parameters.json"
-            exit 1
-          fi
-
           if [[ ! "$PROJECT" =~ ^[a-z][a-z0-9-]*$ ]]; then
             echo "::error::Invalid project name"
             exit 1
@@ -322,8 +316,6 @@ jobs:
           echo "DEPLOY_ENV=$DEPLOY_ENV" >> "$GITHUB_ENV"
           echo "AWS_REGION=$AWS_REGION" >> "$GITHUB_ENV"
           echo "VPC_CIDR=$VPC_CIDR" >> "$GITHUB_ENV"
-          echo "ARTIFACT_BUCKET=$ARTIFACT_BUCKET" >> "$GITHUB_ENV"
-          echo "CODE_VERSION=$CODE_VERSION" >> "$GITHUB_ENV"
 
           echo "STACK_NAME=${PROJECT}-${DEPLOY_ENV}-security-iam" >> "$GITHUB_ENV"
 
@@ -399,8 +391,6 @@ jobs:
             --parameter-overrides \
               Environment="$DEPLOY_ENV" \
               VpcCIDR="$VPC_CIDR" \
-              ArtifactBucketName="$ARTIFACT_BUCKET" \
-              CodeVersion="$CODE_VERSION" \
             --capabilities CAPABILITY_NAMED_IAM \
             --role-arn "$CFN_EXECUTION_ROLE_ARN" \
             --region "$AWS_REGION" \

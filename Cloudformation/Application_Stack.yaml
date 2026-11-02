@@ -794,28 +794,10 @@ Resources:
       State: ENABLED
       Target:
         Arn: !GetAtt SlotMaterialiserLambda.Arn
-        RoleArn: !GetAtt MaterialiserSchedulerRole.Arn
+        RoleArn:
+          Fn::ImportValue: !Sub medislot-${Environment}-MaterialiserSchedulerRoleArn
         Input: '{}'
 
-  MaterialiserSchedulerRole:
-    Type: AWS::IAM::Role
-    Properties:
-      RoleName: !Sub 'medislot-${Environment}-materialiser-scheduler-role'
-      AssumeRolePolicyDocument:
-        Version: '2012-10-17'
-        Statement:
-          - Effect: Allow
-            Principal:
-              Service: scheduler.amazonaws.com
-            Action: sts:AssumeRole
-      Policies:
-        - PolicyName: InvokeSlotMaterialiser
-          PolicyDocument:
-            Version: '2012-10-17'
-            Statement:
-              - Effect: Allow
-                Action: lambda:InvokeFunction
-                Resource: !GetAtt SlotMaterialiserLambda.Arn
   DoctorDomainRoot:
     Type: AWS::ApiGateway::Resource
     Properties:
