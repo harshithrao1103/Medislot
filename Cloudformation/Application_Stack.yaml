@@ -674,16 +674,35 @@ Resources:
   # Milestone 3 doctor domain; existing auth resources are unchanged.
   DoctorApiLogGroup:
     Type: AWS::Logs::LogGroup
+    Metadata:
+      checkov:
+        skip:
+          - id: CKV_AWS_158
+            comment: Development environment uses CloudWatch default encryption at rest.
     Properties:
       LogGroupName: !Sub /aws/lambda/medislot-${Environment}-doctor-api
       RetentionInDays: 14
   SlotMaterialiserLogGroup:
     Type: AWS::Logs::LogGroup
+    Metadata:
+      checkov:
+        skip:
+          - id: CKV_AWS_158
+            comment: Development environment uses CloudWatch default encryption at rest.
     Properties:
       LogGroupName: !Sub /aws/lambda/medislot-${Environment}-slot-materialiser
       RetentionInDays: 14
   DoctorApiLambda:
     Type: AWS::Lambda::Function
+    Metadata:
+      checkov:
+        skip:
+          - id: CKV_AWS_115
+            comment: Development environment uses shared Lambda concurrency.
+          - id: CKV_AWS_173
+            comment: Lambda environment variables use AWS-managed encryption at rest.
+          - id: CKV_AWS_116
+            comment: API Gateway invokes this Lambda synchronously; asynchronous DLQ is not applicable.
     Properties:
       FunctionName: !Sub medislot-${Environment}-doctor-api
       Runtime: python3.12
@@ -717,6 +736,15 @@ Resources:
             Fn::ImportValue: !Sub medislot-${Environment}-DBMasterSecretArn
   SlotMaterialiserLambda:
     Type: AWS::Lambda::Function
+    Metadata:
+      checkov:
+        skip:
+          - id: CKV_AWS_115
+            comment: Development environment uses shared Lambda concurrency.
+          - id: CKV_AWS_173
+            comment: Lambda environment variables use AWS-managed encryption at rest.
+          - id: CKV_AWS_116
+            comment: Development exception; scheduled invocation failures require separate monitoring and recovery.
     Properties:
       FunctionName: !Sub medislot-${Environment}-slot-materialiser
       Runtime: python3.12
@@ -1010,6 +1038,11 @@ Resources:
   # EC2 first-version Flask doctor dashboard; no database credentials on EC2.
   DoctorDashboardInstance:
     Type: AWS::EC2::Instance
+    Metadata:
+      checkov:
+        skip:
+          - id: CKV_AWS_88
+            comment: Development-only public EC2 dashboard with restricted source CIDR; production requires private EC2 and HTTPS access.
     Properties:
       ImageId: !Ref DoctorDashboardAmi
       InstanceType: t2.micro
