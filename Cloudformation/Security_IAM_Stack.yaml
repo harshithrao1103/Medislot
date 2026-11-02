@@ -238,6 +238,9 @@ Resources:
   # =====================================================
   # 6. DOCTOR REGISTRATION LAMBDA ROLE
   # =====================================================
+#   Checkov is an Infrastructure as Code security scanning tool.
+
+# Your CI pipeline uses Checkov to scan CloudFormation templates.
 
   DoctorRegisterLambdaExecutionRole:
     Type: AWS::IAM::Role

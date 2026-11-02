@@ -1,4 +1,4 @@
-# Checkov exception register — Milestone 2
+    # Checkov exception register — Milestone 2
 
 **Scope:** exact CloudFormation resources and check IDs only. These are scan exceptions, not security fixes. The earlier security hardening remains in place.
 

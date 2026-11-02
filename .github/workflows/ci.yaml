@@ -1,3 +1,12 @@
+# Its purpose is to automatically validate your MediSlot project whenever code is pushed to GitHub or a pull request is created against main.
+
+# It checks whether:
+# 1. Python code has syntax errors.
+# 2. Unit tests pass.
+# 3. CloudFormation templates are valid.
+# 4. CloudFormation configurations have security issues.
+# 5. Secrets or credentials are accidentally exposed in the repository.
+
 name: Milestone 2 Required CI
 
 on:

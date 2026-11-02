@@ -69,6 +69,30 @@ def lambda_handler(event, context):
             if statement.strip()
         ]
 
+        # Fail closed on an existing incompatible schema. CREATE TABLE IF NOT EXISTS
+        # cannot change old column layouts; never drop production tables automatically.
+        expected = {
+            'users': {'user_id', 'name', 'email', 'password_hash', 'role', 'created_at'},
+            'doctors': {'user_id', 'licence_number', 'specialization', 'experience_years', 'qualifications', 'hospital_name', 'clinic_address', 'city', 'languages', 'timezone', 'photo_key'},
+            'patients': {'user_id', 'date_of_birth', 'gender', 'phone', 'city', 'emergency_contact', 'notes'},
+            'consultation_types': {'consultation_type_id', 'doctor_id', 'name', 'duration_minutes', 'fee', 'capacity'},
+            'doctor_availability': {'availability_id', 'doctor_id', 'consultation_type_id', 'day_of_week', 'start_time', 'end_time'},
+            'doctor_blackouts': {'blackout_id', 'doctor_id', 'blackout_date', 'reason'},
+            'appointments': {'appointment_id', 'patient_id', 'doctor_id', 'slot_id', 'start_time_utc', 'status', 'fee', 'reschedule_count', 'created_at'},
+            'refund_ledger': {'refund_id', 'appointment_id', 'refund_percentage', 'refund_amount', 'deduction_amount', 'reason', 'created_at'},
+        }
+        with connection.cursor() as cursor:
+            cursor.execute('SHOW TABLES')
+            existing = {row[0] for row in cursor.fetchall()}
+            for table in existing.intersection(expected):
+                cursor.execute(f'SHOW COLUMNS FROM `{table}`')
+                actual_columns = {row[0] for row in cursor.fetchall()}
+                if actual_columns != expected[table]:
+                    raise ValueError(
+                        f'Existing {table} schema differs from finalized design. '
+                        'Back up and migrate/reset explicitly before initialization.'
+                    )
+
         # 5. Execute SQL statements
         with connection.cursor() as cursor:
 

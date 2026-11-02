@@ -17,18 +17,19 @@ def lambda_handler(event, context):
                 return response(400, {'error': 'refreshToken required'}, correlation)
             key = token_hash(old)
             table = refresh_table()
-            # Atomic consume prevents concurrent refresh replays; no tokens in logs.
-            try:
-                result = table.delete_item(Key={'tokenHash': key}, ConditionExpression='attribute_exists(tokenHash) AND expiresAt > :now', ExpressionAttributeValues={':now': int(time.time())}, ReturnValues='ALL_OLD')
-            except ClientError as ex:
-                if ex.response['Error']['Code'] == 'ConditionalCheckFailedException':
-                    return response(401, {'error': 'Invalid or expired refresh token'}, correlation)
-                raise
-            item = result['Attributes']
+            # Non-rotating refresh token: validate the existing token without consuming it.
+            # Its original expiresAt remains unchanged for the configured 7 days.
+            item = table.get_item(Key={'tokenHash': key}, ConsistentRead=True).get('Item')
+            if not item or int(item.get('expiresAt', 0)) <= int(time.time()):
+                return response(401, {'error': 'Invalid or expired refresh token'}, correlation)
             access, expiry = issue_access(item['userId'], item['role'])
-            new_refresh, refresh_expiry = create_refresh(item['userId'], item['role'])
             audit('token_refreshed', correlation, userId=item['userId'])
-            return response(200, {'accessToken': access, 'refreshToken': new_refresh, 'tokenType': 'Bearer', 'expiresAt': expiry, 'refreshExpiresAt': refresh_expiry}, correlation)
+            return response(200, {
+                'accessToken': access,
+                'tokenType': 'Bearer',
+                'expiresAt': expiry,
+                'refreshExpiresAt': int(item['expiresAt'])
+            }, correlation)
         if path.endswith('/logout'):
             claims = verify_access(extract_bearer(event))
             if revoked_table().get_item(Key={'jti': claims['jti']}, ConsistentRead=True).get('Item'):

@@ -1,9 +1,26 @@
+# ============================================================
+# 1. DEFAULT GITLEAKS CONFIGURATION
+# ============================================================
+
 [extend]
 useDefault = true
 
+
+# ============================================================
+# 2. ALLOWLIST CONFIGURATION
+# ============================================================
+
 [[allowlists]]
+
 description = "Ignore verified fictional password in historical README"
+
 targetRules = ["generic-api-key"]
+
+
+# ============================================================
+# 3. ALLOWLISTED SECRET FINGERPRINTS
+# ============================================================
+
 fingerprints = [
   "747bb61e0e5d783a145ff233ed2ac3db430acb08:MILESTONE2_README.md:generic-api-key:26"
 ]
