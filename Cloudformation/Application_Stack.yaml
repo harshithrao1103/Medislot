@@ -1027,7 +1027,7 @@ Resources:
             comment: Development-only public EC2 dashboard with restricted source CIDR; production requires private EC2 and HTTPS access.
     Properties:
       ImageId: !Ref DoctorDashboardAmi
-      InstanceType: t2.micro
+      InstanceType: t3.micro
       IamInstanceProfile:
         Fn::ImportValue: !Sub medislot-${Environment}-DoctorDashboardInstanceProfileName
       NetworkInterfaces:
