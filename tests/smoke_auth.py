@@ -49,7 +49,7 @@ for role in ("doctors", "patients"):
 
     if role == "doctors":
         body.update({
-            "licence_number": f"MED-{suffix}",
+            "licence_number": f"MED-2026-{secrets.randbelow(1000000):06d}",
             "specialization": "General Medicine",
             "experience_years": 5,
             "qualifications": "MBBS, MD",
