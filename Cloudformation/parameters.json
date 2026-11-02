@@ -3,7 +3,6 @@
   "project": "medislot",
   "environment": "dev",
   "region": "us-east-1",
-
   "network": {
     "VpcCIDR": "10.0.0.0/16",
     "PublicSubnetCIDR": "10.0.1.0/24",
@@ -12,11 +11,9 @@
     "AvailabilityZoneA": "us-east-1a",
     "AvailabilityZoneB": "us-east-1b"
   },
-
   "security": {
     "VpcCIDR": "10.0.0.0/16"
   },
-
   "data": {
     "DBInstanceClass": "db.t3.micro",
     "DBAllocatedStorage": 20,
@@ -26,8 +23,7 @@
     "BcryptWorkFactor": 12,
     "WaitlistHoldMinutes": 15
   },
-
   "artifacts": {
-    "bucketName": "bucketName": "medislot-dev-sam-artifacts-598886663370-us-east-1"
+    "bucketName": "medislot-dev-sam-artifacts-598886663370-us-east-1"
   }
 }
