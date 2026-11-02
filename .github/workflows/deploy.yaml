@@ -746,6 +746,16 @@ jobs:
           echo "Lambda packages uploaded successfully"
 
       # =====================================================
+      # MILESTONE 3: PACKAGE DOCTOR DASHBOARD FOR EC2 BOOTSTRAP
+      # =====================================================
+      - name: Upload Doctor Dashboard
+        shell: bash
+        run: |
+          set -euo pipefail
+          (cd doctor_dashboard && zip -qr ../doctor_dashboard.zip app.py requirements.txt templates static)
+          aws s3 cp doctor_dashboard.zip "s3://${ARTIFACT_BUCKET}/dashboard/${GITHUB_SHA}.zip" --region "$AWS_REGION"
+
+      # =====================================================
       # 8. VALIDATE APPLICATION TEMPLATE
       # =====================================================
 

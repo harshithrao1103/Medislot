@@ -192,10 +192,23 @@ Resources:
       AttributeDefinitions:
         - AttributeName: slotId
           AttributeType: S
+        - AttributeName: doctorId
+          AttributeType: S
+        - AttributeName: startTimeUTC
+          AttributeType: S
 
       KeySchema:
         - AttributeName: slotId
           KeyType: HASH
+      GlobalSecondaryIndexes:
+        - IndexName: DoctorStartIndex
+          KeySchema:
+            - AttributeName: doctorId
+              KeyType: HASH
+            - AttributeName: startTimeUTC
+              KeyType: RANGE
+          Projection:
+            ProjectionType: ALL
 
 
   # ==========================================================
@@ -476,6 +489,12 @@ Resources:
     UpdateReplacePolicy: Retain
 
     Properties:
+      CorsConfiguration:
+        CorsRules:
+          - AllowedMethods: [POST]
+            AllowedOrigins: ['*']
+            AllowedHeaders: ['*']
+            MaxAge: 300
       LoggingConfiguration:
         DestinationBucketName: !Ref ServerAccessLogsBucket
         LogFilePrefix: profile-photos/

@@ -13,6 +13,10 @@ Parameters:
     Type: String
     Description: Existing S3 artifacts bucket name
 
+  DoctorDashboardAmi:
+    Type: AWS::SSM::Parameter::Value<AWS::EC2::Image::Id>
+    Default: /aws/service/ami-amazon-linux-latest/al2023-ami-kernel-default-x86_64
+
   CodeVersion:
     Type: String
     Description: Git commit SHA for Lambda packages
@@ -666,6 +670,406 @@ Resources:
   # 5. API DEPLOYMENT AND LOGGING
   # =====================================================
 
+
+  # Milestone 3 doctor domain; existing auth resources are unchanged.
+  DoctorApiLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub /aws/lambda/medislot-${Environment}-doctor-api
+      RetentionInDays: 14
+  SlotMaterialiserLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub /aws/lambda/medislot-${Environment}-slot-materialiser
+      RetentionInDays: 14
+  DoctorApiLambda:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Sub medislot-${Environment}-doctor-api
+      Runtime: python3.12
+      Handler: doctor_api_lambda.lambda_handler
+      Role:
+        Fn::ImportValue: !Sub medislot-${Environment}-DoctorApiLambdaRoleArn
+      Code:
+        S3Bucket: !Ref ArtifactBucketName
+        S3Key: !Sub lambda/doctor_api/${CodeVersion}.zip
+      Timeout: 30
+      MemorySize: 256
+      VpcConfig:
+        SecurityGroupIds:
+          - Fn::ImportValue: !Sub medislot-${Environment}-LambdaSecurityGroupId
+        SubnetIds:
+          - Fn::ImportValue: !Sub medislot-${Environment}-PrivateSubnetAId
+          - Fn::ImportValue: !Sub medislot-${Environment}-PrivateSubnetBId
+      Environment:
+        Variables:
+          PHOTO_BUCKET:
+            Fn::ImportValue: !Sub medislot-${Environment}-ProfilePhotosBucketName
+          SLOTS_TABLE:
+            Fn::ImportValue: !Sub medislot-${Environment}-SlotInventoryTableName
+          DB_HOST:
+            Fn::ImportValue: !Sub medislot-${Environment}-DBEndpoint
+          DB_PORT:
+            Fn::ImportValue: !Sub medislot-${Environment}-DBPort
+          DB_NAME:
+            Fn::ImportValue: !Sub medislot-${Environment}-DBName
+          DB_SECRET_ARN:
+            Fn::ImportValue: !Sub medislot-${Environment}-DBMasterSecretArn
+  SlotMaterialiserLambda:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Sub medislot-${Environment}-slot-materialiser
+      Runtime: python3.12
+      Handler: slot_materialiser_lambda.lambda_handler
+      Role:
+        Fn::ImportValue: !Sub medislot-${Environment}-SlotMaterialiserRoleArn
+      Code:
+        S3Bucket: !Ref ArtifactBucketName
+        S3Key: !Sub lambda/slot_materialiser/${CodeVersion}.zip
+      Timeout: 300
+      MemorySize: 256
+      VpcConfig:
+        SecurityGroupIds:
+          - Fn::ImportValue: !Sub medislot-${Environment}-LambdaSecurityGroupId
+        SubnetIds:
+          - Fn::ImportValue: !Sub medislot-${Environment}-PrivateSubnetAId
+          - Fn::ImportValue: !Sub medislot-${Environment}-PrivateSubnetBId
+      Environment:
+        Variables:
+          SLOTS_TABLE:
+            Fn::ImportValue: !Sub medislot-${Environment}-SlotInventoryTableName
+          BOOKING_WINDOW_PARAM: !Ref BookingWindowDaysParameter
+          DB_HOST:
+            Fn::ImportValue: !Sub medislot-${Environment}-DBEndpoint
+          DB_PORT:
+            Fn::ImportValue: !Sub medislot-${Environment}-DBPort
+          DB_NAME:
+            Fn::ImportValue: !Sub medislot-${Environment}-DBName
+          DB_SECRET_ARN:
+            Fn::ImportValue: !Sub medislot-${Environment}-DBMasterSecretArn
+  BookingWindowDaysParameter:
+    Type: AWS::SSM::Parameter
+    Properties:
+      Name: !Sub /medislot/${Environment}/slots/booking-window-days
+      Type: String
+      Value: '30'
+      Description: Rolling booking window length in days
+
+  DailySlotMaterialiserSchedule:
+    Type: AWS::Scheduler::Schedule
+    Properties:
+      Name: !Sub 'medislot-${Environment}-daily-slot-materialiser'
+      ScheduleExpression: 'cron(30 0 * * ? *)'
+      ScheduleExpressionTimezone: Asia/Kolkata
+      FlexibleTimeWindow:
+        Mode: 'OFF'
+      State: ENABLED
+      Target:
+        Arn: !GetAtt SlotMaterialiserLambda.Arn
+        RoleArn: !GetAtt MaterialiserSchedulerRole.Arn
+        Input: '{}'
+
+  MaterialiserSchedulerRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub 'medislot-${Environment}-materialiser-scheduler-role'
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: scheduler.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: InvokeSlotMaterialiser
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action: lambda:InvokeFunction
+                Resource: !GetAtt SlotMaterialiserLambda.Arn
+  DoctorDomainRoot:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      RestApiId: !Ref AuthRestApi
+      ParentId: !GetAtt AuthRestApi.RootResourceId
+      PathPart: doctors
+  DoctorMe:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      RestApiId: !Ref AuthRestApi
+      ParentId: !Ref DoctorDomainRoot
+      PathPart: me
+  DoctorPhoto:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      RestApiId: !Ref AuthRestApi
+      ParentId: !Ref DoctorMe
+      PathPart: photo
+  DoctorConsultations:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      RestApiId: !Ref AuthRestApi
+      ParentId: !Ref DoctorMe
+      PathPart: consultation-types
+  DoctorConsultationId:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      RestApiId: !Ref AuthRestApi
+      ParentId: !Ref DoctorConsultations
+      PathPart: '{id}'
+  DoctorAvailability:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      RestApiId: !Ref AuthRestApi
+      ParentId: !Ref DoctorMe
+      PathPart: availability
+  DoctorBlackouts:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      RestApiId: !Ref AuthRestApi
+      ParentId: !Ref DoctorMe
+      PathPart: blackouts
+  DoctorBlackoutId:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      RestApiId: !Ref AuthRestApi
+      ParentId: !Ref DoctorBlackouts
+      PathPart: '{id}'
+  DoctorSchedule:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      RestApiId: !Ref AuthRestApi
+      ParentId: !Ref DoctorMe
+      PathPart: schedule
+  DoctorMeGet:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref AuthRestApi
+      ResourceId: !Ref DoctorMe
+      HttpMethod: GET
+      AuthorizationType: CUSTOM
+      AuthorizerId: !Ref JwtAuthorizer
+      Integration:
+        Type: AWS_PROXY
+        IntegrationHttpMethod: POST
+        Uri: !Sub arn:${AWS::Partition}:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${DoctorApiLambda.Arn}/invocations
+  DoctorMePut:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref AuthRestApi
+      ResourceId: !Ref DoctorMe
+      HttpMethod: PUT
+      AuthorizationType: CUSTOM
+      AuthorizerId: !Ref JwtAuthorizer
+      Integration:
+        Type: AWS_PROXY
+        IntegrationHttpMethod: POST
+        Uri: !Sub arn:${AWS::Partition}:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${DoctorApiLambda.Arn}/invocations
+  DoctorPhotoPost:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref AuthRestApi
+      ResourceId: !Ref DoctorPhoto
+      HttpMethod: POST
+      AuthorizationType: CUSTOM
+      AuthorizerId: !Ref JwtAuthorizer
+      Integration:
+        Type: AWS_PROXY
+        IntegrationHttpMethod: POST
+        Uri: !Sub arn:${AWS::Partition}:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${DoctorApiLambda.Arn}/invocations
+  DoctorConsultGet:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref AuthRestApi
+      ResourceId: !Ref DoctorConsultations
+      HttpMethod: GET
+      AuthorizationType: CUSTOM
+      AuthorizerId: !Ref JwtAuthorizer
+      Integration:
+        Type: AWS_PROXY
+        IntegrationHttpMethod: POST
+        Uri: !Sub arn:${AWS::Partition}:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${DoctorApiLambda.Arn}/invocations
+  DoctorConsultPost:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref AuthRestApi
+      ResourceId: !Ref DoctorConsultations
+      HttpMethod: POST
+      AuthorizationType: CUSTOM
+      AuthorizerId: !Ref JwtAuthorizer
+      Integration:
+        Type: AWS_PROXY
+        IntegrationHttpMethod: POST
+        Uri: !Sub arn:${AWS::Partition}:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${DoctorApiLambda.Arn}/invocations
+  DoctorConsultPut:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref AuthRestApi
+      ResourceId: !Ref DoctorConsultationId
+      HttpMethod: PUT
+      AuthorizationType: CUSTOM
+      AuthorizerId: !Ref JwtAuthorizer
+      Integration:
+        Type: AWS_PROXY
+        IntegrationHttpMethod: POST
+        Uri: !Sub arn:${AWS::Partition}:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${DoctorApiLambda.Arn}/invocations
+  DoctorConsultDelete:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref AuthRestApi
+      ResourceId: !Ref DoctorConsultationId
+      HttpMethod: DELETE
+      AuthorizationType: CUSTOM
+      AuthorizerId: !Ref JwtAuthorizer
+      Integration:
+        Type: AWS_PROXY
+        IntegrationHttpMethod: POST
+        Uri: !Sub arn:${AWS::Partition}:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${DoctorApiLambda.Arn}/invocations
+  DoctorAvailabilityGet:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref AuthRestApi
+      ResourceId: !Ref DoctorAvailability
+      HttpMethod: GET
+      AuthorizationType: CUSTOM
+      AuthorizerId: !Ref JwtAuthorizer
+      Integration:
+        Type: AWS_PROXY
+        IntegrationHttpMethod: POST
+        Uri: !Sub arn:${AWS::Partition}:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${DoctorApiLambda.Arn}/invocations
+  DoctorAvailabilityPut:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref AuthRestApi
+      ResourceId: !Ref DoctorAvailability
+      HttpMethod: PUT
+      AuthorizationType: CUSTOM
+      AuthorizerId: !Ref JwtAuthorizer
+      Integration:
+        Type: AWS_PROXY
+        IntegrationHttpMethod: POST
+        Uri: !Sub arn:${AWS::Partition}:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${DoctorApiLambda.Arn}/invocations
+  DoctorBlackoutsGet:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref AuthRestApi
+      ResourceId: !Ref DoctorBlackouts
+      HttpMethod: GET
+      AuthorizationType: CUSTOM
+      AuthorizerId: !Ref JwtAuthorizer
+      Integration:
+        Type: AWS_PROXY
+        IntegrationHttpMethod: POST
+        Uri: !Sub arn:${AWS::Partition}:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${DoctorApiLambda.Arn}/invocations
+  DoctorBlackoutsPost:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref AuthRestApi
+      ResourceId: !Ref DoctorBlackouts
+      HttpMethod: POST
+      AuthorizationType: CUSTOM
+      AuthorizerId: !Ref JwtAuthorizer
+      Integration:
+        Type: AWS_PROXY
+        IntegrationHttpMethod: POST
+        Uri: !Sub arn:${AWS::Partition}:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${DoctorApiLambda.Arn}/invocations
+  DoctorBlackoutsDelete:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref AuthRestApi
+      ResourceId: !Ref DoctorBlackoutId
+      HttpMethod: DELETE
+      AuthorizationType: CUSTOM
+      AuthorizerId: !Ref JwtAuthorizer
+      Integration:
+        Type: AWS_PROXY
+        IntegrationHttpMethod: POST
+        Uri: !Sub arn:${AWS::Partition}:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${DoctorApiLambda.Arn}/invocations
+  DoctorScheduleGet:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref AuthRestApi
+      ResourceId: !Ref DoctorSchedule
+      HttpMethod: GET
+      AuthorizationType: CUSTOM
+      AuthorizerId: !Ref JwtAuthorizer
+      Integration:
+        Type: AWS_PROXY
+        IntegrationHttpMethod: POST
+        Uri: !Sub arn:${AWS::Partition}:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${DoctorApiLambda.Arn}/invocations
+  DoctorApiInvokePermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref DoctorApiLambda
+      Action: lambda:InvokeFunction
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub arn:${AWS::Partition}:execute-api:${AWS::Region}:${AWS::AccountId}:${AuthRestApi}/*/*/doctors/me*
+
+
+  # EC2 first-version Flask doctor dashboard; no database credentials on EC2.
+  DoctorDashboardInstance:
+    Type: AWS::EC2::Instance
+    Properties:
+      ImageId: !Ref DoctorDashboardAmi
+      InstanceType: t2.micro
+      IamInstanceProfile:
+        Fn::ImportValue: !Sub medislot-${Environment}-DoctorDashboardInstanceProfileName
+      NetworkInterfaces:
+        - DeviceIndex: '0'
+          AssociatePublicIpAddress: true
+          SubnetId:
+            Fn::ImportValue: !Sub medislot-${Environment}-PublicSubnetId
+          GroupSet:
+            - Fn::ImportValue: !Sub medislot-${Environment}-DoctorDashboardSecurityGroupId
+      MetadataOptions:
+        HttpTokens: required
+        HttpEndpoint: enabled
+      BlockDeviceMappings:
+        - DeviceName: /dev/xvda
+          Ebs:
+            VolumeSize: 12
+            VolumeType: gp3
+            Encrypted: true
+      UserData:
+        Fn::Base64: !Sub |
+          #!/bin/bash
+          set -euxo pipefail
+          dnf install -y python3 python3-pip unzip
+          mkdir -p /opt/medislot /var/lib/medislot/sessions
+          aws s3 cp s3://${ArtifactBucketName}/dashboard/${CodeVersion}.zip /tmp/medislot-dashboard.zip --region ${AWS::Region}
+          unzip -o /tmp/medislot-dashboard.zip -d /opt/medislot
+          python3 -m venv /opt/medislot/venv
+          /opt/medislot/venv/bin/pip install -r /opt/medislot/requirements.txt
+          chmod 700 /var/lib/medislot/sessions
+          cat > /etc/medislot.env <<'ENVFILE'
+          MEDISLOT_API_BASE_URL=https://${AuthRestApi}.execute-api.${AWS::Region}.amazonaws.com/${Environment}
+          ENVFILE
+          printf 'FLASK_SECRET_KEY=%s\n' "$(python3 -c 'import secrets; print(secrets.token_hex(32))')" >> /etc/medislot.env
+          chmod 600 /etc/medislot.env
+          cat > /etc/systemd/system/medislot-doctor.service <<'SERVICE'
+          [Unit]
+          Description=MediSlot Doctor Dashboard
+          After=network-online.target
+          [Service]
+          Type=simple
+          User=root
+          WorkingDirectory=/opt/medislot
+          EnvironmentFile=/etc/medislot.env
+          ExecStart=/opt/medislot/venv/bin/gunicorn -b 0.0.0.0:80 -w 2 app:app
+          Restart=always
+          RestartSec=5
+          [Install]
+          WantedBy=multi-user.target
+          SERVICE
+          systemctl daemon-reload
+          systemctl enable --now medislot-doctor
+      Tags:
+        - Key: Name
+          Value: !Sub medislot-${Environment}-doctor-dashboard
+        - Key: Project
+          Value: MediSlot
+
   AuthDeployment:
     Type: AWS::ApiGateway::Deployment
     DependsOn:
@@ -679,6 +1083,27 @@ Resources:
     Properties:
       RestApiId: !Ref AuthRestApi
       Description: !Sub Authentication API deployment ${CodeVersion}
+
+  DoctorDomainDeployment:
+    Type: AWS::ApiGateway::Deployment
+    DependsOn:
+      - AuthDeployment
+      - DoctorMeGet
+      - DoctorMePut
+      - DoctorPhotoPost
+      - DoctorConsultGet
+      - DoctorConsultPost
+      - DoctorConsultPut
+      - DoctorConsultDelete
+      - DoctorAvailabilityGet
+      - DoctorAvailabilityPut
+      - DoctorBlackoutsGet
+      - DoctorBlackoutsPost
+      - DoctorBlackoutsDelete
+      - DoctorScheduleGet
+    Properties:
+      RestApiId: !Ref AuthRestApi
+      Description: !Sub Doctor domain API deployment ${CodeVersion}
 
   AuthApiAccessLogGroup:
     Type: AWS::Logs::LogGroup
@@ -704,7 +1129,7 @@ Resources:
             comment: Authentication and token responses must not be cached; throttling and logging are enabled.
     Properties:
       RestApiId: !Ref AuthRestApi
-      DeploymentId: !Ref AuthDeployment
+      DeploymentId: !Ref DoctorDomainDeployment
       StageName: !Ref Environment
       TracingEnabled: true
       AccessLogSetting:
@@ -772,3 +1197,6 @@ Outputs:
     Value: !GetAtt AuthTestLambda.Arn
     Export:
       Name: !Sub medislot-${Environment}-AuthTestLambdaArn
+  DoctorDashboardUrl:
+    Description: HTTP-only first version; configure HTTPS before production use
+    Value: !Sub http://${DoctorDashboardInstance.PublicDnsName}/doctor/login

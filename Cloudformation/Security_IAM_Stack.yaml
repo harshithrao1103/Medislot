@@ -652,6 +652,118 @@ Resources:
 # OUTPUTS
 # =====================================================
 
+
+  # Milestone 3: isolated roles; all Milestone 2 roles remain unchanged.
+  DoctorApiLambdaExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub medislot-${Environment}-doctor-api-role
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal: {Service: lambda.amazonaws.com}
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaVPCAccessExecutionRole
+      Policies:
+        - PolicyName: DoctorApiAccess
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action: [secretsmanager:GetSecretValue]
+                Resource: !Sub arn:${AWS::Partition}:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:rds!db-*
+              - Effect: Allow
+                Action: [dynamodb:Query]
+                Resource: !Sub arn:${AWS::Partition}:dynamodb:${AWS::Region}:${AWS::AccountId}:table/medislot-${Environment}-slots/index/DoctorStartIndex
+              - Effect: Allow
+                Action: [s3:PutObject]
+                Resource: !Sub arn:${AWS::Partition}:s3:::medislot-${Environment}-profile-photos-${AWS::AccountId}-${AWS::Region}/doctors/*
+              - Effect: Allow
+                Action: [logs:CreateLogGroup,logs:CreateLogStream,logs:PutLogEvents]
+                Resource: !Sub arn:${AWS::Partition}:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/medislot-${Environment}-doctor-api:*
+
+  SlotMaterialiserExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub medislot-${Environment}-slot-materialiser-role
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal: {Service: lambda.amazonaws.com}
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaVPCAccessExecutionRole
+      Policies:
+        - PolicyName: MaterialiseSlots
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action: [secretsmanager:GetSecretValue]
+                Resource: !Sub arn:${AWS::Partition}:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:rds!db-*
+              - Effect: Allow
+                Action: [ssm:GetParameter]
+                Resource: !Sub arn:${AWS::Partition}:ssm:${AWS::Region}:${AWS::AccountId}:parameter/medislot/${Environment}/slots/booking-window-days
+              - Effect: Allow
+                Action: [dynamodb:PutItem,dynamodb:UpdateItem]
+                Resource: !Sub arn:${AWS::Partition}:dynamodb:${AWS::Region}:${AWS::AccountId}:table/medislot-${Environment}-slots
+              - Effect: Allow
+                Action: [dynamodb:Query]
+                Resource: !Sub arn:${AWS::Partition}:dynamodb:${AWS::Region}:${AWS::AccountId}:table/medislot-${Environment}-slots/index/DoctorStartIndex
+              - Effect: Allow
+                Action: [logs:CreateLogGroup,logs:CreateLogStream,logs:PutLogEvents]
+                Resource: !Sub arn:${AWS::Partition}:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/medislot-${Environment}-slot-materialiser:*
+
+  DoctorDashboardSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Public HTTP access to MediSlot milestone 3 doctor dashboard
+      VpcId:
+        Fn::ImportValue: !Sub medislot-${Environment}-VpcId
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          CidrIp: 0.0.0.0/0
+      SecurityGroupEgress:
+        - IpProtocol: tcp
+          FromPort: 443
+          ToPort: 443
+          CidrIp: 0.0.0.0/0
+        - IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          CidrIp: 0.0.0.0/0
+
+  DoctorDashboardInstanceRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: ec2.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: ReadDashboardArtifact
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action: s3:GetObject
+                Resource: !Sub arn:${AWS::Partition}:s3:::medislot-${Environment}-sam-artifacts-${AWS::AccountId}-${AWS::Region}/dashboard/*
+
+  DoctorDashboardInstanceProfile:
+    Type: AWS::IAM::InstanceProfile
+    Properties:
+      InstanceProfileName: !Sub 'medislot-${Environment}-doctor-dashboard-profile'
+      Roles:
+        - !Ref DoctorDashboardInstanceRole
+
 Outputs:
 
   LambdaSecurityGroupId:
@@ -726,3 +838,15 @@ Outputs:
     Value: !GetAtt ApiGatewayCloudWatchRole.Arn
     Export:
       Name: !Sub medislot-${Environment}-ApiGatewayCloudWatchRoleArn
+  DoctorApiLambdaRoleArn:
+    Value: !GetAtt DoctorApiLambdaExecutionRole.Arn
+    Export: {Name: !Sub 'medislot-${Environment}-DoctorApiLambdaRoleArn'}
+  SlotMaterialiserRoleArn:
+    Value: !GetAtt SlotMaterialiserExecutionRole.Arn
+    Export: {Name: !Sub 'medislot-${Environment}-SlotMaterialiserRoleArn'}
+  DoctorDashboardSecurityGroupId:
+    Value: !Ref DoctorDashboardSecurityGroup
+    Export: {Name: !Sub 'medislot-${Environment}-DoctorDashboardSecurityGroupId'}
+  DoctorDashboardInstanceProfileName:
+    Value: !Ref DoctorDashboardInstanceProfile
+    Export: {Name: !Sub 'medislot-${Environment}-DoctorDashboardInstanceProfileName'}
