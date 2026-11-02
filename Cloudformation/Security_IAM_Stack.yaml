@@ -1,4 +1,4 @@
-AWSTemplateFormatVersion: '2010-09-09'
+﻿AWSTemplateFormatVersion: '2010-09-09'
 
 Description: >
   MediSlot Security Infrastructure -
@@ -117,6 +117,12 @@ Resources:
           ToPort: 443
           SourceSecurityGroupId: !Ref LambdaSecurityGroup
           Description: HTTPS from MediSlot Lambda
+
+        - IpProtocol: tcp
+          FromPort: 443
+          ToPort: 443
+          SourceSecurityGroupId: !Ref DoctorDashboardSecurityGroup
+          Description: HTTPS from Doctor Dashboard EC2
 
       SecurityGroupEgress: []
 
