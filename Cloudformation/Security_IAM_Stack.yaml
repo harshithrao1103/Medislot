@@ -1,4 +1,4 @@
-AWSTemplateFormatVersion: '2010-09-09'
+﻿AWSTemplateFormatVersion: '2010-09-09'
 
 Description: >
   MediSlot Security Infrastructure -
@@ -24,8 +24,9 @@ Parameters:
 
   DashboardIngressCidr:
     Type: String
-    Default: 0.0.0.0/0
-    Description: Development dashboard HTTP source CIDR; restrict before real use
+    Description: Public IPv4 CIDR allowed to access the doctor dashboard
+    AllowedPattern: '^(?!0\.0\.0\.0/0$)(?:[0-9]{1,3}\.){3}[0-9]{1,3}/(?:[0-9]|[12][0-9]|3[0-2])$'
+    ConstraintDescription: Enter a restricted IPv4 CIDR, not 0.0.0.0/0
 
 # =====================================================
 # RESOURCES
@@ -822,7 +823,7 @@ Resources:
           FromPort: 80
           ToPort: 80
           CidrIp: !Ref DashboardIngressCidr
-          Description: Development dashboard HTTP only
+          Description: Restricted doctor dashboard HTTP access
       SecurityGroupEgress:
         - IpProtocol: tcp
           FromPort: 443

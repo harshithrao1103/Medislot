@@ -297,6 +297,24 @@ jobs:
           DEPLOY_ENV=$(jq -er '.environment' "$CONFIG")
           AWS_REGION=$(jq -er '.region' "$CONFIG")
           VPC_CIDR=$(jq -er '.network.VpcCIDR' "$CONFIG")
+          DASHBOARD_INGRESS_CIDR="${{ vars.DASHBOARD_INGRESS_CIDR }}"
+
+          if [[ -z "$DASHBOARD_INGRESS_CIDR" ]]; then
+            echo "::error::Set repository variable DASHBOARD_INGRESS_CIDR to your public IPv4 address with /32"
+            exit 1
+          fi
+
+          python - "$DASHBOARD_INGRESS_CIDR" <<'PYVALIDATE'
+          import ipaddress
+          import sys
+          try:
+              network = ipaddress.IPv4Network(sys.argv[1], strict=True)
+              if network.prefixlen != 32 or not network.network_address.is_global:
+                  raise ValueError("Expected one globally routable public IPv4 address with /32")
+          except ValueError as exc:
+              print(f"::error::Invalid DASHBOARD_INGRESS_CIDR: {exc}")
+              sys.exit(1)
+          PYVALIDATE
           if [[ ! "$PROJECT" =~ ^[a-z][a-z0-9-]*$ ]]; then
             echo "::error::Invalid project name"
             exit 1
@@ -316,6 +334,7 @@ jobs:
           echo "DEPLOY_ENV=$DEPLOY_ENV" >> "$GITHUB_ENV"
           echo "AWS_REGION=$AWS_REGION" >> "$GITHUB_ENV"
           echo "VPC_CIDR=$VPC_CIDR" >> "$GITHUB_ENV"
+          echo "DASHBOARD_INGRESS_CIDR=$DASHBOARD_INGRESS_CIDR" >> "$GITHUB_ENV"
 
           echo "STACK_NAME=${PROJECT}-${DEPLOY_ENV}-security-iam" >> "$GITHUB_ENV"
 
@@ -391,6 +410,7 @@ jobs:
             --parameter-overrides \
               Environment="$DEPLOY_ENV" \
               VpcCIDR="$VPC_CIDR" \
+              DashboardIngressCidr="$DASHBOARD_INGRESS_CIDR" \
             --capabilities CAPABILITY_NAMED_IAM \
             --role-arn "$CFN_EXECUTION_ROLE_ARN" \
             --region "$AWS_REGION" \
