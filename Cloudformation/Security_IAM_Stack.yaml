@@ -1,4 +1,4 @@
-﻿AWSTemplateFormatVersion: '2010-09-09'
+AWSTemplateFormatVersion: '2010-09-09'
 
 Description: >
   MediSlot Security Infrastructure -
@@ -775,6 +775,7 @@ Resources:
                 Action: [lambda:InvokeFunction]
                 Resource: !Sub arn:${AWS::Partition}:lambda:${AWS::Region}:${AWS::AccountId}:function:medislot-${Environment}-slot-materialiser
 
+  
   DoctorDashboardInstanceRole:
     Type: AWS::IAM::Role
     Properties:
@@ -785,6 +786,10 @@ Resources:
           - Effect: Allow
             Principal: {Service: ec2.amazonaws.com}
             Action: sts:AssumeRole
+
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore
+
       Policies:
         - PolicyName: ReadDashboardArtifact
           PolicyDocument:
@@ -793,6 +798,7 @@ Resources:
               - Effect: Allow
                 Action: [s3:GetObject]
                 Resource: !Sub arn:${AWS::Partition}:s3:::medislot-${Environment}-sam-artifacts-${AWS::AccountId}-${AWS::Region}/dashboard/*
+
 
   DoctorDashboardInstanceProfile:
     Type: AWS::IAM::InstanceProfile
