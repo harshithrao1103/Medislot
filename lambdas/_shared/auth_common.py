@@ -1,3 +1,4 @@
+
 """Shared MediSlot Milestone 2 authentication helpers."""
 
 # ============================================================
@@ -191,13 +192,16 @@ def db_connection():
 
 def _required_text(data, key, limit):
     value = data.get(key)
+
     if not isinstance(value, str) or not value.strip() or len(value.strip()) > limit:
         raise ValueError(f'{key} is required (1-{limit} characters)')
+
     return value.strip()
 
 
 def _registration_profile(data, role):
     """Validate profile fields before opening the registration transaction."""
+
     if role == 'doctor':
         fields = {
             key: _required_text(data, key, limit)
@@ -207,94 +211,210 @@ def _registration_profile(data, role):
                 ('clinic_address', 500), ('city', 100), ('timezone', 64)
             )
         }
+
+        # Medical licence number format: MED-YYYY-NNNNNN
+        # Example: MED-2026-123456
+        if not re.fullmatch(
+            r'MED-[0-9]{4}-[0-9]{6}',
+            fields['licence_number']
+        ):
+            raise ValueError(
+                'licence_number must follow MED-YYYY-NNNNNN'
+            )
+
         try:
             from zoneinfo import ZoneInfo
             ZoneInfo(fields['timezone'])
         except (KeyError, ValueError):
             raise ValueError('timezone must be a valid IANA timezone')
+
         years = data.get('experience_years')
+
         if type(years) is not int or not 0 <= years <= 100:
             raise ValueError('experience_years must be an integer from 0 to 100')
+
         languages = data.get('languages')
-        if (not isinstance(languages, list) or not languages or
-                any(not isinstance(v, str) or not v.strip() or len(v) > 100 for v in languages)):
-            raise ValueError('languages must be a non-empty list of language names')
+
+        if (
+            not isinstance(languages, list)
+            or not languages
+            or any(
+                not isinstance(v, str)
+                or not v.strip()
+                or len(v) > 100
+                for v in languages
+            )
+        ):
+            raise ValueError(
+                'languages must be a non-empty list of language names'
+            )
+
         photo_key = data.get('photo_key')
-        if photo_key is not None and (not isinstance(photo_key, str) or len(photo_key) > 512):
-            raise ValueError('photo_key must be a string up to 512 characters')
-        fields.update(experience_years=years, languages=json.dumps(languages), photo_key=photo_key)
+
+        if photo_key is not None and (
+            not isinstance(photo_key, str)
+            or len(photo_key) > 512
+        ):
+            raise ValueError(
+                'photo_key must be a string up to 512 characters'
+            )
+
+        fields.update(
+            experience_years=years,
+            languages=json.dumps(languages),
+            photo_key=photo_key
+        )
+
         return fields
 
     fields = {
         key: _required_text(data, key, limit)
-        for key, limit in (('gender', 30), ('phone', 20), ('city', 100), ('emergency_contact', 100))
+        for key, limit in (
+            ('gender', 30),
+            ('phone', 20),
+            ('city', 100),
+            ('emergency_contact', 100)
+        )
     }
+
     dob = data.get('date_of_birth')
+
     try:
         from datetime import date
         birth_date = date.fromisoformat(dob) if isinstance(dob, str) else None
     except ValueError:
         birth_date = None
+
     if birth_date is None or birth_date > date.today():
-        raise ValueError('date_of_birth must be a valid YYYY-MM-DD date not in the future')
+        raise ValueError(
+            'date_of_birth must be a valid YYYY-MM-DD date not in the future'
+        )
+
     notes = data.get('notes')
-    if notes is not None and (not isinstance(notes, str) or len(notes) > 65535):
+
+    if notes is not None and (
+        not isinstance(notes, str)
+        or len(notes) > 65535
+    ):
         raise ValueError('notes must be a string')
-    fields.update(date_of_birth=dob, notes=notes)
+
+    fields.update(
+        date_of_birth=dob,
+        notes=notes
+    )
+
     return fields
 
 
 def register(event, role):
     correlation = cid(event)
+
     try:
         data = body_json(event)
         name, email, password = validate_registration(data)
         profile = _registration_profile(data, role)
+
         cost = int(config('bcrypt-work-factor'))
+
         if cost < 12:
-            raise ValueError('Configured bcrypt work factor must be at least 12')
+            raise ValueError(
+                'Configured bcrypt work factor must be at least 12'
+            )
+
         password_hash = bcrypt.hashpw(
-            password.encode('utf-8'), bcrypt.gensalt(rounds=cost)
+            password.encode('utf-8'),
+            bcrypt.gensalt(rounds=cost)
         ).decode('ascii')
+
     except ValueError as ex:
         return response(400, {'error': str(ex)}, correlation)
 
     connection = None
+
     try:
         connection = db_connection()
+
         with connection.cursor() as cursor:
             cursor.execute(
                 'INSERT INTO users (name,email,password_hash,role) VALUES (%s,%s,%s,%s)',
                 (name, email, password_hash, role.upper())
             )
+
             user_id = cursor.lastrowid
+
             if role == 'doctor':
-                cursor.execute("""INSERT INTO doctors
+                cursor.execute(
+                    """INSERT INTO doctors
                     (user_id,licence_number,specialization,experience_years,qualifications,
                      hospital_name,clinic_address,city,languages,timezone,photo_key)
                     VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)""",
-                    (user_id,profile['licence_number'],profile['specialization'],
-                     profile['experience_years'],profile['qualifications'],profile['hospital_name'],
-                     profile['clinic_address'],profile['city'],profile['languages'],
-                     profile['timezone'],profile['photo_key']))
+                    (
+                        user_id,
+                        profile['licence_number'],
+                        profile['specialization'],
+                        profile['experience_years'],
+                        profile['qualifications'],
+                        profile['hospital_name'],
+                        profile['clinic_address'],
+                        profile['city'],
+                        profile['languages'],
+                        profile['timezone'],
+                        profile['photo_key']
+                    )
+                )
             else:
-                cursor.execute("""INSERT INTO patients
+                cursor.execute(
+                    """INSERT INTO patients
                     (user_id,date_of_birth,gender,phone,city,emergency_contact,notes)
                     VALUES (%s,%s,%s,%s,%s,%s,%s)""",
-                    (user_id,profile['date_of_birth'],profile['gender'],profile['phone'],
-                     profile['city'],profile['emergency_contact'],profile['notes']))
+                    (
+                        user_id,
+                        profile['date_of_birth'],
+                        profile['gender'],
+                        profile['phone'],
+                        profile['city'],
+                        profile['emergency_contact'],
+                        profile['notes']
+                    )
+                )
+
         connection.commit()
-        audit('registration_success', correlation, role=role, userId=str(user_id))
-        return response(201, {'userId': str(user_id), 'role': role}, correlation)
+
+        audit(
+            'registration_success',
+            correlation,
+            role=role,
+            userId=str(user_id)
+        )
+
+        return response(
+            201,
+            {'userId': str(user_id), 'role': role},
+            correlation
+        )
+
     except pymysql.err.IntegrityError:
         if connection:
             connection.rollback()
-        return response(409, {'error': 'Email or unique profile field already registered'}, correlation)
+
+        return response(
+            409,
+            {'error': 'Email or unique profile field already registered'},
+            correlation
+        )
+
     except Exception:
         if connection:
             connection.rollback()
+
         audit('registration_failure', correlation, error='internal')
-        return response(500, {'error': 'Internal server error'}, correlation)
+
+        return response(
+            500,
+            {'error': 'Internal server error'},
+            correlation
+        )
+
     finally:
         if connection:
             connection.close()
