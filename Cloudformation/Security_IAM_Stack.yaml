@@ -654,19 +654,7 @@ Resources:
 
   # Milestone 3: private connectivity to Secrets Manager for VPC Lambdas.
   # The private subnets have no NAT route; a VPC interface endpoint is required.
-  SecretsManagerInterfaceEndpoint:
-    Type: AWS::EC2::VPCEndpoint
-    Properties:
-      VpcId:
-        Fn::ImportValue: !Sub medislot-${Environment}-VpcId
-      ServiceName: !Sub com.amazonaws.${AWS::Region}.secretsmanager
-      VpcEndpointType: Interface
-      PrivateDnsEnabled: true
-      SubnetIds:
-        - Fn::ImportValue: !Sub medislot-${Environment}-PrivateSubnetAId
-        - Fn::ImportValue: !Sub medislot-${Environment}-PrivateSubnetBId
-      SecurityGroupIds:
-        - !Ref SSMEndpointSecurityGroup
+ 
 
   DoctorApiLambdaRole:
     Type: AWS::IAM::Role
