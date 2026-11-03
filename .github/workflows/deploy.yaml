@@ -309,8 +309,9 @@ jobs:
           import sys
           try:
               network = ipaddress.IPv4Network(sys.argv[1], strict=True)
-              if network.prefixlen != 32 or not network.network_address.is_global:
-                  raise ValueError("Expected one globally routable public IPv4 address with /32")
+              if str(network) != "0.0.0.0/0":
+                  if network.prefixlen != 32 or not network.network_address.is_global:
+                      raise ValueError("Expected a public IPv4 /32 or 0.0.0.0/0")
           except ValueError as exc:
               print(f"::error::Invalid DASHBOARD_INGRESS_CIDR: {exc}")
               sys.exit(1)
