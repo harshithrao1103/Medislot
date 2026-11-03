@@ -1,1 +1,13 @@
-<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>MediSlot Doctor Portal</title><link rel="stylesheet" href="/static/style.css"></head><body><header><h1>MediSlot <small>Doctor Portal</small></h1><nav><a href="/doctor/profile">Profile</a><a href="/doctor/consultations">Consultations</a><a href="/doctor/availability">Availability</a><a href="/doctor/blackouts">Blackouts</a><a href="/doctor/schedule">Schedule</a>{% if session.role=='doctor' %}<form method="post" action="/doctor/logout"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button>Logout</button></form>{% endif %}</nav></header><main>{% for message in get_flashed_messages() %}<aside>{{ message }}</aside>{% endfor %}{% block content %}{% endblock %}</main></body></html>
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>MediSlot | Doctor Portal</title><link rel="stylesheet" href="{{ url_for('static',filename='style.css') }}"></head>
+<body><div class="app-shell"><aside class="sidebar"><div class="brand"><span class="brand-icon">✚</span><span>MediSlot<small>DOCTOR WORKSPACE</small></span></div>
+{% if session.get('role') == 'doctor' %}<div class="nav-label">WORKSPACE</div><nav aria-label="Doctor portal">
+<a class="{% if request.endpoint=='profile' %}active{% endif %}" href="{{ url_for('profile') }}">◉ <span>My profile</span></a>
+<a class="{% if request.endpoint=='consultations' %}active{% endif %}" href="{{ url_for('consultations') }}">▤ <span>Consultations</span></a>
+<a class="{% if request.endpoint=='availability' %}active{% endif %}" href="{{ url_for('availability') }}">◷ <span>Availability</span></a>
+<a class="{% if request.endpoint=='blackouts' %}active{% endif %}" href="{{ url_for('blackouts') }}">▦ <span>Blackouts</span></a>
+<a class="{% if request.endpoint=='schedule' %}active{% endif %}" href="{{ url_for('schedule') }}">▣ <span>Schedule</span></a></nav>
+<form class="logout" method="post" action="{{ url_for('logout') }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button type="submit">Sign out</button></form>{% endif %}
+</aside><div class="main-column"><header class="topbar"><div><span class="eyebrow">MEDISLOT / DOCTOR PORTAL</span><h1>{% if request.endpoint=='profile' %}My profile{% elif request.endpoint=='consultations' %}Consultations{% elif request.endpoint=='availability' %}Weekly availability{% elif request.endpoint=='blackouts' %}Blackout dates{% elif request.endpoint=='schedule' %}Schedule{% else %}Welcome back{% endif %}</h1></div><div class="topbar-tag">Doctor workspace</div></header>
+<main>{% for message in get_flashed_messages() %}<div class="alert" role="status">{{ message }}</div>{% endfor %}{% block content %}{% endblock %}</main>
+<footer>© MediSlot · Doctor portal</footer></div></div></body></html>

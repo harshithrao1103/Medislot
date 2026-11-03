@@ -4,6 +4,7 @@ import json
 import secrets
 from functools import wraps
 from datetime import date
+from urllib.parse import urlencode
 import requests
 from flask import Flask, render_template, request, redirect, session, url_for, flash
 from flask_session import Session
@@ -61,7 +62,7 @@ def login():
                     session['role']='doctor'
                     return redirect(url_for('profile'))
             else:flash(data.get('error','Login failed'))
-        except requests.RequestException:flash('API unavailable')
+        except (requests.RequestException, ValueError):flash('Login API unavailable or returned an invalid response')
     return render_template('login.html')
 
 @app.route('/doctor/logout', methods=['POST'])
@@ -72,24 +73,38 @@ def logout():
     session.clear()
     return redirect(url_for('login'))
 
+def api_error(r):
+    try:
+        body = r.json()
+        if isinstance(body, dict):
+            return str(body.get('error') or body.get('message') or f'API request failed (HTTP {r.status_code})')
+    except ValueError:
+        pass
+    return f'API request failed (HTTP {r.status_code})'
+
 def page_get(path):
     try:
-        r=api('GET',path)
-        if r.status_code==401:
+        r = api('GET', path)
+        if r.status_code == 401:
             session.clear()
+            flash('Your session has expired. Please sign in again.')
             return None
         if not r.ok:
-            flash(r.json().get('error','Request failed'))
+            flash(api_error(r))
             return {}
         return r.json()
-    except requests.RequestException:
-        flash('API unavailable')
+    except (requests.RequestException, ValueError):
+        flash('Unable to load data from the API')
         return {}
 
-def page_post(method,path,payload):
+def page_post(method, path, payload):
     try:
-        r=api(method,path,json=payload)
-        flash('Saved successfully' if r.ok else r.json().get('error','Request failed'))
+        r = api(method, path, json=payload)
+        if r.status_code == 401:
+            session.clear()
+            flash('Your session has expired. Please sign in again.')
+            return False
+        flash('Saved successfully' if r.ok else api_error(r))
         return r.ok
     except requests.RequestException:
         flash('API unavailable')
@@ -100,7 +115,11 @@ def page_post(method,path,payload):
 def profile():
     if request.method=='POST':
         payload={key:request.form[key] for key in ('name','specialization','qualifications','hospital_name','clinic_address','city')}
-        payload['experience_years']=int(request.form['experience_years'])
+        try:
+            payload['experience_years']=int(request.form['experience_years'])
+        except (ValueError, KeyError):
+            flash('Experience years must be a valid number')
+            return redirect(url_for('profile'))
         payload['languages']=[x.strip() for x in request.form['languages'].split(',') if x.strip()]
         page_post('PUT','/doctors/me',payload)
         return redirect(url_for('profile'))
@@ -115,8 +134,12 @@ def consultations():
         if request.form.get('delete_id'):
             page_post('DELETE','/doctors/me/consultation-types/'+request.form['delete_id'],{})
         else:
-            payload={'name':request.form['name'],'duration_minutes':int(request.form['duration_minutes']),
-                     'fee':request.form['fee'],'capacity':int(request.form['capacity'])}
+            try:
+                payload={'name':request.form['name'],'duration_minutes':int(request.form['duration_minutes']),
+                         'fee':request.form['fee'],'capacity':int(request.form['capacity'])}
+            except (ValueError, KeyError):
+                flash('Please enter valid consultation details')
+                return redirect(url_for('consultations'))
             item_id=request.form.get('item_id')
             page_post('PUT' if item_id else 'POST','/doctors/me/consultation-types'+('/'+item_id if item_id else ''),payload)
         return redirect(url_for('consultations'))
@@ -153,7 +176,12 @@ def blackouts():
 @protected
 def schedule():
     day=request.args.get('date',date.today().isoformat())
-    data=page_get('/doctors/me/schedule?date='+day)
+    try:
+        day = date.fromisoformat(day).isoformat()
+    except ValueError:
+        flash('Invalid schedule date')
+        day = date.today().isoformat()
+    data=page_get('/doctors/me/schedule?' + urlencode({'date': day}))
     return render_template('schedule.html',data=data or {},day=day)
 
 @app.route('/doctor/photo', methods=['POST'])

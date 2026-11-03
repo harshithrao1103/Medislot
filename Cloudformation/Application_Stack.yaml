@@ -1051,11 +1051,13 @@ Resources:
           #!/bin/bash
           set -euxo pipefail
           dnf install -y python3 python3-pip unzip
+          id medislot >/dev/null 2>&1 || useradd --system --home-dir /opt/medislot --shell /sbin/nologin medislot
           mkdir -p /opt/medislot /var/lib/medislot/sessions
           aws s3 cp s3://${ArtifactBucketName}/dashboard/${CodeVersion}.zip /tmp/medislot-dashboard.zip --region ${AWS::Region}
           unzip -o /tmp/medislot-dashboard.zip -d /opt/medislot
           python3 -m venv /opt/medislot/venv
           /opt/medislot/venv/bin/pip install -r /opt/medislot/requirements.txt
+          chown -R medislot:medislot /var/lib/medislot
           chmod 700 /var/lib/medislot/sessions
           cat > /etc/medislot.env <<'ENVFILE'
           MEDISLOT_API_BASE_URL=https://${AuthRestApi}.execute-api.${AWS::Region}.amazonaws.com/${Environment}
@@ -1068,7 +1070,11 @@ Resources:
           After=network-online.target
           [Service]
           Type=simple
-          User=root
+          User=medislot
+          Group=medislot
+          AmbientCapabilities=CAP_NET_BIND_SERVICE
+          CapabilityBoundingSet=CAP_NET_BIND_SERVICE
+          NoNewPrivileges=true
           WorkingDirectory=/opt/medislot
           EnvironmentFile=/etc/medislot.env
           ExecStart=/opt/medislot/venv/bin/gunicorn -b 0.0.0.0:80 -w 2 app:app

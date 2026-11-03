@@ -51,7 +51,7 @@ def serialize(obj):
     raise TypeError(str(type(obj)))
 
 def respond(status, data, correlation):
-    result = response(status, data, correlation)
+    result = response(status, {}, correlation)
     result['body'] = json.dumps(data, default=serialize)
     return result
 
