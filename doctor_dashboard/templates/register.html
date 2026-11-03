@@ -1,3 +1,137 @@
-{% extends 'base.html' %}{% block content %}<section><h2>Create doctor account</h2><p>Enter your full professional details. After registration, sign in to see them in your profile.</p><form method="post"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><div class="form-grid">
-{% for key,label,typ in [('name','Full name','text'),('email','Email','email'),('password','Password','password'),('licence_number','Licence number (MED-YYYY-NNNNNN)','text'),('specialization','Specialization','text'),('experience_years','Experience (years)','number'),('qualifications','Qualifications','text'),('hospital_name','Hospital name','text'),('clinic_address','Clinic address','text'),('city','City','text'),('languages','Languages (comma-separated)','text')] %}<label>{{ label }}<input name="{{ key }}" type="{{ typ }}" {% if key=='experience_years' %}min="0" max="100"{% endif %} required></label>{% endfor %}
-<label>Timezone<select name="timezone"><option value="Asia/Kolkata">Asia/Kolkata (IST)</option></select></label></div><button type="submit">Create account</button></form><p>Already registered? <a href="{{ url_for('login') }}">Login</a></p></section>{% endblock %}
+
+{% extends 'base.html' %}
+
+{% block content %}
+
+<!-- ========================================= -->
+<!-- 1. DOCTOR REGISTRATION SECTION             -->
+<!-- ========================================= -->
+
+<section>
+
+    <h2>Create doctor account</h2>
+
+    <p>
+        Enter your full professional details.
+        After registration, sign in to see them in your profile.
+    </p>
+
+
+    <!-- ========================================= -->
+    <!-- 2. REGISTRATION FORM                      -->
+    <!-- ========================================= -->
+
+    <form method="post">
+
+        <!-- CSRF token for form security -->
+        <input
+            type="hidden"
+            name="csrf_token"
+            value="{{ csrf_token() }}"
+        >
+
+
+        <!-- ========================================= -->
+        <!-- 3. DOCTOR REGISTRATION INPUT FIELDS       -->
+        <!-- ========================================= -->
+
+        <div class="form-grid">
+
+            <!--
+                Dynamically generate the following fields:
+
+                - Full name
+                - Email
+                - Password
+                - Licence number
+                - Specialization
+                - Experience years
+                - Qualifications
+                - Hospital name
+                - Clinic address
+                - City
+                - Languages
+            -->
+
+            {% for key, label, typ in [
+                ('name', 'Full name', 'text'),
+                ('email', 'Email', 'email'),
+                ('password', 'Password', 'password'),
+                ('licence_number', 'Licence number (MED-YYYY-NNNNNN)', 'text'),
+                ('specialization', 'Specialization', 'text'),
+                ('experience_years', 'Experience (years)', 'number'),
+                ('qualifications', 'Qualifications', 'text'),
+                ('hospital_name', 'Hospital name', 'text'),
+                ('clinic_address', 'Clinic address', 'text'),
+                ('city', 'City', 'text'),
+                ('languages', 'Languages (comma-separated)', 'text')
+            ] %}
+
+                <label>
+
+                    <!-- Display readable field label -->
+                    {{ label }}
+
+                    <input
+                        name="{{ key }}"
+                        type="{{ typ }}"
+
+                        <!-- Experience must be between 0 and 100 years -->
+                        {% if key == 'experience_years' %}
+                            min="0"
+                            max="100"
+                        {% endif %}
+
+                        required
+                    >
+
+                </label>
+
+            {% endfor %}
+
+
+            <!-- ========================================= -->
+            <!-- 4. TIMEZONE SELECTION                    -->
+            <!-- ========================================= -->
+
+            <label>
+                Timezone
+
+                <select name="timezone">
+
+                    <option value="Asia/Kolkata">
+                        Asia/Kolkata (IST)
+                    </option>
+
+                </select>
+            </label>
+
+        </div>
+
+
+        <!-- ========================================= -->
+        <!-- 5. CREATE ACCOUNT BUTTON                 -->
+        <!-- ========================================= -->
+
+        <button type="submit">
+            Create account
+        </button>
+
+    </form>
+
+
+    <!-- ========================================= -->
+    <!-- 6. LOGIN LINK                            -->
+    <!-- ========================================= -->
+
+    <p>
+        Already registered?
+
+        <a href="{{ url_for('login') }}">
+            Login
+        </a>
+    </p>
+
+</section>
+
+{% endblock %}

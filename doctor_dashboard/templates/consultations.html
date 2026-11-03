@@ -1,1 +1,321 @@
-{% extends 'base.html' %}{% block content %}<section><h2>Consultation types</h2><table><tr><th>ID</th><th>Type</th><th>Minutes</th><th>Fee</th><th>Capacity</th><th></th></tr>{% for item in items %}<tr><td>{{ item.consultation_type_id }}</td><td>{{ item.name }}</td><td>{{ item.duration_minutes }}</td><td>{{ item.fee }}</td><td>{{ item.capacity }}</td><td><form method="post"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button name="delete_id" value="{{ item.consultation_type_id }}">Delete</button></form></td></tr>{% endfor %}</table><h3>Create / update consultation</h3><form method="post"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><label>Existing ID (leave blank to create)<input name="item_id" type="number" min="1"></label><label>Consultation type<select name="name" id="consult-type"><option value="Quick Consult" data-duration="15" data-min="1" data-max="1">Quick Consult</option><option value="Standard Consult" data-duration="30" data-min="1" data-max="1">Standard Consult</option><option value="Detailed Consult" data-duration="45" data-min="1" data-max="1">Detailed Consult</option><option value="Health Camp Session" data-duration="60" data-min="2" data-max="10">Health Camp</option></select></label><label>Duration (automatically selected)<input id="consult-duration" value="15 minutes" readonly></label><label>Fee<input name="fee" type="number" step="0.01" min="0" required></label><label>Capacity<input name="capacity" id="consult-capacity" type="number" min="1" max="1" value="1" required></label><p id="capacity-help" class="hint">One patient per slot</p><button>Save consultation</button></form></section><script>const sel=document.getElementById('consult-type'),dur=document.getElementById('consult-duration'),cap=document.getElementById('consult-capacity'),help=document.getElementById('capacity-help');function updateConsult(){const o=sel.selectedOptions[0],min=Number(o.dataset.min),max=Number(o.dataset.max);dur.value=o.dataset.duration+' minutes';cap.min=min;cap.max=max;cap.value=min;cap.readOnly=min===max;help.textContent=min===max?'Capacity fixed at 1':`Choose between ${min} and ${max} patients`;}sel.addEventListener('change',updateConsult);updateConsult();</script>{% endblock %}
+
+{% extends 'base.html' %}
+
+{% block content %}
+
+<!-- ========================================= -->
+<!-- 1. CONSULTATION TYPES SECTION              -->
+<!-- ========================================= -->
+
+<section>
+
+    <h2>Consultation types</h2>
+
+
+    <!-- ========================================= -->
+    <!-- 2. EXISTING CONSULTATIONS TABLE          -->
+    <!-- ========================================= -->
+
+    <table>
+
+        <!-- Table Headers -->
+        <thead>
+            <tr>
+                <th>ID</th>
+                <th>Type</th>
+                <th>Minutes</th>
+                <th>Fee</th>
+                <th>Capacity</th>
+                <th></th>
+            </tr>
+        </thead>
+
+
+        <!-- Table Body -->
+        <tbody>
+
+            {% for item in items %}
+
+            <tr>
+
+                <!-- Consultation ID -->
+                <td>
+                    {{ item.consultation_type_id }}
+                </td>
+
+                <!-- Consultation Name -->
+                <td>
+                    {{ item.name }}
+                </td>
+
+                <!-- Consultation Duration -->
+                <td>
+                    {{ item.duration_minutes }}
+                </td>
+
+                <!-- Consultation Fee -->
+                <td>
+                    {{ item.fee }}
+                </td>
+
+                <!-- Consultation Capacity -->
+                <td>
+                    {{ item.capacity }}
+                </td>
+
+
+                <!-- ========================================= -->
+                <!-- 3. DELETE CONSULTATION ACTION             -->
+                <!-- ========================================= -->
+
+                <td>
+
+                    <form method="post">
+
+                        <!-- CSRF protection -->
+                        <input
+                            type="hidden"
+                            name="csrf_token"
+                            value="{{ csrf_token() }}"
+                        >
+
+                        <!-- Delete selected consultation -->
+                        <button
+                            name="delete_id"
+                            value="{{ item.consultation_type_id }}"
+                        >
+                            Delete
+                        </button>
+
+                    </form>
+
+                </td>
+
+            </tr>
+
+            {% endfor %}
+
+        </tbody>
+
+    </table>
+
+
+    <!-- ========================================= -->
+    <!-- 4. CREATE / UPDATE CONSULTATION FORM      -->
+    <!-- ========================================= -->
+
+    <h3>Create / update consultation</h3>
+
+    <form method="post">
+
+        <!-- CSRF token for form security -->
+        <input
+            type="hidden"
+            name="csrf_token"
+            value="{{ csrf_token() }}"
+        >
+
+
+        <!-- ========================================= -->
+        <!-- 5. CONSULTATION INPUT FIELDS              -->
+        <!-- ========================================= -->
+
+        <!-- Existing Consultation ID -->
+        <!-- Leave blank to create a new consultation -->
+        <label>
+            Existing ID (leave blank to create)
+
+            <input
+                name="item_id"
+                type="number"
+                min="1"
+            >
+        </label>
+
+
+        <!-- Consultation Type Selection -->
+        <label>
+            Consultation type
+
+            <select
+                name="name"
+                id="consult-type"
+            >
+
+                <!-- Quick Consultation -->
+                <option
+                    value="Quick Consult"
+                    data-duration="15"
+                    data-min="1"
+                    data-max="1"
+                >
+                    Quick Consult
+                </option>
+
+
+                <!-- Standard Consultation -->
+                <option
+                    value="Standard Consult"
+                    data-duration="30"
+                    data-min="1"
+                    data-max="1"
+                >
+                    Standard Consult
+                </option>
+
+
+                <!-- Detailed Consultation -->
+                <option
+                    value="Detailed Consult"
+                    data-duration="45"
+                    data-min="1"
+                    data-max="1"
+                >
+                    Detailed Consult
+                </option>
+
+
+                <!-- Health Camp Session -->
+                <option
+                    value="Health Camp Session"
+                    data-duration="60"
+                    data-min="2"
+                    data-max="10"
+                >
+                    Health Camp
+                </option>
+
+            </select>
+        </label>
+
+
+        <!-- Consultation Duration -->
+        <!-- Automatically updated based on consultation type -->
+        <label>
+            Duration (automatically selected)
+
+            <input
+                id="consult-duration"
+                value="15 minutes"
+                readonly
+            >
+        </label>
+
+
+        <!-- Consultation Fee -->
+        <label>
+            Fee
+
+            <input
+                name="fee"
+                type="number"
+                step="0.01"
+                min="0"
+                required
+            >
+        </label>
+
+
+        <!-- Consultation Capacity -->
+        <label>
+            Capacity
+
+            <input
+                name="capacity"
+                id="consult-capacity"
+                type="number"
+                min="1"
+                max="1"
+                value="1"
+                required
+            >
+        </label>
+
+
+        <!-- Capacity Information -->
+        <p
+            id="capacity-help"
+            class="hint"
+        >
+            One patient per slot
+        </p>
+
+
+        <!-- ========================================= -->
+        <!-- 6. SAVE CONSULTATION BUTTON               -->
+        <!-- ========================================= -->
+
+        <button type="submit">
+            Save consultation
+        </button>
+
+    </form>
+
+</section>
+
+
+<!-- ========================================= -->
+<!-- 7. JAVASCRIPT: DYNAMIC CONSULTATION FIELDS -->
+<!-- ========================================= -->
+
+<script>
+
+    // Get consultation form elements
+    const sel = document.getElementById('consult-type');
+    const dur = document.getElementById('consult-duration');
+    const cap = document.getElementById('consult-capacity');
+    const help = document.getElementById('capacity-help');
+
+
+    /*
+     * Update Consultation Fields
+     *
+     * Automatically updates:
+     * - Duration
+     * - Minimum capacity
+     * - Maximum capacity
+     * - Default capacity
+     * - Capacity help message
+     *
+     * Based on the selected consultation type.
+     */
+    function updateConsult() {
+
+        // Get selected consultation option
+        const o = sel.selectedOptions[0];
+
+        // Read minimum and maximum capacity
+        const min = Number(o.dataset.min);
+        const max = Number(o.dataset.max);
+
+        // Update consultation duration
+        dur.value = o.dataset.duration + ' minutes';
+
+        // Update capacity limits
+        cap.min = min;
+        cap.max = max;
+
+        // Set default capacity
+        cap.value = min;
+
+        // Make capacity read-only when fixed
+        cap.readOnly = min === max;
+
+        // Display capacity instructions
+        help.textContent = min === max
+            ? 'Capacity fixed at 1'
+            : `Choose between ${min} and ${max} patients`;
+
+    }
+
+
+    // Update fields when consultation type changes
+    sel.addEventListener('change', updateConsult);
+
+
+    // Initialize fields when the page loads
+    updateConsult();
+
+</script>
+
+{% endblock %}

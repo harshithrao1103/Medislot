@@ -1,1 +1,361 @@
-{% extends 'base.html' %}{% block content %}<section><h2>Weekly availability (IST)</h2><p>Add one availability window at a time. Each save adds a new record without removing previously saved windows.</p><h3>Add / edit availability</h3><form method="post" id="availability-form"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="item_id" id="availability-id"><div class="form-grid"><label>Consultation type<select name="consultation_type_id" id="availability-type" required>{% for c in consultations %}<option value="{{ c.consultation_type_id }}">{{ c.name }} ({{ c.duration_minutes }} min)</option>{% endfor %}</select></label><label>Day of week<select name="day_of_week" id="availability-day">{% for day in ['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'] %}<option value="{{ loop.index0 }}">{{ day }}</option>{% endfor %}</select></label><label>Start time (IST)<input type="time" name="start_time" id="availability-start" value="09:00" required></label><label>End time (IST)<input type="time" name="end_time" id="availability-end" value="11:00" required></label></div><button type="submit" {% if not consultations %}disabled{% endif %}>Save availability</button> <button type="button" class="secondary-button" onclick="resetAvailability()">Clear form</button></form>{% if not consultations %}<p>Create a consultation type before adding availability.</p>{% endif %}<h3>Saved weekly availability</h3><table><tr><th>Consultation type</th><th>Day</th><th>Start (IST)</th><th>End (IST)</th><th>Actions</th></tr>{% for x in items %}<tr><td>{% for c in consultations %}{% if c.consultation_type_id == x.consultation_type_id %}{{ c.name }}{% endif %}{% endfor %}</td><td>{{ ['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'][x.day_of_week] }}</td><td>{{ x.start_time }}</td><td>{{ x.end_time }}</td><td><button type="button" class="secondary-button" onclick="editAvailability({{ x.availability_id|tojson }},{{ x.consultation_type_id|tojson }},{{ x.day_of_week|tojson }},{{ x.start_time|tojson }},{{ x.end_time|tojson }})">Edit</button><form method="post" class="inline-form" onsubmit="return confirm('Delete this availability?')"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button name="delete_id" value="{{ x.availability_id }}">Delete</button></form></td></tr>{% endfor %}</table></section><script>function resetAvailability(){document.getElementById('availability-form').reset();document.getElementById('availability-id').value='';}function editAvailability(id,type,day,start,end){document.getElementById('availability-id').value=id;document.getElementById('availability-type').value=type;document.getElementById('availability-day').value=day;document.getElementById('availability-start').value=start.slice(0,5);document.getElementById('availability-end').value=end.slice(0,5);document.getElementById('availability-form').scrollIntoView({behavior:'smooth'});}</script>{% endblock %}
+
+{% extends 'base.html' %}
+
+{% block content %}
+
+<!-- ========================================= -->
+<!-- 1. WEEKLY AVAILABILITY SECTION             -->
+<!-- ========================================= -->
+
+<section>
+
+    <h2>Weekly availability (IST)</h2>
+
+    <p>
+        Add one availability window at a time.
+        Each save adds a new record without removing
+        previously saved windows.
+    </p>
+
+
+    <!-- ========================================= -->
+    <!-- 2. ADD / EDIT AVAILABILITY FORM            -->
+    <!-- ========================================= -->
+
+    <h3>Add / edit availability</h3>
+
+    <form method="post" id="availability-form">
+
+        <!-- CSRF token for form security -->
+        <input
+            type="hidden"
+            name="csrf_token"
+            value="{{ csrf_token() }}"
+        >
+
+        <!--
+            Stores the availability record ID.
+
+            Empty ID  -> Create new availability
+            Valid ID  -> Update existing availability
+        -->
+        <input
+            type="hidden"
+            name="item_id"
+            id="availability-id"
+        >
+
+
+        <!-- ========================================= -->
+        <!-- 3. AVAILABILITY INPUT FIELDS               -->
+        <!-- ========================================= -->
+
+        <div class="form-grid">
+
+            <!-- Consultation Type Selection -->
+            <label>
+                Consultation type
+
+                <select
+                    name="consultation_type_id"
+                    id="availability-type"
+                    required
+                >
+                    {% for c in consultations %}
+
+                    <option value="{{ c.consultation_type_id }}">
+                        {{ c.name }} ({{ c.duration_minutes }} min)
+                    </option>
+
+                    {% endfor %}
+                </select>
+            </label>
+
+
+            <!-- Day of Week Selection -->
+            <label>
+                Day of week
+
+                <select
+                    name="day_of_week"
+                    id="availability-day"
+                >
+                    {% for day in [
+                        'Monday',
+                        'Tuesday',
+                        'Wednesday',
+                        'Thursday',
+                        'Friday',
+                        'Saturday',
+                        'Sunday'
+                    ] %}
+
+                    <option value="{{ loop.index0 }}">
+                        {{ day }}
+                    </option>
+
+                    {% endfor %}
+                </select>
+            </label>
+
+
+            <!-- Start Time -->
+            <label>
+                Start time (IST)
+
+                <input
+                    type="time"
+                    name="start_time"
+                    id="availability-start"
+                    value="09:00"
+                    required
+                >
+            </label>
+
+
+            <!-- End Time -->
+            <label>
+                End time (IST)
+
+                <input
+                    type="time"
+                    name="end_time"
+                    id="availability-end"
+                    value="11:00"
+                    required
+                >
+            </label>
+
+        </div>
+
+
+        <!-- ========================================= -->
+        <!-- 4. FORM ACTION BUTTONS                    -->
+        <!-- ========================================= -->
+
+        <!-- Save new or edited availability -->
+        <button
+            type="submit"
+            {% if not consultations %}disabled{% endif %}
+        >
+            Save availability
+        </button>
+
+        <!-- Reset form to default values -->
+        <button
+            type="button"
+            class="secondary-button"
+            onclick="resetAvailability()"
+        >
+            Clear form
+        </button>
+
+    </form>
+
+
+    <!-- ========================================= -->
+    <!-- 5. NO CONSULTATION TYPES MESSAGE           -->
+    <!-- ========================================= -->
+
+    {% if not consultations %}
+
+    <p>
+        Create a consultation type before adding availability.
+    </p>
+
+    {% endif %}
+
+
+    <!-- ========================================= -->
+    <!-- 6. SAVED WEEKLY AVAILABILITY TABLE         -->
+    <!-- ========================================= -->
+
+    <h3>Saved weekly availability</h3>
+
+    <table>
+
+        <!-- Table Headers -->
+        <thead>
+            <tr>
+                <th>Consultation type</th>
+                <th>Day</th>
+                <th>Start (IST)</th>
+                <th>End (IST)</th>
+                <th>Actions</th>
+            </tr>
+        </thead>
+
+
+        <!-- Table Body -->
+        <tbody>
+
+            {% for x in items %}
+
+            <tr>
+
+                <!-- Consultation Type Name -->
+                <td>
+
+                    {% for c in consultations %}
+
+                        {% if c.consultation_type_id == x.consultation_type_id %}
+                            {{ c.name }}
+                        {% endif %}
+
+                    {% endfor %}
+
+                </td>
+
+
+                <!-- Day of Week -->
+                <td>
+                    {{
+                        [
+                            'Monday',
+                            'Tuesday',
+                            'Wednesday',
+                            'Thursday',
+                            'Friday',
+                            'Saturday',
+                            'Sunday'
+                        ][x.day_of_week]
+                    }}
+                </td>
+
+
+                <!-- Start Time -->
+                <td>
+                    {{ x.start_time }}
+                </td>
+
+
+                <!-- End Time -->
+                <td>
+                    {{ x.end_time }}
+                </td>
+
+
+                <!-- ========================================= -->
+                <!-- 7. EDIT AND DELETE ACTIONS                -->
+                <!-- ========================================= -->
+
+                <td>
+
+                    <!-- Edit Availability Button -->
+                    <button
+                        type="button"
+                        class="secondary-button"
+                        onclick="editAvailability(
+                            {{ x.availability_id|tojson }},
+                            {{ x.consultation_type_id|tojson }},
+                            {{ x.day_of_week|tojson }},
+                            {{ x.start_time|tojson }},
+                            {{ x.end_time|tojson }}
+                        )"
+                    >
+                        Edit
+                    </button>
+
+
+                    <!-- Delete Availability Form -->
+                    <form
+                        method="post"
+                        class="inline-form"
+                        onsubmit="return confirm('Delete this availability?')"
+                    >
+
+                        <!-- CSRF protection -->
+                        <input
+                            type="hidden"
+                            name="csrf_token"
+                            value="{{ csrf_token() }}"
+                        >
+
+                        <!-- Availability ID to delete -->
+                        <button
+                            name="delete_id"
+                            value="{{ x.availability_id }}"
+                        >
+                            Delete
+                        </button>
+
+                    </form>
+
+                </td>
+
+            </tr>
+
+            {% endfor %}
+
+        </tbody>
+
+    </table>
+
+</section>
+
+
+<!-- ========================================= -->
+<!-- 8. JAVASCRIPT FUNCTIONS                    -->
+<!-- ========================================= -->
+
+<script>
+
+    /*
+     * Reset Availability Form
+     *
+     * - Clears the form fields
+     * - Restores default values
+     * - Clears the availability ID
+     * - Switches from edit mode to add mode
+     */
+    function resetAvailability() {
+
+        document.getElementById('availability-form').reset();
+
+        document.getElementById('availability-id').value = '';
+
+    }
+
+
+    /*
+     * Edit Existing Availability
+     *
+     * Parameters:
+     * id    -> Availability record ID
+     * type  -> Consultation type ID
+     * day   -> Day of week (0 = Monday, 6 = Sunday)
+     * start -> Existing start time
+     * end   -> Existing end time
+     *
+     * Populates the form with the selected record.
+     * The next Save action updates that record.
+     */
+    function editAvailability(id, type, day, start, end) {
+
+        // Store record ID for updating
+        document.getElementById('availability-id').value = id;
+
+        // Set consultation type
+        document.getElementById('availability-type').value = type;
+
+        // Set day of week
+        document.getElementById('availability-day').value = day;
+
+        // Set start time (HH:MM)
+        document.getElementById('availability-start').value =
+            start.slice(0, 5);
+
+        // Set end time (HH:MM)
+        document.getElementById('availability-end').value =
+            end.slice(0, 5);
+
+        // Scroll to availability form
+        document.getElementById('availability-form').scrollIntoView({
+            behavior: 'smooth'
+        });
+
+    }
+
+</script>
+
+{% endblock %}

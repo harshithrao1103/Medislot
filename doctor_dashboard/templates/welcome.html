@@ -1,1 +1,50 @@
-{% extends 'base.html' %}{% block content %}<section class="welcome"><h2>Welcome to MediSlot</h2><p>Manage your appointments and availability in one place.</p><div class="actions"><a class="btn" href="{{ url_for('register') }}">Register as doctor</a><a class="btn secondary" href="{{ url_for('login') }}">Login</a></div></section>{% endblock %}
+
+{% extends 'base.html' %}
+
+{% block content %}
+
+<!-- ========================================= -->
+<!-- 1. WELCOME SECTION                         -->
+<!-- ========================================= -->
+
+<section class="welcome">
+
+    <!-- ========================================= -->
+    <!-- 2. WELCOME HEADING AND DESCRIPTION        -->
+    <!-- ========================================= -->
+
+    <h2>Welcome to MediSlot</h2>
+
+    <p>
+        Manage your appointments and availability in one place.
+    </p>
+
+
+    <!-- ========================================= -->
+    <!-- 3. REGISTRATION AND LOGIN ACTIONS         -->
+    <!-- ========================================= -->
+
+    <div class="actions">
+
+        <!-- Doctor Registration Button -->
+        <a
+            class="btn"
+            href="{{ url_for('register') }}"
+        >
+            Register as doctor
+        </a>
+
+
+        <!-- Doctor Login Button -->
+        <a
+            class="btn secondary"
+            href="{{ url_for('login') }}"
+        >
+            Login
+        </a>
+
+    </div>
+
+</section>
+
+{% endblock %}

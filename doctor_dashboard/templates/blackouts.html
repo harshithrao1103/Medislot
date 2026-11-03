@@ -1,1 +1,139 @@
-{% extends 'base.html' %}{% block content %}<section><h2>Blackout dates</h2><table><tr><th>Date</th><th>Reason</th><th></th></tr>{% for item in items %}<tr><td>{{ item.blackout_date }}</td><td>{{ item.reason }}</td><td><form method="post"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button name="delete_id" value="{{ item.blackout_id }}">Delete</button></form></td></tr>{% endfor %}</table><form method="post"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><label>Date<input type="date" name="blackout_date" required></label><label>Reason<input name="reason"></label><button>Add blackout</button></form></section>{% endblock %}
+
+{% extends 'base.html' %}
+
+{% block content %}
+
+<!-- ========================================= -->
+<!-- 1. BLACKOUT DATES SECTION                  -->
+<!-- ========================================= -->
+
+<section>
+
+    <h2>Blackout dates</h2>
+
+
+    <!-- ========================================= -->
+    <!-- 2. EXISTING BLACKOUT DATES TABLE          -->
+    <!-- ========================================= -->
+
+    <table>
+
+        <!-- Table Headers -->
+        <thead>
+            <tr>
+                <th>Date</th>
+                <th>Reason</th>
+                <th></th>
+            </tr>
+        </thead>
+
+
+        <!-- Table Body -->
+        <tbody>
+
+            {% for item in items %}
+
+            <tr>
+
+                <!-- Blackout Date -->
+                <td>
+                    {{ item.blackout_date }}
+                </td>
+
+
+                <!-- Reason for Blackout -->
+                <td>
+                    {{ item.reason }}
+                </td>
+
+
+                <!-- ========================================= -->
+                <!-- 3. DELETE BLACKOUT ACTION                 -->
+                <!-- ========================================= -->
+
+                <td>
+
+                    <form method="post">
+
+                        <!-- CSRF token for form security -->
+                        <input
+                            type="hidden"
+                            name="csrf_token"
+                            value="{{ csrf_token() }}"
+                        >
+
+                        <!-- Delete selected blackout record -->
+                        <button
+                            name="delete_id"
+                            value="{{ item.blackout_id }}"
+                        >
+                            Delete
+                        </button>
+
+                    </form>
+
+                </td>
+
+            </tr>
+
+            {% endfor %}
+
+        </tbody>
+
+    </table>
+
+
+    <!-- ========================================= -->
+    <!-- 4. ADD NEW BLACKOUT FORM                  -->
+    <!-- ========================================= -->
+
+    <form method="post">
+
+        <!-- CSRF token for form security -->
+        <input
+            type="hidden"
+            name="csrf_token"
+            value="{{ csrf_token() }}"
+        >
+
+
+        <!-- ========================================= -->
+        <!-- 5. BLACKOUT INPUT FIELDS                  -->
+        <!-- ========================================= -->
+
+        <!-- Blackout Date -->
+        <label>
+            Date
+
+            <input
+                type="date"
+                name="blackout_date"
+                required
+            >
+        </label>
+
+
+        <!-- Reason for Blackout -->
+        <label>
+            Reason
+
+            <input
+                type="text"
+                name="reason"
+            >
+        </label>
+
+
+        <!-- ========================================= -->
+        <!-- 6. ADD BLACKOUT BUTTON                   -->
+        <!-- ========================================= -->
+
+        <button type="submit">
+            Add blackout
+        </button>
+
+    </form>
+
+</section>
+
+{% endblock %}

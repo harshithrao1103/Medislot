@@ -7,12 +7,20 @@ from decimal import Decimal, InvalidOperation
 import boto3
 from doctor_common import *
 
+# Allowed photo MIME types and corresponding file extensions.
 PHOTO_TYPES = {'image/jpeg': 'jpg', 'image/png': 'png', 'image/webp': 'webp'}
+# Supported consultation presets: (duration minutes, minimum capacity, maximum capacity).
 CONSULTS = {'Quick Consult': (15, 1, 1), 'Standard Consult': (30, 1, 1),
             'Detailed Consult': (45, 1, 1), 'Health Camp Session': (60, 2, 10)}
 
+
+# ============================================================
+# CONSULTATION TYPE VALIDATION
+# ============================================================
+# Validate preset consultation name, fixed duration, capacity bounds, and nonnegative fee.
 def validate_consult(data):
     name = require_text(data.get('name'), 'name', 100)
+    # Reject custom consultation names outside the supported presets.
     if name not in CONSULTS:
         raise ApiError(400, 'Unsupported consultation type')
     duration, minimum, maximum = CONSULTS[name]
@@ -22,6 +30,7 @@ def validate_consult(data):
     if type(capacity) is not int or not minimum <= capacity <= maximum:
         raise ApiError(400, f'{name} capacity must be {minimum}-{maximum}')
     try:
+        # Use Decimal for accurate monetary validation.
         fee = Decimal(str(data.get('fee')))
         if not fee.is_finite() or fee < 0 or fee > Decimal('99999999.99') or fee.as_tuple().exponent < -2:
             raise ValueError()
@@ -29,6 +38,11 @@ def validate_consult(data):
         raise ApiError(400, 'fee must be a nonnegative amount with up to two decimals')
     return name, duration, str(fee), capacity
 
+
+# ============================================================
+# DOCTOR PROFILE LOOKUP
+# ============================================================
+# Read the authenticated doctor profile from MySQL and decode stored languages.
 def fetch_doctor(cur, uid):
     cur.execute("""SELECT u.user_id,u.name,u.email,d.licence_number,d.specialization,
        d.experience_years,d.qualifications,d.hospital_name,d.clinic_address,d.city,
@@ -37,17 +51,25 @@ def fetch_doctor(cur, uid):
     item = cur.fetchone()
     if not item:
         raise ApiError(404, 'Doctor profile not found')
+    # MySQL may return JSON language arrays as strings.
     if isinstance(item['languages'], str):
         item['languages'] = json.loads(item['languages'])
     return item
 
+
+# ============================================================
+# PROFILE GET / UPDATE
+# ============================================================
+# Fetch or update editable profile fields, with validation and transaction rollback.
 def profile(event, uid, method, correlation):
     conn = db_connection()
     try:
         with conn.cursor() as cur:
+            # GET returns the doctor profile without making database changes.
             if method == 'GET':
                 return respond(200, fetch_doctor(cur, uid), correlation)
             data = body_json(event)
+            # Only explicitly permitted profile fields can be updated.
             allowed = {'name','specialization','experience_years','qualifications',
                        'hospital_name','clinic_address','city','languages','timezone'}
             if not data or set(data) - allowed:
@@ -73,6 +95,7 @@ def profile(event, uid, method, correlation):
                     raise ApiError(400, 'Milestone 3 supports Asia/Kolkata only')
                 fields['timezone'] = data['timezone']
             fetch_doctor(cur, uid)
+            # Name belongs to users; other professional details belong to doctors.
             if 'name' in fields:
                 cur.execute('UPDATE users SET name=%s WHERE user_id=%s', (fields.pop('name'), uid))
             if fields:
@@ -86,6 +109,11 @@ def profile(event, uid, method, correlation):
     finally:
         conn.close()
 
+
+# ============================================================
+# PROFILE PHOTO URL / UPLOAD
+# ============================================================
+# Create short-lived S3 URLs for private photo viewing and direct browser uploads.
 def photo(event, uid, correlation, method='POST'):
     if method == 'GET':
         conn = db_connection()
@@ -97,6 +125,7 @@ def photo(event, uid, correlation, method='POST'):
             conn.close()
         if not row or not row['photo_key']:
             raise ApiError(404, 'No profile photo uploaded')
+        # Generate a temporary private download URL; do not expose the S3 object publicly.
         url = boto3.client('s3').generate_presigned_url('get_object',
             Params={'Bucket':os.environ['PHOTO_BUCKET'], 'Key':row['photo_key']}, ExpiresIn=300)
         return respond(200, {'url':url}, correlation)
@@ -110,6 +139,7 @@ def photo(event, uid, correlation, method='POST'):
     bucket = os.environ['PHOTO_BUCKET']
     key = f'doctors/{uid}/{uuid.uuid4().hex}.{PHOTO_TYPES[mime]}'
     s3 = boto3.client('s3')
+    # The client uploads directly to S3 using the returned form fields.
     # Presigned POST enforces content length and MIME; bytes never pass through API Gateway.
     upload = s3.generate_presigned_post(Bucket=bucket, Key=key,
         Fields={'Content-Type': mime}, Conditions=[{'Content-Type': mime},
@@ -129,13 +159,20 @@ def photo(event, uid, correlation, method='POST'):
     return respond(200, {'upload':upload,'photoKey':key,'expiresIn':300,
         'note':'Upload using multipart/form-data with the returned fields; photo is private.'}, correlation)
 
+
+# ============================================================
+# CONSULTATION TYPE CRUD
+# ============================================================
+# List, create, update, and delete consultation types owned by the doctor.
 def consultation(event, uid, method, item_id, correlation):
     conn=db_connection()
     try:
         with conn.cursor() as cur:
+            # GET lists records for the authenticated doctor only.
             if method=='GET':
                 cur.execute('SELECT * FROM consultation_types WHERE doctor_id=%s ORDER BY consultation_type_id', (uid,))
                 return respond(200, {'items':cur.fetchall()}, correlation)
+            # Validate the preset before inserting or updating a consultation.
             if method in ('POST','PUT'):
                 data=body_json(event)
                 name,duration,fee,capacity=validate_consult(data)
@@ -150,6 +187,7 @@ def consultation(event, uid, method, item_id, correlation):
                         raise ApiError(404,'Consultation type not found')
                 conn.commit()
                 return respond(200 if method=='PUT' else 201, {'consultationTypeId':item_id},correlation)
+            # Delete only records belonging to the authenticated doctor.
             if method=='DELETE':
                 cur.execute('DELETE FROM consultation_types WHERE doctor_id=%s AND consultation_type_id=%s',(uid,item_id))
                 if not cur.rowcount:
@@ -162,8 +200,14 @@ def consultation(event, uid, method, item_id, correlation):
     finally:
         conn.close()
 
+
+# ============================================================
+# MYSQL TIME NORMALIZATION
+# ============================================================
+# Convert MySQL TIME values into the HH:MM representation used by validation.
 def parse_db_time(value):
     """Normalize MySQL TIME (often timedelta) before applying HH:MM validation."""
+    # PyMySQL can return TIME columns as timedelta values.
     if hasattr(value, 'total_seconds'):
         total = int(value.total_seconds())
         if not 0 <= total < 24 * 3600 or total % 60:
@@ -174,14 +218,21 @@ def parse_db_time(value):
         return parse_time(f'{int(parts[0]):02d}:{parts[1]}')
     raise ApiError(400, 'Invalid saved availability time')
 
+
+# ============================================================
+# WEEKLY AVAILABILITY CRUD
+# ============================================================
+# Validate ownership and time overlaps before changing weekly availability.
 def availability(event,uid,method,correlation,item_id=None):
     conn=db_connection()
     try:
         with conn.cursor() as cur:
+            # GET lists records for the authenticated doctor only.
             if method=='GET':
                 cur.execute("""SELECT availability_id,consultation_type_id,day_of_week,start_time,end_time
                     FROM doctor_availability WHERE doctor_id=%s ORDER BY day_of_week,start_time""",(uid,))
                 return respond(200,{'items':cur.fetchall()},correlation)
+            # Delete only records belonging to the authenticated doctor.
             if method=='DELETE':
                 cur.execute('DELETE FROM doctor_availability WHERE doctor_id=%s AND availability_id=%s',(uid,item_id))
                 if not cur.rowcount: raise ApiError(404,'Availability entry not found')
@@ -253,10 +304,16 @@ def availability(event,uid,method,correlation,item_id=None):
     finally:
         conn.close()
 
+
+# ============================================================
+# DOCTOR BLACKOUT DATES
+# ============================================================
+# List, add, and remove dates when a doctor is unavailable.
 def blackouts(event,uid,method,item_id,correlation):
     conn=db_connection()
     try:
         with conn.cursor() as cur:
+            # GET lists records for the authenticated doctor only.
             if method=='GET':
                 cur.execute('SELECT blackout_id,blackout_date,reason FROM doctor_blackouts WHERE doctor_id=%s ORDER BY blackout_date',(uid,))
                 return respond(200,{'items':cur.fetchall()},correlation)
@@ -272,6 +329,7 @@ def blackouts(event,uid,method,item_id,correlation):
                 cur.execute('INSERT INTO doctor_blackouts (doctor_id,blackout_date,reason) VALUES (%s,%s,%s)',(uid,day,reason))
                 conn.commit()
                 return respond(201,{'blackoutId':cur.lastrowid},correlation)
+            # Delete only records belonging to the authenticated doctor.
             if method=='DELETE':
                 cur.execute('DELETE FROM doctor_blackouts WHERE doctor_id=%s AND blackout_id=%s',(uid,item_id))
                 if not cur.rowcount:
@@ -284,6 +342,11 @@ def blackouts(event,uid,method,item_id,correlation):
     finally:
         conn.close()
 
+
+# ============================================================
+# DAILY APPOINTMENT SCHEDULE
+# ============================================================
+# Read materialised DynamoDB slots and attach appointment/patient data from MySQL.
 def schedule(event,uid,correlation):
     day=parse_date((event.get('queryStringParameters') or {}).get('date'))
     import datetime as dt
@@ -315,6 +378,11 @@ def schedule(event,uid,correlation):
     for slot in items:slot['appointments']=by_slot.get(slot['slotId'],[])
     return respond(200,{'date':day.isoformat(),'timezone':'Asia/Kolkata','slots':items},correlation)
 
+
+# ============================================================
+# LAMBDA ENTRY POINT AND ROUTING
+# ============================================================
+# Resolve authenticated doctor identity, validate route IDs, and dispatch requests.
 def lambda_handler(event,context):
     correlation=cid(event)
     try:

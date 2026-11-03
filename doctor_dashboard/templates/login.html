@@ -1,1 +1,83 @@
-{% extends 'base.html' %}{% block content %}<section><h2>Doctor login</h2><form method="post"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><label>Email<input type="email" name="email" required autocomplete="username"></label><label>Password<input type="password" name="password" required autocomplete="current-password"></label><button>Sign in</button></form><p>New doctor? <a href="{{ url_for('register') }}">Register here</a></p></section>{% endblock %}
+
+{% extends 'base.html' %}
+
+{% block content %}
+
+<!-- ========================================= -->
+<!-- 1. DOCTOR LOGIN SECTION                    -->
+<!-- ========================================= -->
+
+<section>
+
+    <h2>Doctor login</h2>
+
+
+    <!-- ========================================= -->
+    <!-- 2. LOGIN FORM                            -->
+    <!-- ========================================= -->
+
+    <form method="post">
+
+        <!-- CSRF token for form security -->
+        <input
+            type="hidden"
+            name="csrf_token"
+            value="{{ csrf_token() }}"
+        >
+
+
+        <!-- ========================================= -->
+        <!-- 3. LOGIN INPUT FIELDS                    -->
+        <!-- ========================================= -->
+
+        <!-- Email Address -->
+        <label>
+            Email
+
+            <input
+                type="email"
+                name="email"
+                required
+                autocomplete="username"
+            >
+        </label>
+
+
+        <!-- Password -->
+        <label>
+            Password
+
+            <input
+                type="password"
+                name="password"
+                required
+                autocomplete="current-password"
+            >
+        </label>
+
+
+        <!-- ========================================= -->
+        <!-- 4. SIGN IN BUTTON                        -->
+        <!-- ========================================= -->
+
+        <button type="submit">
+            Sign in
+        </button>
+
+    </form>
+
+
+    <!-- ========================================= -->
+    <!-- 5. DOCTOR REGISTRATION LINK                -->
+    <!-- ========================================= -->
+
+    <p>
+        New doctor?
+        <a href="{{ url_for('register') }}">
+            Register here
+        </a>
+    </p>
+
+</section>
+
+{% endblock %}
