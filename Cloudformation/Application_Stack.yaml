@@ -1159,7 +1159,7 @@ Resources:
       RestApiId: !Ref AuthRestApi
       Description: !Sub Authentication API deployment ${CodeVersion}
 
-  DoctorDomainDeployment:
+  DoctorDomainDeploymentPhotoGetV2:
     Type: AWS::ApiGateway::Deployment
     DependsOn:
       - AuthDeployment
@@ -1182,7 +1182,7 @@ Resources:
       - DoctorScheduleGet
     Properties:
       RestApiId: !Ref AuthRestApi
-      Description: !Sub Doctor domain API deployment ${CodeVersion}
+      Description: !Sub Doctor domain API deployment with photo GET ${CodeVersion}
 
   AuthApiAccessLogGroup:
     Type: AWS::Logs::LogGroup
@@ -1208,7 +1208,7 @@ Resources:
             comment: Authentication and token responses must not be cached; throttling and logging are enabled.
     Properties:
       RestApiId: !Ref AuthRestApi
-      DeploymentId: !Ref DoctorDomainDeployment
+      DeploymentId: !Ref DoctorDomainDeploymentPhotoGetV2
       StageName: !Ref Environment
       TracingEnabled: true
       AccessLogSetting:

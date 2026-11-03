@@ -1,0 +1,174 @@
+{
+  "swagger" : "2.0",
+  "info" : {
+    "version" : "2026-11-02T14:35:10Z",
+    "title" : "medislot-dev-auth-api"
+  },
+  "host" : "6z22fm70cf.execute-api.us-east-1.amazonaws.com",
+  "basePath" : "/dev",
+  "schemes" : [ "https" ],
+  "paths" : {
+    "/auth/doctors/login" : {
+      "post" : {
+        "responses" : { }
+      }
+    },
+    "/auth/doctors/register" : {
+      "post" : {
+        "responses" : { }
+      }
+    },
+    "/auth/logout" : {
+      "post" : {
+        "responses" : { },
+        "security" : [ {
+          "medislot-dev-jwt-authorizer" : [ ]
+        } ]
+      }
+    },
+    "/auth/patients/login" : {
+      "post" : {
+        "responses" : { }
+      }
+    },
+    "/auth/patients/register" : {
+      "post" : {
+        "responses" : { }
+      }
+    },
+    "/auth/refresh" : {
+      "post" : {
+        "responses" : { }
+      }
+    },
+    "/doctor-auth-check" : {
+      "get" : {
+        "responses" : { },
+        "security" : [ {
+          "medislot-dev-jwt-authorizer" : [ ]
+        } ]
+      }
+    },
+    "/doctors/me" : {
+      "get" : {
+        "responses" : { },
+        "security" : [ {
+          "medislot-dev-jwt-authorizer" : [ ]
+        } ]
+      },
+      "put" : {
+        "responses" : { },
+        "security" : [ {
+          "medislot-dev-jwt-authorizer" : [ ]
+        } ]
+      }
+    },
+    "/doctors/me/availability" : {
+      "get" : {
+        "responses" : { },
+        "security" : [ {
+          "medislot-dev-jwt-authorizer" : [ ]
+        } ]
+      },
+      "put" : {
+        "responses" : { },
+        "security" : [ {
+          "medislot-dev-jwt-authorizer" : [ ]
+        } ]
+      }
+    },
+    "/doctors/me/blackouts" : {
+      "get" : {
+        "responses" : { },
+        "security" : [ {
+          "medislot-dev-jwt-authorizer" : [ ]
+        } ]
+      },
+      "post" : {
+        "responses" : { },
+        "security" : [ {
+          "medislot-dev-jwt-authorizer" : [ ]
+        } ]
+      }
+    },
+    "/doctors/me/blackouts/{id}" : {
+      "delete" : {
+        "parameters" : [ {
+          "name" : "id",
+          "in" : "path",
+          "required" : true,
+          "type" : "string"
+        } ],
+        "responses" : { },
+        "security" : [ {
+          "medislot-dev-jwt-authorizer" : [ ]
+        } ]
+      }
+    },
+    "/doctors/me/consultation-types" : {
+      "get" : {
+        "responses" : { },
+        "security" : [ {
+          "medislot-dev-jwt-authorizer" : [ ]
+        } ]
+      },
+      "post" : {
+        "responses" : { },
+        "security" : [ {
+          "medislot-dev-jwt-authorizer" : [ ]
+        } ]
+      }
+    },
+    "/doctors/me/consultation-types/{id}" : {
+      "put" : {
+        "parameters" : [ {
+          "name" : "id",
+          "in" : "path",
+          "required" : true,
+          "type" : "string"
+        } ],
+        "responses" : { },
+        "security" : [ {
+          "medislot-dev-jwt-authorizer" : [ ]
+        } ]
+      },
+      "delete" : {
+        "parameters" : [ {
+          "name" : "id",
+          "in" : "path",
+          "required" : true,
+          "type" : "string"
+        } ],
+        "responses" : { },
+        "security" : [ {
+          "medislot-dev-jwt-authorizer" : [ ]
+        } ]
+      }
+    },
+    "/doctors/me/photo" : {
+      "post" : {
+        "responses" : { },
+        "security" : [ {
+          "medislot-dev-jwt-authorizer" : [ ]
+        } ]
+      }
+    },
+    "/doctors/me/schedule" : {
+      "get" : {
+        "responses" : { },
+        "security" : [ {
+          "medislot-dev-jwt-authorizer" : [ ]
+        } ]
+      }
+    }
+  },
+  "securityDefinitions" : {
+    "medislot-dev-jwt-authorizer" : {
+      "type" : "apiKey",
+      "name" : "Authorization",
+      "in" : "header",
+      "x-amazon-apigateway-authtype" : "custom"
+    }
+  },
+  "x-amazon-apigateway-security-policy" : "TLS_1_0"
+}
