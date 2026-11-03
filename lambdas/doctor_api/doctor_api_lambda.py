@@ -162,6 +162,18 @@ def consultation(event, uid, method, item_id, correlation):
     finally:
         conn.close()
 
+def parse_db_time(value):
+    """Normalize MySQL TIME (often timedelta) before applying HH:MM validation."""
+    if hasattr(value, 'total_seconds'):
+        total = int(value.total_seconds())
+        if not 0 <= total < 24 * 3600 or total % 60:
+            raise ApiError(400, 'Invalid saved availability time')
+        return parse_time(f'{total // 3600:02d}:{(total // 60) % 60:02d}')
+    parts = str(value).split(':')
+    if len(parts) >= 2:
+        return parse_time(f'{int(parts[0]):02d}:{parts[1]}')
+    raise ApiError(400, 'Invalid saved availability time')
+
 def availability(event,uid,method,correlation,item_id=None):
     conn=db_connection()
     try:
@@ -218,8 +230,8 @@ def availability(event,uid,method,correlation,item_id=None):
                            WHERE doctor_id=%s AND day_of_week=%s""",(uid,day))
             for row in cur.fetchall():
                 if row['availability_id']==item_id: continue
-                existing_start=parse_time(str(row['start_time']))
-                existing_end=parse_time(str(row['end_time']))
+                existing_start=parse_db_time(row['start_time'])
+                existing_end=parse_db_time(row['end_time'])
                 if start<existing_end and existing_start<end:
                     raise ApiError(409,'Availability overlaps an existing time window')
             if method=='POST':
