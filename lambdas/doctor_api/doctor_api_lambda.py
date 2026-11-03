@@ -9,7 +9,7 @@ from doctor_common import *
 
 PHOTO_TYPES = {'image/jpeg': 'jpg', 'image/png': 'png', 'image/webp': 'webp'}
 CONSULTS = {'Quick Consult': (15, 1, 1), 'Standard Consult': (30, 1, 1),
-            'Detailed Consult': (60, 1, 1), 'Health Camp Session': (60, 2, 10)}
+            'Detailed Consult': (45, 1, 1), 'Health Camp Session': (60, 2, 10)}
 
 def validate_consult(data):
     name = require_text(data.get('name'), 'name', 100)
@@ -86,7 +86,20 @@ def profile(event, uid, method, correlation):
     finally:
         conn.close()
 
-def photo(event, uid, correlation):
+def photo(event, uid, correlation, method='POST'):
+    if method == 'GET':
+        conn = db_connection()
+        try:
+            with conn.cursor() as cur:
+                cur.execute('SELECT photo_key FROM doctors WHERE user_id=%s', (uid,))
+                row = cur.fetchone()
+        finally:
+            conn.close()
+        if not row or not row['photo_key']:
+            raise ApiError(404, 'No profile photo uploaded')
+        url = boto3.client('s3').generate_presigned_url('get_object',
+            Params={'Bucket':os.environ['PHOTO_BUCKET'], 'Key':row['photo_key']}, ExpiresIn=300)
+        return respond(200, {'url':url}, correlation)
     data = body_json(event)
     mime = data.get('contentType')
     if mime not in PHOTO_TYPES:
@@ -149,7 +162,7 @@ def consultation(event, uid, method, item_id, correlation):
     finally:
         conn.close()
 
-def availability(event,uid,method,correlation):
+def availability(event,uid,method,correlation,item_id=None):
     conn=db_connection()
     try:
         with conn.cursor() as cur:
@@ -157,38 +170,71 @@ def availability(event,uid,method,correlation):
                 cur.execute("""SELECT availability_id,consultation_type_id,day_of_week,start_time,end_time
                     FROM doctor_availability WHERE doctor_id=%s ORDER BY day_of_week,start_time""",(uid,))
                 return respond(200,{'items':cur.fetchall()},correlation)
+            if method=='DELETE':
+                cur.execute('DELETE FROM doctor_availability WHERE doctor_id=%s AND availability_id=%s',(uid,item_id))
+                if not cur.rowcount: raise ApiError(404,'Availability entry not found')
+                conn.commit()
+                return respond(200,{'deleted':True},correlation)
+            if method not in ('POST','PUT'):
+                raise ApiError(405,'Method not allowed')
             data=body_json(event)
-            patterns=data.get('patterns')
-            if not isinstance(patterns,list) or len(patterns)>100:
-                raise ApiError(400,'patterns must be a list of at most 100 entries')
-            normalized=[]
-            for item in patterns:
-                if not isinstance(item,dict):
-                    raise ApiError(400,'Invalid pattern')
-                day=item.get('day_of_week')
-                typ=item.get('consultation_type_id')
-                if type(day) is not int or not 0<=day<=6 or type(typ) is not int:
-                    raise ApiError(400,'Invalid weekday or consultation type')
-                start=parse_time(item.get('start_time')); end=parse_time(item.get('end_time'))
-                if start>=end:
-                    raise ApiError(400,'start_time must precede end_time')
-                normalized.append((uid,typ,day,start.strftime('%H:%M'),end.strftime('%H:%M')))
-            # Reject overlapping windows even when consultation types differ.
-            for i,a in enumerate(normalized):
-                for b in normalized[i+1:]:
-                    if a[2]==b[2] and a[3]<b[4] and b[3]<a[4]:
-                        raise ApiError(400,'Overlapping availability patterns')
-            cur.execute('SELECT consultation_type_id FROM consultation_types WHERE doctor_id=%s',(uid,))
-            owned={r['consultation_type_id'] for r in cur.fetchall()}
-            if any(x[1] not in owned for x in normalized):
-                raise ApiError(403,'Consultation type does not belong to doctor')
-            cur.execute('DELETE FROM doctor_availability WHERE doctor_id=%s',(uid,))
-            if normalized:
-                cur.executemany("""INSERT INTO doctor_availability
+            # Retain the existing bulk PUT endpoint for older clients.
+            if method=='PUT' and item_id is None:
+                patterns=data.get('patterns')
+                if not isinstance(patterns,list) or len(patterns)>100:
+                    raise ApiError(400,'patterns must be a list of at most 100 entries')
+                normalized=[]
+                for item in patterns:
+                    if not isinstance(item,dict): raise ApiError(400,'Invalid pattern')
+                    day=item.get('day_of_week'); typ=item.get('consultation_type_id')
+                    if type(day) is not int or not 0<=day<=6 or type(typ) is not int:
+                        raise ApiError(400,'Invalid weekday or consultation type')
+                    start=parse_time(item.get('start_time')); end=parse_time(item.get('end_time'))
+                    if start>=end: raise ApiError(400,'Start time must preced end time')
+                    normalized.append((uid,typ,day,start,end))
+                for i,a in enumerate(normalized):
+                    for b in normalized[i+1:]:
+                        if a[2]==b[2] and a[3]<b[4] and b[3]<a[4]:
+                            raise ApiError(409,'Overlapping availability patterns')
+                cur.execute('SELECT consultation_type_id FROM consultation_types WHERE doctor_id=%s',(uid,))
+                owned={r['consultation_type_id'] for r in cur.fetchall()}
+                if any(x[1] not in owned for x in normalized):
+                    raise ApiError(403,'Consultation type does not belong to doctor')
+                cur.execute('DELETE FROM doctor_availability WHERE doctor_id=%s',(uid,))
+                if normalized:
+                    cur.executemany('''INSERT INTO doctor_availability
+                      (doctor_id,consultation_type_id,day_of_week,start_time,end_time)
+                      VALUES (%s,%s,%s,%s,%s)''',normalized)
+                conn.commit()
+                return respond(200,{'updated':len(normalized)},correlation)
+            day=data.get('day_of_week'); typ=data.get('consultation_type_id')
+            if type(day) is not int or not 0<=day<=6 or type(typ) is not int:
+                raise ApiError(400,'Invalid weekday or consultation type')
+            start=parse_time(data.get('start_time')); end=parse_time(data.get('end_time'))
+            if start>=end: raise ApiError(400,'Start time must precede end time')
+            cur.execute('SELECT 1 FROM consultation_types WHERE doctor_id=%s AND consultation_type_id=%s',(uid,typ))
+            if not cur.fetchone(): raise ApiError(403,'Consultation type does not belong to doctor')
+            cur.execute("""SELECT availability_id,start_time,end_time FROM doctor_availability
+                           WHERE doctor_id=%s AND day_of_week=%s""",(uid,day))
+            for row in cur.fetchall():
+                if row['availability_id']==item_id: continue
+                existing_start=parse_time(str(row['start_time']))
+                existing_end=parse_time(str(row['end_time']))
+                if start<existing_end and existing_start<end:
+                    raise ApiError(409,'Availability overlaps an existing time window')
+            if method=='POST':
+                cur.execute("""INSERT INTO doctor_availability
                    (doctor_id,consultation_type_id,day_of_week,start_time,end_time)
-                   VALUES (%s,%s,%s,%s,%s)""",normalized)
+                   VALUES (%s,%s,%s,%s,%s)""",(uid,typ,day,start,end))
+                item_id=cur.lastrowid
+            else:
+                cur.execute("""UPDATE doctor_availability SET consultation_type_id=%s,
+                    day_of_week=%s,start_time=%s,end_time=%s
+                    WHERE doctor_id=%s AND availability_id=%s""",(typ,day,start,end,uid,item_id))
+                if not cur.rowcount: raise ApiError(404,'Availability entry not found')
             conn.commit()
-            return respond(200,{'updated':len(normalized),'materialisation':'Next scheduled run or manual invocation'},correlation)
+            return respond(201 if method=='POST' else 200,
+                {'availabilityId':item_id,'materialisation':'Next scheduled run or manual invocation'},correlation)
     except Exception:
         conn.rollback()
         raise
@@ -271,12 +317,12 @@ def lambda_handler(event,context):
             item_id=int(raw_id)
         if resource=='/doctors/me':
             return profile(event,uid,method,correlation)
-        if resource=='/doctors/me/photo' and method=='POST':
-            return photo(event,uid,correlation)
+        if resource=='/doctors/me/photo' and method in ('POST','GET'):
+            return photo(event,uid,correlation,method)
         if resource.startswith('/doctors/me/consultation-types'):
             return consultation(event,uid,method,item_id,correlation)
-        if resource=='/doctors/me/availability':
-            return availability(event,uid,method,correlation)
+        if resource.startswith('/doctors/me/availability'):
+            return availability(event,uid,method,correlation,item_id)
         if resource.startswith('/doctors/me/blackouts'):
             return blackouts(event,uid,method,item_id,correlation)
         if resource=='/doctors/me/schedule' and method=='GET':

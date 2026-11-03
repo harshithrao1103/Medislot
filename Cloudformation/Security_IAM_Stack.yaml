@@ -694,7 +694,7 @@ Resources:
                     kms:ViaService: !Sub secretsmanager.${AWS::Region}.amazonaws.com
               - Sid: ProfilePhotoUpload
                 Effect: Allow
-                Action: [s3:PutObject]
+                Action: [s3:PutObject, s3:GetObject]
                 Resource: !Sub arn:${AWS::Partition}:s3:::medislot-${Environment}-profile-photos-${AWS::AccountId}-${AWS::Region}/*
               - Sid: ReadSlotInventory
                 Effect: Allow

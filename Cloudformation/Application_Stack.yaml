@@ -834,6 +834,12 @@ Resources:
       RestApiId: !Ref AuthRestApi
       ParentId: !Ref DoctorMe
       PathPart: availability
+  DoctorAvailabilityId:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      RestApiId: !Ref AuthRestApi
+      ParentId: !Ref DoctorAvailability
+      PathPart: '{id}'
   DoctorBlackouts:
     Type: AWS::ApiGateway::Resource
     Properties:
@@ -954,6 +960,54 @@ Resources:
       RestApiId: !Ref AuthRestApi
       ResourceId: !Ref DoctorAvailability
       HttpMethod: PUT
+      AuthorizationType: CUSTOM
+      AuthorizerId: !Ref JwtAuthorizer
+      Integration:
+        Type: AWS_PROXY
+        IntegrationHttpMethod: POST
+        Uri: !Sub arn:${AWS::Partition}:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${DoctorApiLambda.Arn}/invocations
+  DoctorPhotoGet:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref AuthRestApi
+      ResourceId: !Ref DoctorPhoto
+      HttpMethod: GET
+      AuthorizationType: CUSTOM
+      AuthorizerId: !Ref JwtAuthorizer
+      Integration:
+        Type: AWS_PROXY
+        IntegrationHttpMethod: POST
+        Uri: !Sub arn:${AWS::Partition}:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${DoctorApiLambda.Arn}/invocations
+  DoctorAvailabilityPost:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref AuthRestApi
+      ResourceId: !Ref DoctorAvailability
+      HttpMethod: POST
+      AuthorizationType: CUSTOM
+      AuthorizerId: !Ref JwtAuthorizer
+      Integration:
+        Type: AWS_PROXY
+        IntegrationHttpMethod: POST
+        Uri: !Sub arn:${AWS::Partition}:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${DoctorApiLambda.Arn}/invocations
+  DoctorAvailabilityEntryPut:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref AuthRestApi
+      ResourceId: !Ref DoctorAvailabilityId
+      HttpMethod: PUT
+      AuthorizationType: CUSTOM
+      AuthorizerId: !Ref JwtAuthorizer
+      Integration:
+        Type: AWS_PROXY
+        IntegrationHttpMethod: POST
+        Uri: !Sub arn:${AWS::Partition}:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${DoctorApiLambda.Arn}/invocations
+  DoctorAvailabilityEntryDelete:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref AuthRestApi
+      ResourceId: !Ref DoctorAvailabilityId
+      HttpMethod: DELETE
       AuthorizationType: CUSTOM
       AuthorizerId: !Ref JwtAuthorizer
       Integration:
@@ -1112,12 +1166,16 @@ Resources:
       - DoctorMeGet
       - DoctorMePut
       - DoctorPhotoPost
+      - DoctorPhotoGet
       - DoctorConsultGet
       - DoctorConsultPost
       - DoctorConsultPut
       - DoctorConsultDelete
       - DoctorAvailabilityGet
       - DoctorAvailabilityPut
+      - DoctorAvailabilityPost
+      - DoctorAvailabilityEntryPut
+      - DoctorAvailabilityEntryDelete
       - DoctorBlackoutsGet
       - DoctorBlackoutsPost
       - DoctorBlackoutsDelete

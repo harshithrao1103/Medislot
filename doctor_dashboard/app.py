@@ -3,30 +3,62 @@ import os
 import json
 import secrets
 from functools import wraps
-from datetime import date
+from datetime import date, datetime, timezone, timedelta
 from urllib.parse import urlencode
 import requests
-from flask import Flask, render_template, request, redirect, session, url_for, flash
+from flask import Flask, render_template, request, redirect, session, url_for, flash, Response
 from flask_session import Session
 
 app = Flask(__name__)
 app.config.update(SECRET_KEY=os.environ['FLASK_SECRET_KEY'], SESSION_TYPE='filesystem',
-                  SESSION_FILE_DIR='/var/lib/medislot/sessions', SESSION_PERMANENT=False,
+                  SESSION_FILE_DIR='/var/lib/medislot/sessions', SESSION_PERMANENT=True, PERMANENT_SESSION_LIFETIME=timedelta(days=7),
                   SESSION_USE_SIGNER=True, SESSION_COOKIE_HTTPONLY=True,
                   SESSION_COOKIE_SAMESITE='Lax', SESSION_COOKIE_SECURE=os.getenv('COOKIE_SECURE','false')=='true')
 Session(app)
 API = os.environ['MEDISLOT_API_BASE_URL'].rstrip('/')
 
+def refresh_access():
+    token = session.get('refresh_token')
+    if not token:
+        return False
+    try:
+        r = requests.post(API + '/auth/refresh', json={'refreshToken': token}, timeout=15)
+        if not r.ok:
+            if r.status_code in (400, 401, 403):
+                session.clear()
+            return False
+        data = r.json()
+        if not data.get('accessToken'):
+            return False
+        session['access_token'] = data['accessToken']
+        session['access_expires_at'] = int(data.get('expiresAt', 0))
+        session['refresh_expires_at'] = int(data.get('refreshExpiresAt', session.get('refresh_expires_at', 0)))
+        return True
+    except (requests.RequestException, ValueError, TypeError):
+        return False
+
 def api(method, path, **kwargs):
-    headers = kwargs.pop('headers', {})
+    headers = kwargs.pop('headers', {}).copy()
+    authenticated = bool(session.get('role') == 'doctor' and session.get('refresh_token'))
+    if authenticated and (not session.get('access_token') or
+                          int(session.get('access_expires_at') or 0) <= int(datetime.now(timezone.utc).timestamp()) + 60):
+        refresh_access()
     if session.get('access_token'):
         headers['Authorization'] = 'Bearer ' + session['access_token']
-    return requests.request(method, API + path, headers=headers, timeout=15, **kwargs)
+    r = requests.request(method, API + path, headers=headers, timeout=15, **kwargs)
+    if r.status_code == 401 and authenticated and path != '/auth/refresh' and refresh_access():
+        headers['Authorization'] = 'Bearer ' + session['access_token']
+        r = requests.request(method, API + path, headers=headers, timeout=15, **kwargs)
+    return r
 
 def protected(fn):
     @wraps(fn)
     def inner(*args, **kwargs):
-        if session.get('role') != 'doctor' or not session.get('access_token'):
+        if session.get('role') != 'doctor' or not session.get('refresh_token'):
+            return redirect(url_for('login'))
+        if session.get('refresh_expires_at') and int(session['refresh_expires_at']) <= int(datetime.now(timezone.utc).timestamp()):
+            session.clear()
+            flash('Your refresh token has expired. Please sign in again.')
             return redirect(url_for('login'))
         return fn(*args, **kwargs)
     return inner
@@ -44,19 +76,45 @@ def check_csrf():
 
 @app.route('/')
 def index():
-    return redirect(url_for('profile') if session.get('role')=='doctor' else url_for('login'))
+    return redirect(url_for('profile') if session.get('role')=='doctor' and session.get('refresh_token') else url_for('welcome'))
+
+@app.route('/doctor/welcome')
+def welcome():
+    if session.get('role') == 'doctor' and session.get('refresh_token'):
+        return redirect(url_for('profile'))
+    return render_template('welcome.html')
+
+@app.route('/doctor/register', methods=['GET', 'POST'])
+def register():
+    if request.method == 'POST':
+        try:
+            payload = {k: request.form.get(k, '').strip() for k in
+                       ('name','email','password','licence_number','specialization','qualifications',
+                        'hospital_name','clinic_address','city','timezone')}
+            payload['experience_years'] = int(request.form['experience_years'])
+            payload['languages'] = [v.strip() for v in request.form.get('languages','').split(',') if v.strip()]
+            r = requests.post(API + '/auth/doctors/register', json=payload, timeout=15)
+            if r.ok:
+                flash('Registration successful. Please sign in to continue.')
+                return redirect(url_for('login'))
+            flash(api_error(r))
+        except (ValueError, requests.RequestException):
+            flash('Please check your registration details or try again later.')
+    return render_template('register.html')
 
 @app.route('/doctor/login', methods=['GET','POST'])
 def login():
     if request.method=='POST':
         try:
-            r=api('POST','/auth/doctors/login',json={'email':request.form['email'],'password':request.form['password']})
+            r=requests.post(API + '/auth/doctors/login',json={'email':request.form['email'],'password':request.form['password']},timeout=15)
             data=r.json()
             if r.ok:
                 session.clear()
                 session['access_token']=data.get('accessToken') or data.get('access_token')
                 session['refresh_token']=data.get('refreshToken') or data.get('refresh_token')
-                if not session['access_token']:
+                session['access_expires_at']=data.get('expiresAt',0)
+                session['refresh_expires_at']=data.get('refreshExpiresAt',0)
+                if not session['access_token'] or not session['refresh_token']:
                     flash('Login response did not include access token')
                 else:
                     session['role']='doctor'
@@ -114,7 +172,7 @@ def page_post(method, path, payload):
 @protected
 def profile():
     if request.method=='POST':
-        payload={key:request.form[key] for key in ('name','specialization','qualifications','hospital_name','clinic_address','city')}
+        payload={key:request.form[key] for key in ('name','specialization','qualifications','hospital_name','clinic_address','city','timezone')}
         try:
             payload['experience_years']=int(request.form['experience_years'])
         except (ValueError, KeyError):
@@ -135,8 +193,14 @@ def consultations():
             page_post('DELETE','/doctors/me/consultation-types/'+request.form['delete_id'],{})
         else:
             try:
-                payload={'name':request.form['name'],'duration_minutes':int(request.form['duration_minutes']),
-                         'fee':request.form['fee'],'capacity':int(request.form['capacity'])}
+                presets={'Quick Consult':(15,1,1),'Standard Consult':(30,1,1),
+                         'Detailed Consult':(45,1,1),'Health Camp Session':(60,2,10)}
+                name=request.form['name']
+                duration,low,high=presets[name]
+                capacity=int(request.form.get('capacity',1)) if low != high else low
+                if not low <= capacity <= high: raise ValueError('Invalid capacity')
+                payload={'name':name,'duration_minutes':duration,
+                         'fee':request.form['fee'],'capacity':capacity}
             except (ValueError, KeyError):
                 flash('Please enter valid consultation details')
                 return redirect(url_for('consultations'))
@@ -150,14 +214,23 @@ def consultations():
 @protected
 def availability():
     if request.method=='POST':
-        try:patterns=json.loads(request.form['patterns'])
-        except ValueError:
-            flash('Invalid JSON availability patterns')
-            return redirect(url_for('availability'))
-        page_post('PUT','/doctors/me/availability',{'patterns':patterns})
+        try:
+            if request.form.get('delete_id'):
+                page_post('DELETE','/doctors/me/availability/'+request.form['delete_id'],{})
+            else:
+                item={'consultation_type_id':int(request.form['consultation_type_id']),
+                      'day_of_week':int(request.form['day_of_week']),
+                      'start_time':request.form['start_time'], 'end_time':request.form['end_time']}
+                item_id=request.form.get('item_id')
+                page_post('PUT' if item_id else 'POST', '/doctors/me/availability'+('/'+item_id if item_id else ''),item)
+        except (ValueError, KeyError):
+            flash('Please enter valid availability details')
         return redirect(url_for('availability'))
     data=page_get('/doctors/me/availability')
-    return render_template('availability.html',patterns=json.dumps((data or {}).get('items',[]),indent=2,default=str))
+    consults=page_get('/doctors/me/consultation-types')
+    if data is None or consults is None: return redirect(url_for('login'))
+    return render_template('availability.html',items=(data or {}).get('items',[]),
+                           consultations=(consults or {}).get('items',[]))
 
 @app.route('/doctor/blackouts',methods=['GET','POST'])
 @protected
@@ -182,7 +255,9 @@ def schedule():
         flash('Invalid schedule date')
         day = date.today().isoformat()
     data=page_get('/doctors/me/schedule?' + urlencode({'date': day}))
-    return render_template('schedule.html',data=data or {},day=day)
+    consults=page_get('/doctors/me/consultation-types')
+    names={str(x['consultation_type_id']):x['name'] for x in (consults or {}).get('items',[])}
+    return render_template('schedule.html',data=data or {},day=day,consultation_names=names)
 
 @app.route('/doctor/photo', methods=['POST'])
 @protected
@@ -206,3 +281,23 @@ def upload_photo():
     except (requests.RequestException,KeyError):
         flash('Profile photo upload failed')
     return redirect(url_for('profile'))
+
+@app.route('/doctor/photo/view')
+@protected
+def view_photo():
+    try:
+        r=api('GET','/doctors/me/photo')
+        if not r.ok:
+            return '', 404
+        url=r.json().get('url')
+        if not url:
+            return '', 404
+        image=requests.get(url,timeout=15,stream=True)
+        image.raise_for_status()
+        content=image.content
+        if len(content)>5*1024*1024:
+            return '', 413
+        return Response(content,content_type=image.headers.get('Content-Type','image/jpeg'),
+                        headers={'Cache-Control':'private, max-age=120','X-Content-Type-Options':'nosniff'})
+    except (requests.RequestException,ValueError):
+        return '', 404
