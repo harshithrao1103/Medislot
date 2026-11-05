@@ -21,7 +21,6 @@
         <!-- Table Headers -->
         <thead>
             <tr>
-                <th>ID</th>
                 <th>Type</th>
                 <th>Minutes</th>
                 <th>Fee</th>
@@ -37,11 +36,6 @@
             {% for item in items %}
 
             <tr>
-
-                <!-- Consultation ID -->
-                <td>
-                    {{ item.consultation_type_id }}
-                </td>
 
                 <!-- Consultation Name -->
                 <td>
@@ -64,13 +58,18 @@
                 </td>
 
 
-                <!-- ========================================= -->
-                <!-- 3. DELETE CONSULTATION ACTION             -->
-                <!-- ========================================= -->
-
+                <!-- Edit populates the form below; the database ID stays internal. -->
                 <td>
+                    <button
+                        type="button"
+                        class="edit-consultation"
+                        data-id="{{ item.consultation_type_id }}"
+                        data-name="{{ item.name }}"
+                        data-fee="{{ item.fee }}"
+                        data-capacity="{{ item.capacity }}"
+                    >Edit</button>
 
-                    <form method="post">
+                    <form method="post" style="display:inline">
 
                         <!-- CSRF protection -->
                         <input
@@ -104,9 +103,9 @@
     <!-- 4. CREATE / UPDATE CONSULTATION FORM      -->
     <!-- ========================================= -->
 
-    <h3>Create / update consultation</h3>
+    <h3 id="consult-form-heading">Create consultation</h3>
 
-    <form method="post">
+    <form method="post" id="consult-form">
 
         <!-- CSRF token for form security -->
         <input
@@ -120,18 +119,8 @@
         <!-- 5. CONSULTATION INPUT FIELDS              -->
         <!-- ========================================= -->
 
-        <!-- Existing Consultation ID -->
-        <!-- Leave blank to create a new consultation -->
-        <label>
-            Existing ID (leave blank to create)
-
-            <input
-                name="item_id"
-                type="number"
-                min="1"
-            >
-        </label>
-
+        <!-- Internal ID used only when editing; doctors never type IDs. -->
+        <input type="hidden" name="item_id" id="consult-item-id" value="">
 
         <!-- Consultation Type Selection -->
         <label>
@@ -245,8 +234,11 @@
         <!-- 6. SAVE CONSULTATION BUTTON               -->
         <!-- ========================================= -->
 
-        <button type="submit">
-            Save consultation
+        <button type="submit" id="consult-submit">
+            Create consultation
+        </button>
+        <button type="button" id="consult-cancel" style="display:none">
+            Cancel edit
         </button>
 
     </form>
@@ -308,6 +300,41 @@
 
     }
 
+
+    const itemId = document.getElementById('consult-item-id');
+    const fee = document.querySelector('#consult-form [name="fee"]');
+    const heading = document.getElementById('consult-form-heading');
+    const submit = document.getElementById('consult-submit');
+    const cancel = document.getElementById('consult-cancel');
+
+    function resetEdit() {
+        itemId.value = '';
+        document.getElementById('consult-form').reset();
+        updateConsult();
+        heading.textContent = 'Create consultation';
+        submit.textContent = 'Create consultation';
+        cancel.style.display = 'none';
+    }
+
+    document.querySelectorAll('.edit-consultation').forEach(button => {
+        button.addEventListener('click', () => {
+            const option = Array.from(sel.options).find(o => o.value === button.dataset.name);
+            if (!option) {
+                alert('This consultation type cannot be edited using the available presets.');
+                return;
+            }
+            itemId.value = button.dataset.id;
+            sel.value = button.dataset.name;
+            updateConsult();
+            fee.value = button.dataset.fee;
+            cap.value = button.dataset.capacity;
+            heading.textContent = 'Edit consultation';
+            submit.textContent = 'Save changes';
+            cancel.style.display = '';
+            document.getElementById('consult-form-heading').scrollIntoView({behavior:'smooth'});
+        });
+    });
+    cancel.addEventListener('click', resetEdit);
 
     // Update fields when consultation type changes
     sel.addEventListener('change', updateConsult);

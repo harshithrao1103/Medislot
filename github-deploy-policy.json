@@ -1,0 +1,102 @@
+{
+    "Version":  "2012-10-17",
+    "Statement":  [
+                      {
+                          "Sid":  "ManageMediSlotStacks",
+                          "Effect":  "Allow",
+                          "Action":  [
+                                         "cloudformation:CreateStack",
+                                         "cloudformation:UpdateStack",
+                                         "cloudformation:DeleteStack",
+                                         "cloudformation:DescribeStacks",
+                                         "cloudformation:DescribeStackEvents",
+                                         "cloudformation:GetTemplate",
+                                         "cloudformation:GetTemplateSummary",
+                                         "cloudformation:ValidateTemplate",
+                                         "cloudformation:CreateChangeSet",
+                                         "cloudformation:DescribeChangeSet",
+                                         "cloudformation:ExecuteChangeSet",
+                                         "cloudformation:DeleteChangeSet",
+                                         "cloudformation:ListStacks",
+                                         "cloudformation:ListExports",
+                                         "cloudformation:DescribeStackResources"
+                                     ],
+                          "Resource":  "*"
+                      },
+                      {
+                          "Sid":  "PassCloudFormationExecutionRole",
+                          "Effect":  "Allow",
+                          "Action":  [
+                                         "iam:PassRole"
+                                     ],
+                          "Resource":  "arn:aws:iam::598886663370:role/medislot_cloudformation_execution",
+                          "Condition":  {
+                                            "StringEquals":  {
+                                                                 "iam:PassedToService":  "cloudformation.amazonaws.com"
+                                                             }
+                                        }
+                      },
+                      {
+                          "Sid":  "UploadMediSlotLambdaArtifacts",
+                          "Effect":  "Allow",
+                          "Action":  [
+                                         "s3:PutObject"
+                                     ],
+                          "Resource":  "arn:aws:s3:::medislot-dev-sam-artifacts-598886663370-us-east-1/lambda/*"
+                      },
+                      {
+                          "Sid":  "UploadMediSlotDoctorDashboard",
+                          "Effect":  "Allow",
+                          "Action":  [
+                                         "s3:PutObject"
+                                     ],
+                          "Resource":  "arn:aws:s3:::medislot-dev-sam-artifacts-598886663370-us-east-1/dashboard/*"
+                      },
+                      {
+                          "Sid":  "InvokeDBInitializationLambda",
+                          "Effect":  "Allow",
+                          "Action":  [
+                                         "lambda:InvokeFunction",
+                                         "lambda:GetFunction"
+                                     ],
+                          "Resource":  "arn:aws:lambda:us-east-1:598886663370:function:medislot-dev-db-init"
+                      },
+                      {
+                          "Sid":  "ManageJWTSigningSecret",
+                          "Effect":  "Allow",
+                          "Action":  [
+                                         "ssm:PutParameter",
+                                         "ssm:GetParameter"
+                                     ],
+                          "Resource":  "arn:aws:ssm:us-east-1:598886663370:parameter/medislot/dev/auth/jwt-signing-secret"
+                      },
+                      {
+                          "Sid":  "InvokeAuthenticationTestLambda",
+                          "Effect":  "Allow",
+                          "Action":  [
+                                         "lambda:InvokeFunction",
+                                         "lambda:GetFunction"
+                                     ],
+                          "Resource":  "arn:aws:lambda:us-east-1:598886663370:function:medislot-dev-auth-test"
+                      },
+                      {
+                          "Sid":  "DeployDoctorDashboardViaSSM",
+                          "Effect":  "Allow",
+                          "Action":  [
+                                         "ssm:SendCommand"
+                                     ],
+                          "Resource":  [
+                                           "arn:aws:ec2:us-east-1:598886663370:instance/i-04ae06f17929f6de8",
+                                           "arn:aws:ssm:us-east-1::document/AWS-RunShellScript"
+                                       ]
+                      },
+                      {
+                          "Sid":  "CheckDoctorDashboardDeployment",
+                          "Effect":  "Allow",
+                          "Action":  [
+                                         "ssm:GetCommandInvocation"
+                                     ],
+                          "Resource":  "*"
+                      }
+                  ]
+}

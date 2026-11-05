@@ -381,7 +381,10 @@ def consultations():
                 return redirect(url_for('consultations'))
 
             # Update an existing consultation or create a new one.
-            item_id=request.form.get('item_id')
+            item_id=request.form.get('item_id', '').strip()
+            if item_id and (not item_id.isdecimal() or int(item_id) < 1):
+                flash('Invalid consultation selected for editing')
+                return redirect(url_for('consultations'))
             page_post('PUT' if item_id else 'POST','/doctors/me/consultation-types'+('/'+item_id if item_id else ''),payload)
 
         return redirect(url_for('consultations'))
