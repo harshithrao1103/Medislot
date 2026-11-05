@@ -413,8 +413,14 @@ Resources:
       RestApiId: !Ref AuthRestApi
       ParentId: !GetAtt AuthRestApi.RootResourceId
       PathPart: specializations
+
   SpecializationsGet:
     Type: AWS::ApiGateway::Method
+    Metadata:
+      checkov:
+        skip:
+          - id: CKV_AWS_59
+            comment: "Public read-only specialization list required during doctor registration before login."
     Properties:
       RestApiId: !Ref AuthRestApi
       ResourceId: !Ref SpecializationsResource
