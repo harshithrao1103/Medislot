@@ -39,6 +39,29 @@ def call(path, method="POST", body=None, access=None):
 suffix = secrets.token_hex(6)
 password = "Milestone2Secure123"
 
+# Fetch valid specialization IDs from the deployed API.
+status, catalog = call("/specializations", method="GET")
+
+assert status == 200, ("specializations", status, catalog)
+
+specializations = catalog["specializations"]
+
+general_medicine = next(
+    (
+        item["specialization_id"]
+        for item in specializations
+        if item["specialization_name"] == "General Medicine"
+    ),
+    None,
+)
+
+assert general_medicine is not None, (
+    "General Medicine specialization not found"
+)
+
+print("Specializations fetched successfully")
+
+
 for role in ("doctors", "patients"):
 
     body = {
@@ -50,7 +73,7 @@ for role in ("doctors", "patients"):
     if role == "doctors":
         body.update({
             "licence_number": f"MED-2026-{secrets.randbelow(1000000):06d}",
-            "specialization": "General Medicine",
+            "specialization_id": general_medicine,
             "experience_years": 5,
             "qualifications": "MBBS, MD",
             "hospital_name": "MediSlot Test Hospital",
