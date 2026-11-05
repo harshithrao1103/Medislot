@@ -1,150 +1,41 @@
-
 {% extends 'base.html' %}
-
 {% block content %}
-
-<!-- ========================================= -->
-<!-- 1. DOCTOR DAY SCHEDULE SECTION             -->
-<!-- ========================================= -->
-
-<section>
-
-    <h2>Day schedule</h2>
-
-
-    <!-- ========================================= -->
-    <!-- 2. DATE SELECTION FORM                    -->
-    <!-- ========================================= -->
-
-    <form method="get">
-
-        <!-- Select the date to view the schedule -->
-        <label>
-            Date
-
-            <input
-                type="date"
-                name="date"
-                value="{{ day }}"
-            >
-        </label>
-
-        <!-- Submit selected date -->
-        <button type="submit">
-            View
-        </button>
-
-    </form>
-
-
-    <!-- ========================================= -->
-    <!-- 3. MATERIALISED SLOTS TABLE              -->
-    <!-- ========================================= -->
-
-    <table>
-
-        <!-- Table Headers -->
-        <thead>
-            <tr>
-                <th>UTC start</th>
-                <th>UTC end</th>
-                <th>Consultation type</th>
-                <th>Capacity</th>
-                <th>Booked</th>
-                <th>Patients</th>
-            </tr>
-        </thead>
-
-
-        <!-- ========================================= -->
-        <!-- 4. TABLE BODY: AVAILABLE SLOTS           -->
-        <!-- ========================================= -->
-
-        <tbody>
-
-            {% for slot in data.get('slots', []) %}
-
-            <tr>
-
-                <!-- Slot Start Time in UTC -->
-                <td>
-                    {{ slot.startTimeUTC }}
-                </td>
-
-
-                <!-- Slot End Time in UTC -->
-                <td>
-                    {{ slot.endTimeUTC }}
-                </td>
-
-
-                <!-- ========================================= -->
-                <!-- 5. CONSULTATION TYPE DETAILS             -->
-                <!-- ========================================= -->
-
-                <td>
-                    {{
-                        consultation_names.get(
-                            slot.consultationTypeId|string,
-                            'Unknown type'
-                        )
-                    }}
-                </td>
-
-
-                <!-- Slot Maximum Capacity -->
-                <td>
-                    {{ slot.capacity }}
-                </td>
-
-
-                <!-- Number of Booked Patients -->
-                <td>
-                    {{ slot.bookedCount }}
-                </td>
-
-
-                <!-- ========================================= -->
-                <!-- 6. PATIENT APPOINTMENT DETAILS           -->
-                <!-- ========================================= -->
-
-                <td>
-
-                    {% for a in slot.appointments %}
-
-                        <!-- Patient Name and Appointment Status -->
-                        {{ a.patient_name }} ({{ a.status }})
-
-                        <!-- Separate multiple patients with commas -->
-                        {% if not loop.last %}
-                            ,
-                        {% endif %}
-
-                    {% endfor %}
-
-                </td>
-
-            </tr>
-
-            {% endfor %}
-
-        </tbody>
-
-    </table>
-
-
-    <!-- ========================================= -->
-    <!-- 7. EMPTY SCHEDULE MESSAGE                 -->
-    <!-- ========================================= -->
-
-    {% if not data.get('slots') %}
-
-        <p>
-            No materialised slots found for this date.
-        </p>
-
-    {% endif %}
-
+<link rel="stylesheet" href="{{ url_for('static', filename='schedule.css') }}">
+<section class="calendar-panel" aria-label="Doctor appointment calendar">
+  <div class="calendar-toolbar">
+    <div class="view-switch" role="group" aria-label="Calendar view">
+      <button type="button" data-view="day">Day</button>
+      <button type="button" data-view="workweek" class="selected">Work week</button>
+      <button type="button" data-view="week">Week</button>
+      <button type="button" data-view="month">Month</button>
+    </div>
+    <div class="calendar-navigation">
+      <button type="button" class="nav-icon" id="calendar-prev" aria-label="Previous period">‹</button>
+      <button type="button" class="nav-icon" id="calendar-next" aria-label="Next period">›</button>
+      <strong id="calendar-range"></strong>
+      <input type="date" id="calendar-date" value="{{ day }}" aria-label="Jump to date">
+    </div>
+    <div class="calendar-tools">
+      <button type="button" class="calendar-today" id="calendar-today">▣ &nbsp; Today</button>
+      <a class="calendar-new" href="{{ url_for('availability') }}">＋ New availability</a>
+    </div>
+  </div>
+  <div class="calendar-key" aria-label="Slot status legend">
+    <span><i class="key-dot available"></i> Available</span>
+    <span><i class="key-dot partial"></i> Partially booked</span>
+    <span><i class="key-dot booked"></i> Fully booked</span>
+    <span class="calendar-timezone">All times in IST (Asia/Kolkata)</span>
+  </div>
+  <div id="calendar-notice" role="status" aria-live="polite"></div>
+  <div class="calendar-scroll" id="calendar-scroll">
+    <div id="calendar-grid" aria-label="Appointment schedule"></div>
+  </div>
+  <div class="calendar-footnote">Select an appointment slot to see its consultation type, time, capacity, and patient bookings. Inactive slots are not shown by the schedule API.</div>
 </section>
-
+<dialog id="slot-dialog" class="slot-dialog">
+  <div class="slot-dialog-head"><h2 id="slot-dialog-title">Slot details</h2><button type="button" id="slot-dialog-close" aria-label="Close details">✕</button></div>
+  <div id="slot-dialog-content"></div>
+</dialog>
+<script id="consultation-names" type="application/json">{{ consultation_names | tojson }}</script>
+<script src="{{ url_for('static', filename='schedule.js') }}" defer></script>
 {% endblock %}

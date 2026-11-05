@@ -496,27 +496,58 @@ def blackouts():
 @app.route('/doctor/schedule')
 @protected
 def schedule():
-    """Validate the selected date and load its slots and consultation names."""
+    """Calendar UI and authenticated, per-day slot data for lazy calendar loading."""
+    from flask import jsonify
+    from zoneinfo import ZoneInfo
 
-    # Get the selected date from the URL, or use today's date by default.
-    day=request.args.get('date',date.today().isoformat())
-
-    # Validate the date and fall back to today if it is invalid.
+    day = request.args.get('date', date.today().isoformat())
     try:
         day = date.fromisoformat(day).isoformat()
-    except ValueError:
-        flash('Invalid schedule date')
+    except (ValueError, TypeError):
+        if request.args.get('format') == 'json':
+            return jsonify({'error': 'Invalid date'}), 400
         day = date.today().isoformat()
 
-    # Fetch the doctor's schedule for the selected date.
-    data=page_get('/doctors/me/schedule?' + urlencode({'date': day}))
+    if request.args.get('format') == 'json':
+        raw = page_get('/doctors/me/schedule?' + urlencode({'date': day}))
+        if raw is None:
+            return jsonify({'error': 'Could not load schedule'}), 502
+        slots = []
+        for item in raw.get('slots', []):
+            try:
+                start = datetime.fromisoformat(item['startTimeUTC'].replace('Z', '+00:00'))
+                end = datetime.fromisoformat(item['endTimeUTC'].replace('Z', '+00:00'))
+                if start.tzinfo is None:
+                    start = start.replace(tzinfo=timezone.utc)
+                if end.tzinfo is None:
+                    end = end.replace(tzinfo=timezone.utc)
+                local_start = start.astimezone(ZoneInfo('Asia/Kolkata'))
+                local_end = end.astimezone(ZoneInfo('Asia/Kolkata'))
+                if local_start.date().isoformat() != day:
+                    continue
+                slots.append({
+                    'slotId': str(item.get('slotId', '')),
+                    'start': local_start.strftime('%H:%M'),
+                    'end': local_end.strftime('%H:%M'),
+                    'consultationTypeId': str(item.get('consultationTypeId', '')),
+                    'capacity': int(item.get('capacity', 0)),
+                    'bookedCount': int(item.get('bookedCount', 0)),
+                    'heldCount': int(item.get('heldCount', 0)),
+                    'status': str(item.get('status', 'AVAILABLE')),
+                    'appointments': [
+                        {'patient_name': str(a.get('patient_name', '')),
+                         'status': str(a.get('status', ''))}
+                        for a in item.get('appointments', [])
+                    ],
+                })
+            except (KeyError, ValueError, TypeError, OverflowError):
+                continue
+        return jsonify({'date': day, 'slots': slots})
 
-    # Fetch consultation types to display their names instead of IDs.
-    consults=page_get('/doctors/me/consultation-types')
-    names={str(x['consultation_type_id']):x['name'] for x in (consults or {}).get('items',[])}
-
-    # Render the daily schedule with slots, date, and consultation names.
-    return render_template('schedule.html',data=data or {},day=day,consultation_names=names)
+    consults = page_get('/doctors/me/consultation-types')
+    names = {str(x['consultation_type_id']): x['name']
+             for x in (consults or {}).get('items', [])}
+    return render_template('schedule.html', day=day, consultation_names=names)
 
 
 # ====================================================================

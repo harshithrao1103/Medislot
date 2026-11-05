@@ -1,0 +1,40 @@
+/* Schedule-only layout; other doctor dashboard pages retain their styling. */
+main:has(.calendar-panel){max-width:none;padding:24px clamp(16px,2vw,32px)}
+.calendar-panel{padding:0;overflow:hidden;border-radius:16px}
+.calendar-toolbar{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:16px;padding:22px 24px 16px}
+.view-switch{display:flex;align-items:center;border:1px solid #d6e0ea;border-radius:9px;overflow:hidden}
+.view-switch button{background:white;color:#4a6277;border-radius:0;border-right:1px solid #d6e0ea;padding:11px 15px;font-size:13px}
+.view-switch button:last-child{border-right:0}.view-switch button.selected{background:#117d86;color:white}
+.calendar-navigation,.calendar-tools{display:flex;align-items:center;gap:12px}
+.calendar-navigation strong{font-size:16px;color:#162e43;white-space:nowrap}
+.calendar-navigation input{margin:0;width:40px;padding:8px;border:0;color:transparent;background:transparent;cursor:pointer}
+.calendar-navigation input::-webkit-calendar-picker-indicator{opacity:.75;cursor:pointer}
+.calendar-toolbar .nav-icon{background:white;color:#1d3348;font-size:27px;padding:2px 9px;line-height:1.2}
+.calendar-today{background:white;border:1px solid #d6e0ea;color:#2c475f;padding:11px 15px}
+.calendar-new{display:inline-block;background:#117d86;color:white;border-radius:8px;padding:12px 17px;text-decoration:none;font-size:13px;font-weight:700;white-space:nowrap}
+.calendar-key{display:flex;gap:20px;align-items:center;flex-wrap:wrap;padding:0 24px 15px;font-size:12px;color:#5a7085}
+.calendar-key span{display:inline-flex;align-items:center;gap:7px}.key-dot{width:9px;height:9px;border-radius:50%;display:inline-block}
+.key-dot.available{background:#7469dd}.key-dot.partial{background:#e7a23c}.key-dot.booked{background:#168a88}
+.calendar-timezone{margin-left:auto}#calendar-notice{padding:0 24px;color:#a84b34;font-size:13px}#calendar-notice:not(:empty){padding-bottom:12px}
+.calendar-scroll{overflow:auto;max-height:72vh;border-top:1px solid #e1e8ef}.time-grid{display:grid;min-width:680px;position:relative;background:#fff}
+.time-corner,.day-header{position:sticky;top:0;z-index:5;background:#f8fafc;border-bottom:1px solid #dce5ed;height:74px}
+.time-corner{left:0;z-index:7;border-right:1px solid #e3eaf0}.day-header{border-right:1px solid #e3eaf0;padding:12px 16px}
+.day-header strong{font-size:24px;display:block;line-height:1.15}.day-header small{font-size:13px;color:#5d7286}
+.day-header.today{background:#eaf1ff;border-top:3px solid #736de6}.day-header.today strong{color:#5657d6}
+.time-label{border-right:1px solid #e1e8ef;border-bottom:1px solid #e6ecf2;color:#688097;font-size:12px;padding:8px 8px;background:#fff;position:sticky;left:0;z-index:2;text-align:right}
+.hour-cell{border-right:1px solid #e1e8ef;border-bottom:1px solid #e6ecf2;background:linear-gradient(to bottom,transparent calc(50% - 1px),#eff3f7 50%,transparent calc(50% + 1px));min-height:76px}
+.hour-cell.today{background-color:#fcfdff}
+.slot-event{position:absolute;z-index:3;min-width:0;border:0;border-left:4px solid #6c63df;border-radius:7px;background:#e9e7ff;color:#20314d;padding:7px 9px;text-align:left;overflow:hidden;display:flex;flex-direction:column;gap:3px;font-size:12px;box-shadow:0 1px 3px #293e5420;cursor:pointer}
+.slot-event strong{font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.slot-event span{font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.slot-event.partial{background:#fff1d8;border-left-color:#e7a23c}.slot-event.booked{background:#dff5f2;border-left-color:#168a88}
+.slot-event:hover{filter:brightness(.97);outline:2px solid #93a5dd;outline-offset:1px}
+.month-grid{display:grid;grid-template-columns:repeat(7,minmax(105px,1fr));min-width:735px}
+.month-head{padding:12px;text-align:center;background:#f8fafc;font-size:12px;font-weight:700;color:#60778d;border-bottom:1px solid #e0e8ef}
+.month-cell{min-height:118px;padding:9px;border-right:1px solid #e0e8ef;border-bottom:1px solid #e0e8ef;min-width:0}
+.month-cell.outside{background:#f8fafc}.month-cell.today{background:#f0f5ff}.month-date{display:block;font-weight:700;font-size:13px;color:#24415a;margin-bottom:7px}
+.month-event{display:block;width:100%;text-align:left;padding:5px 6px;margin:4px 0;border-radius:5px;background:#e9e7ff;color:#293b65;border-left:3px solid #6c63df;font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.month-event.partial{background:#fff1d8;border-left-color:#e7a23c}.month-event.booked{background:#dff5f2;border-left-color:#168a88}
+.calendar-footnote{padding:15px 24px;color:#71869a;font-size:12px;border-top:1px solid #e1e8ef}
+.slot-dialog{border:1px solid #dfe7ee;border-radius:15px;box-shadow:0 20px 60px #09243a35;max-width:min(450px,calc(100vw - 30px));width:100%;padding:24px;color:#1c3348}
+.slot-dialog::backdrop{background:#0b243c80}.slot-dialog-head{display:flex;align-items:center;justify-content:space-between;gap:10px}.slot-dialog-head h2{margin:0}.slot-dialog-head button{background:#e7f1f5;color:#23455c;padding:8px 11px}.slot-dialog p{margin:12px 0}.slot-dialog ul{padding-left:20px}
+@media(max-width:1000px){.calendar-toolbar{align-items:flex-start}.calendar-navigation{order:3;width:100%;justify-content:center}.calendar-timezone{margin-left:0}}
