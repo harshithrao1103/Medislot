@@ -18,43 +18,123 @@ CONSULTS = {'Quick Consult': (15, 1, 1), 'Standard Consult': (30, 1, 1),
 # CONSULTATION TYPE VALIDATION
 # ============================================================
 # Validate preset consultation name, fixed duration, capacity bounds, and nonnegative fee.
+
+
+
 def validate_consult(data):
+
+    # 1. Validate the consultation name (maximum 100 characters).
     name = require_text(data.get('name'), 'name', 100)
-    # Reject custom consultation names outside the supported presets.
+
+    # 2. Check whether the consultation type is supported.
     if name not in CONSULTS:
         raise ApiError(400, 'Unsupported consultation type')
+
+    # 3. Get the fixed duration and allowed capacity range.
     duration, minimum, maximum = CONSULTS[name]
-    if type(data.get('duration_minutes')) is not int or data['duration_minutes'] != duration:
-        raise ApiError(400, f'{name} duration must be {duration} minutes')
+
+    # 4. Validate the consultation duration.
+    if (
+        type(data.get('duration_minutes')) is not int
+        or data['duration_minutes'] != duration
+    ):
+        raise ApiError(
+            400,
+            f'{name} duration must be {duration} minutes'
+        )
+
+    # 5. Validate the consultation capacity.
     capacity = data.get('capacity')
-    if type(capacity) is not int or not minimum <= capacity <= maximum:
-        raise ApiError(400, f'{name} capacity must be {minimum}-{maximum}')
+
+    if (
+        type(capacity) is not int
+        or not minimum <= capacity <= maximum
+    ):
+        raise ApiError(
+            400,
+            f'{name} capacity must be {minimum}-{maximum}'
+        )
+
+    # 6. Validate the consultation fee.
     try:
-        # Use Decimal for accurate monetary validation.
+        # Decimal is used for accurate monetary calculations.
         fee = Decimal(str(data.get('fee')))
-        if not fee.is_finite() or fee < 0 or fee > Decimal('99999999.99') or fee.as_tuple().exponent < -2:
+
+        # Fee must be:
+        # - A finite number
+        # - Nonnegative
+        # - Not greater than 99999999.99
+        # - Limited to two decimal places
+        if (
+            not fee.is_finite()
+            or fee < 0
+            or fee > Decimal('99999999.99')
+            or fee.as_tuple().exponent < -2
+        ):
             raise ValueError()
+
+    # 7. Handle invalid fee values.
     except (InvalidOperation, ValueError, TypeError):
-        raise ApiError(400, 'fee must be a nonnegative amount with up to two decimals')
+        raise ApiError(
+            400,
+            'fee must be a nonnegative amount with up to two decimals'
+        )
+
+    # 8. Return validated consultation details.
     return name, duration, str(fee), capacity
+
+
 
 
 # ============================================================
 # DOCTOR PROFILE LOOKUP
 # ============================================================
-# Read the authenticated doctor profile from MySQL and decode stored languages.
+
 def fetch_doctor(cur, uid):
-    cur.execute("""SELECT u.user_id,u.name,u.email,d.licence_number,d.specialization,
-       d.experience_years,d.qualifications,d.hospital_name,d.clinic_address,d.city,
-       d.languages,d.timezone,d.photo_key FROM users u JOIN doctors d ON d.user_id=u.user_id
-       WHERE u.user_id=%s""", (uid,))
+
+    # 1. Retrieve doctor details from the users and doctors tables.
+    # JOIN combines both tables using the doctor's user_id.
+    cur.execute(
+        """
+        SELECT
+            u.user_id,
+            u.name,
+            u.email,
+            d.licence_number,
+            d.specialization_id,
+            s.specialization_name AS specialization,
+            d.experience_years,
+            d.qualifications,
+            d.hospital_name,
+            d.clinic_address,
+            d.city,
+            d.languages,
+            d.timezone,
+            d.photo_key
+        FROM users u
+        JOIN doctors d
+            ON d.user_id = u.user_id
+        JOIN specializations s ON s.specialization_id = d.specialization_id
+        WHERE u.user_id = %s
+        """,
+        (uid,)
+    )
+
+    # 2. Fetch the first matching doctor record.
     item = cur.fetchone()
+
+    # 3. Return a 404 error if the doctor profile does not exist.
     if not item:
         raise ApiError(404, 'Doctor profile not found')
-    # MySQL may return JSON language arrays as strings.
+
+    # 4. Convert the stored languages JSON string into a Python list.
+    # Example: '["English", "Hindi"]' -> ["English", "Hindi"]
     if isinstance(item['languages'], str):
         item['languages'] = json.loads(item['languages'])
+
+    # 5. Return the complete doctor profile.
     return item
+
 
 
 # ============================================================
@@ -70,15 +150,23 @@ def profile(event, uid, method, correlation):
                 return respond(200, fetch_doctor(cur, uid), correlation)
             data = body_json(event)
             # Only explicitly permitted profile fields can be updated.
-            allowed = {'name','specialization','experience_years','qualifications',
+            allowed = {'name','specialization_id','experience_years','qualifications',
                        'hospital_name','clinic_address','city','languages','timezone'}
             if not data or set(data) - allowed:
                 raise ApiError(400, 'Unsupported or empty profile update')
             fields = {}
-            for field, limit in [('name',150),('specialization',100),('qualifications',65535),
+            for field, limit in [('name',150),('qualifications',65535),
                                  ('hospital_name',200),('clinic_address',500),('city',100)]:
                 if field in data:
                     fields[field] = require_text(data[field], field, limit)
+            if 'specialization_id' in data:
+                sid = data['specialization_id']
+                if type(sid) is not int or sid < 1:
+                    raise ApiError(400, 'Invalid specialization_id')
+                cur.execute('SELECT specialization_id FROM specializations WHERE specialization_id=%s', (sid,))
+                if cur.fetchone() is None:
+                    raise ApiError(400, 'Unknown specialization_id')
+                fields['specialization_id'] = sid
             if 'experience_years' in data:
                 years = data['experience_years']
                 if type(years) is not int or not 0 <= years <= 80:
@@ -110,95 +198,391 @@ def profile(event, uid, method, correlation):
         conn.close()
 
 
+
 # ============================================================
 # PROFILE PHOTO URL / UPLOAD
 # ============================================================
-# Create short-lived S3 URLs for private photo viewing and direct browser uploads.
+# GET  -> Generate a temporary URL to view the doctor's photo.
+# POST -> Generate a temporary URL and fields to upload a photo.
+#
+# Actual photos are stored in S3.
+# Only the photo_key is stored in RDS MySQL.
+# ============================================================
+
 def photo(event, uid, correlation, method='POST'):
+
+    # ========================================================
+    # 1. GET - VIEW EXISTING PROFILE PHOTO
+    # ========================================================
+
     if method == 'GET':
+
+        # 1.1 Connect to RDS MySQL.
         conn = db_connection()
+
         try:
             with conn.cursor() as cur:
-                cur.execute('SELECT photo_key FROM doctors WHERE user_id=%s', (uid,))
+
+                # 1.2 Retrieve the doctor's S3 photo key.
+                cur.execute(
+                    """
+                    SELECT photo_key
+                    FROM doctors
+                    WHERE user_id = %s
+                    """,
+                    (uid,)
+                )
+
                 row = cur.fetchone()
+
         finally:
+            # 1.3 Always close the database connection.
             conn.close()
+
+        # 1.4 Check whether the doctor has a profile photo.
         if not row or not row['photo_key']:
-            raise ApiError(404, 'No profile photo uploaded')
-        # Generate a temporary private download URL; do not expose the S3 object publicly.
-        url = boto3.client('s3').generate_presigned_url('get_object',
-            Params={'Bucket':os.environ['PHOTO_BUCKET'], 'Key':row['photo_key']}, ExpiresIn=300)
-        return respond(200, {'url':url}, correlation)
+            raise ApiError(
+                404,
+                'No profile photo uploaded'
+            )
+
+        # 1.5 Generate a temporary presigned GET URL.
+        # This allows private photo viewing for 5 minutes.
+        url = boto3.client('s3').generate_presigned_url(
+            'get_object',
+            Params={
+                'Bucket': os.environ['PHOTO_BUCKET'],
+                'Key': row['photo_key']
+            },
+            ExpiresIn=300
+        )
+
+        # 1.6 Return the photo viewing URL.
+        return respond(
+            200,
+            {'url': url},
+            correlation
+        )
+
+    # ========================================================
+    # 2. POST - PREPARE NEW PROFILE PHOTO UPLOAD
+    # ========================================================
+
+    # 2.1 Extract the JSON request body.
     data = body_json(event)
+
+    # 2.2 Get the uploaded photo's MIME type.
     mime = data.get('contentType')
+
+    # 2.3 Allow only JPEG, PNG, and WebP images.
     if mime not in PHOTO_TYPES:
-        raise ApiError(400, 'Only image/jpeg, image/png, image/webp allowed')
+        raise ApiError(
+            400,
+            'Only image/jpeg, image/png, image/webp allowed'
+        )
+
+    # ========================================================
+    # 3. VALIDATE PHOTO SIZE
+    # ========================================================
+
+    # 3.1 Read the photo size in bytes.
     size = data.get('sizeBytes')
-    if type(size) is not int or not 0 < size <= 5*1024*1024:
-        raise ApiError(400, 'sizeBytes must be between 1 and 5242880')
+
+    # 3.2 Allow images between 1 byte and 5 MB.
+    if type(size) is not int or not 0 < size <= 5 * 1024 * 1024:
+        raise ApiError(
+            400,
+            'sizeBytes must be between 1 and 5242880'
+        )
+
+    # ========================================================
+    # 4. GENERATE UNIQUE S3 OBJECT KEY
+    # ========================================================
+
+    # 4.1 Get the S3 bucket name from environment variables.
     bucket = os.environ['PHOTO_BUCKET']
-    key = f'doctors/{uid}/{uuid.uuid4().hex}.{PHOTO_TYPES[mime]}'
+
+    # 4.2 Generate a unique filename using UUID.
+    # Example: doctors/101/abc123.png
+    key = (
+        f'doctors/{uid}/'
+        f'{uuid.uuid4().hex}.{PHOTO_TYPES[mime]}'
+    )
+
+    # 4.3 Create the S3 client.
     s3 = boto3.client('s3')
-    # The client uploads directly to S3 using the returned form fields.
-    # Presigned POST enforces content length and MIME; bytes never pass through API Gateway.
-    upload = s3.generate_presigned_post(Bucket=bucket, Key=key,
-        Fields={'Content-Type': mime}, Conditions=[{'Content-Type': mime},
-        ['content-length-range',1,5*1024*1024]], ExpiresIn=300)
+
+    # ========================================================
+    # 5. GENERATE S3 PRESIGNED POST
+    # ========================================================
+
+    # 5.1 Generate temporary permission for direct S3 upload.
+    # The browser uploads the image directly to S3.
+    # Image bytes do not pass through API Gateway or Lambda.
+    upload = s3.generate_presigned_post(
+        Bucket=bucket,
+        Key=key,
+        Fields={
+            'Content-Type': mime
+        },
+        Conditions=[
+            {'Content-Type': mime},
+            ['content-length-range', 1, 5 * 1024 * 1024]
+        ],
+        ExpiresIn=300
+    )
+
+    # ========================================================
+    # 6. UPDATE PHOTO KEY IN RDS MYSQL
+    # ========================================================
+
+    # 6.1 Connect to RDS MySQL.
     conn = db_connection()
+
     try:
         with conn.cursor() as cur:
-            cur.execute('UPDATE doctors SET photo_key=%s WHERE user_id=%s', (key,uid))
+
+            # 6.2 Save the generated S3 photo key.
+            # The actual photo is stored in S3, not RDS.
+            cur.execute(
+                """
+                UPDATE doctors
+                SET photo_key = %s
+                WHERE user_id = %s
+                """,
+                (key, uid)
+            )
+
+            # 6.3 Check whether the doctor record exists.
             if not cur.rowcount:
-                raise ApiError(404,'Doctor not found')
+                raise ApiError(
+                    404,
+                    'Doctor not found'
+                )
+
+        # 6.4 Commit the photo key update to RDS.
         conn.commit()
+
     except Exception:
+
+        # 6.5 Roll back uncommitted changes if an error occurs.
         conn.rollback()
         raise
+
     finally:
+
+        # 6.6 Always close the database connection.
         conn.close()
-    return respond(200, {'upload':upload,'photoKey':key,'expiresIn':300,
-        'note':'Upload using multipart/form-data with the returned fields; photo is private.'}, correlation)
+
+    # ========================================================
+    # 7. RETURN PRESIGNED UPLOAD DETAILS
+    # ========================================================
+
+    # 7.1 Return the upload URL, form fields, and photo key.
+    # The client must then upload the image directly to S3.
+    return respond(
+        200,
+        {
+            'upload': upload,
+            'photoKey': key,
+            'expiresIn': 300,
+            'note': (
+                'Upload using multipart/form-data with '
+                'the returned fields; photo is private.'
+            )
+        },
+        correlation
+    )
+
+
 
 
 # ============================================================
 # CONSULTATION TYPE CRUD
 # ============================================================
-# List, create, update, and delete consultation types owned by the doctor.
+# GET    -> List consultation types.
+# POST   -> Create a new consultation type.
+# PUT    -> Update an existing consultation type.
+# DELETE -> Delete a consultation type.
+#
+# All operations are restricted to the authenticated doctor.
+# Data is stored in the RDS MySQL consultation_types table.
+# ============================================================
+
 def consultation(event, uid, method, item_id, correlation):
-    conn=db_connection()
+
+    # ========================================================
+    # 1. ESTABLISH DATABASE CONNECTION
+    # ========================================================
+
+    conn = db_connection()
+
     try:
         with conn.cursor() as cur:
-            # GET lists records for the authenticated doctor only.
-            if method=='GET':
-                cur.execute('SELECT * FROM consultation_types WHERE doctor_id=%s ORDER BY consultation_type_id', (uid,))
-                return respond(200, {'items':cur.fetchall()}, correlation)
-            # Validate the preset before inserting or updating a consultation.
-            if method in ('POST','PUT'):
-                data=body_json(event)
-                name,duration,fee,capacity=validate_consult(data)
-                if method=='POST':
-                    cur.execute('INSERT INTO consultation_types (doctor_id,name,duration_minutes,fee,capacity) VALUES (%s,%s,%s,%s,%s)',
-                                (uid,name,duration,fee,capacity))
-                    item_id=cur.lastrowid
+
+            # =================================================
+            # 2. GET - FETCH CONSULTATION TYPES
+            # =================================================
+
+            if method == 'GET':
+
+                # 2.1 Fetch consultation types belonging
+                # to the authenticated doctor.
+                cur.execute(
+                    """
+                    SELECT *
+                    FROM consultation_types
+                    WHERE doctor_id = %s
+                    ORDER BY consultation_type_id
+                    """,
+                    (uid,)
+                )
+
+                # 2.2 Return all matching consultation types.
+                return respond(
+                    200,
+                    {'items': cur.fetchall()},
+                    correlation
+                )
+
+            # =================================================
+            # 3. POST / PUT - CREATE OR UPDATE CONSULTATION
+            # =================================================
+
+            if method in ('POST', 'PUT'):
+
+                # 3.1 Extract the JSON request body.
+                data = body_json(event)
+
+                # 3.2 Validate consultation name, duration,
+                # fee, and capacity.
+                name, duration, fee, capacity = validate_consult(
+                    data
+                )
+
+                # =============================================
+                # 4. POST - CREATE CONSULTATION TYPE
+                # =============================================
+
+                if method == 'POST':
+
+                    # 4.1 Insert a new consultation type into RDS.
+                    cur.execute(
+                        """
+                        INSERT INTO consultation_types (
+                            doctor_id,
+                            name,
+                            duration_minutes,
+                            fee,
+                            capacity
+                        )
+                        VALUES (%s, %s, %s, %s, %s)
+                        """,
+                        (uid, name, duration, fee, capacity)
+                    )
+
+                    # 4.2 Retrieve the newly generated ID.
+                    item_id = cur.lastrowid
+
+                # =============================================
+                # 5. PUT - UPDATE CONSULTATION TYPE
+                # =============================================
+
                 else:
-                    cur.execute('UPDATE consultation_types SET name=%s,duration_minutes=%s,fee=%s,capacity=%s WHERE doctor_id=%s AND consultation_type_id=%s',
-                                (name,duration,fee,capacity,uid,item_id))
+
+                    # 5.1 Update the consultation type
+                    # belonging to the authenticated doctor.
+                    cur.execute(
+                        """
+                        UPDATE consultation_types
+                        SET
+                            name = %s,
+                            duration_minutes = %s,
+                            fee = %s,
+                            capacity = %s
+                        WHERE
+                            doctor_id = %s
+                            AND consultation_type_id = %s
+                        """,
+                        (
+                            name,
+                            duration,
+                            fee,
+                            capacity,
+                            uid,
+                            item_id
+                        )
+                    )
+
+                    # 5.2 Return 404 if no matching record
+                    # was updated.
                     if not cur.rowcount:
-                        raise ApiError(404,'Consultation type not found')
+                        raise ApiError(
+                            404,
+                            'Consultation type not found'
+                        )
+
+                # 5.3 Commit the INSERT or UPDATE to RDS.
                 conn.commit()
-                return respond(200 if method=='PUT' else 201, {'consultationTypeId':item_id},correlation)
-            # Delete only records belonging to the authenticated doctor.
-            if method=='DELETE':
-                cur.execute('DELETE FROM consultation_types WHERE doctor_id=%s AND consultation_type_id=%s',(uid,item_id))
+
+                # 5.4 Return the consultation type ID.
+                # POST -> 201 Created
+                # PUT  -> 200 OK
+                return respond(
+                    200 if method == 'PUT' else 201,
+                    {'consultationTypeId': item_id},
+                    correlation
+                )
+
+            # =================================================
+            # 6. DELETE - REMOVE CONSULTATION TYPE
+            # =================================================
+
+            if method == 'DELETE':
+
+                # 6.1 Delete only the consultation type
+                # belonging to the authenticated doctor.
+                cur.execute(
+                    """
+                    DELETE FROM consultation_types
+                    WHERE doctor_id = %s
+                      AND consultation_type_id = %s
+                    """,
+                    (uid, item_id)
+                )
+
+                # 6.2 Return 404 if the record was not found.
                 if not cur.rowcount:
-                    raise ApiError(404,'Consultation type not found')
+                    raise ApiError(
+                        404,
+                        'Consultation type not found'
+                    )
+
+                # 6.3 Commit the deletion to RDS.
                 conn.commit()
-                return respond(200,{'deleted':True},correlation)
+
+                # 6.4 Return successful deletion response.
+                return respond(
+                    200,
+                    {'deleted': True},
+                    correlation
+                )
+
+    # ========================================================
+    # 7. ERROR HANDLING AND CONNECTION CLEANUP
+    # ========================================================
+
     except Exception:
+
+        # 7.1 Roll back uncommitted database changes.
         conn.rollback()
         raise
+
     finally:
+
+        # 7.2 Close the RDS MySQL connection.
         conn.close()
+
 
 
 # ============================================================
@@ -219,164 +603,846 @@ def parse_db_time(value):
     raise ApiError(400, 'Invalid saved availability time')
 
 
+
 # ============================================================
 # WEEKLY AVAILABILITY CRUD
 # ============================================================
-# Validate ownership and time overlaps before changing weekly availability.
-def availability(event,uid,method,correlation,item_id=None):
-    conn=db_connection()
+# GET    -> Fetch the doctor's weekly availability.
+# POST   -> Create a new availability entry.
+# PUT    -> Update an entry or replace the entire weekly schedule.
+# DELETE -> Remove an availability entry.
+#
+# Validates consultation ownership and overlapping time windows.
+# All availability patterns are stored in RDS MySQL.
+# ============================================================
+
+def availability(event, uid, method, correlation, item_id=None):
+
+    # ========================================================
+    # 1. ESTABLISH DATABASE CONNECTION
+    # ========================================================
+
+    conn = db_connection()
+
     try:
         with conn.cursor() as cur:
-            # GET lists records for the authenticated doctor only.
-            if method=='GET':
-                cur.execute("""SELECT availability_id,consultation_type_id,day_of_week,start_time,end_time
-                    FROM doctor_availability WHERE doctor_id=%s ORDER BY day_of_week,start_time""",(uid,))
-                return respond(200,{'items':cur.fetchall()},correlation)
-            # Delete only records belonging to the authenticated doctor.
-            if method=='DELETE':
-                cur.execute('DELETE FROM doctor_availability WHERE doctor_id=%s AND availability_id=%s',(uid,item_id))
-                if not cur.rowcount: raise ApiError(404,'Availability entry not found')
+
+            # =================================================
+            # 2. GET - FETCH WEEKLY AVAILABILITY
+            # =================================================
+
+            if method == 'GET':
+
+                # 2.1 Fetch availability entries belonging
+                # to the authenticated doctor.
+                cur.execute(
+                    """
+                    SELECT
+                        availability_id,
+                        consultation_type_id,
+                        day_of_week,
+                        start_time,
+                        end_time
+                    FROM doctor_availability
+                    WHERE doctor_id = %s
+                    ORDER BY day_of_week, start_time
+                    """,
+                    (uid,)
+                )
+
+                # 2.2 Return all matching availability entries.
+                return respond(
+                    200,
+                    {'items': cur.fetchall()},
+                    correlation
+                )
+
+            # =================================================
+            # 3. DELETE - REMOVE AN AVAILABILITY ENTRY
+            # =================================================
+
+            if method == 'DELETE':
+
+                # 3.1 Delete the specified availability entry.
+                cur.execute(
+                    """
+                    DELETE FROM doctor_availability
+                    WHERE doctor_id = %s
+                      AND availability_id = %s
+                    """,
+                    (uid, item_id)
+                )
+
+                # 3.2 Check whether the entry existed.
+                if not cur.rowcount:
+                    raise ApiError(
+                        404,
+                        'Availability entry not found'
+                    )
+
+                # 3.3 Commit the deletion to RDS.
                 conn.commit()
-                return respond(200,{'deleted':True},correlation)
-            if method not in ('POST','PUT'):
-                raise ApiError(405,'Method not allowed')
-            data=body_json(event)
-            # Retain the existing bulk PUT endpoint for older clients.
-            if method=='PUT' and item_id is None:
-                patterns=data.get('patterns')
-                if not isinstance(patterns,list) or len(patterns)>100:
-                    raise ApiError(400,'patterns must be a list of at most 100 entries')
-                normalized=[]
+
+                # 3.4 Return successful deletion response.
+                return respond(
+                    200,
+                    {'deleted': True},
+                    correlation
+                )
+
+            # =================================================
+            # 4. VALIDATE HTTP METHOD AND REQUEST BODY
+            # =================================================
+
+            # 4.1 Allow only POST or PUT after GET/DELETE handling.
+            if method not in ('POST', 'PUT'):
+                raise ApiError(
+                    405,
+                    'Method not allowed'
+                )
+
+            # 4.2 Extract JSON data from the request.
+            data = body_json(event)
+
+            # =================================================
+            # 5. BULK PUT - REPLACE ENTIRE WEEKLY SCHEDULE
+            # =================================================
+
+            # 5.1 Handle bulk PUT when no availability ID
+            # is provided. Retained for older clients.
+            if method == 'PUT' and item_id is None:
+
+                patterns = data.get('patterns')
+
+                # 5.2 Validate the patterns list.
+                # Maximum 100 entries are allowed.
+                if (
+                    not isinstance(patterns, list)
+                    or len(patterns) > 100
+                ):
+                    raise ApiError(
+                        400,
+                        'patterns must be a list of at most 100 entries'
+                    )
+
+                normalized = []
+
+                # =============================================
+                # 6. VALIDATE EACH AVAILABILITY PATTERN
+                # =============================================
+
                 for item in patterns:
-                    if not isinstance(item,dict): raise ApiError(400,'Invalid pattern')
-                    day=item.get('day_of_week'); typ=item.get('consultation_type_id')
-                    if type(day) is not int or not 0<=day<=6 or type(typ) is not int:
-                        raise ApiError(400,'Invalid weekday or consultation type')
-                    start=parse_time(item.get('start_time')); end=parse_time(item.get('end_time'))
-                    if start>=end: raise ApiError(400,'Start time must preced end time')
-                    normalized.append((uid,typ,day,start,end))
-                for i,a in enumerate(normalized):
-                    for b in normalized[i+1:]:
-                        if a[2]==b[2] and a[3]<b[4] and b[3]<a[4]:
-                            raise ApiError(409,'Overlapping availability patterns')
-                cur.execute('SELECT consultation_type_id FROM consultation_types WHERE doctor_id=%s',(uid,))
-                owned={r['consultation_type_id'] for r in cur.fetchall()}
+
+                    # 6.1 Each pattern must be a dictionary.
+                    if not isinstance(item, dict):
+                        raise ApiError(
+                            400,
+                            'Invalid pattern'
+                        )
+
+                    # 6.2 Extract weekday and consultation type.
+                    day = item.get('day_of_week')
+                    typ = item.get('consultation_type_id')
+
+                    # 6.3 Validate weekday and consultation ID.
+                    if (
+                        type(day) is not int
+                        or not 0 <= day <= 6
+                        or type(typ) is not int
+                    ):
+                        raise ApiError(
+                            400,
+                            'Invalid weekday or consultation type'
+                        )
+
+                    # 6.4 Validate start and end times.
+                    start = parse_time(item.get('start_time'))
+                    end = parse_time(item.get('end_time'))
+
+                    # 6.5 Start time must be earlier than end time.
+                    if start >= end:
+                        raise ApiError(
+                            400,
+                            'Start time must preced end time'
+                        )
+
+                    # 6.6 Add the validated pattern to the list.
+                    normalized.append(
+                        (uid, typ, day, start, end)
+                    )
+
+                # =============================================
+                # 7. CHECK OVERLAPPING BULK PATTERNS
+                # =============================================
+
+                # 7.1 Compare each pattern with subsequent ones.
+                for i, a in enumerate(normalized):
+                    for b in normalized[i + 1:]:
+
+                        # Same weekday and overlapping times.
+                        if (
+                            a[2] == b[2]
+                            and a[3] < b[4]
+                            and b[3] < a[4]
+                        ):
+                            raise ApiError(
+                                409,
+                                'Overlapping availability patterns'
+                            )
+
+                # =============================================
+                # 8. VERIFY CONSULTATION TYPE OWNERSHIP
+                # =============================================
+
+                # 8.1 Retrieve consultation types owned by doctor.
+                cur.execute(
+                    """
+                    SELECT consultation_type_id
+                    FROM consultation_types
+                    WHERE doctor_id = %s
+                    """,
+                    (uid,)
+                )
+
+                # 8.2 Store owned consultation IDs in a set.
+                owned = {
+                    r['consultation_type_id']
+                    for r in cur.fetchall()
+                }
+
+                # 8.3 Reject consultation types belonging
+                # to another doctor.
                 if any(x[1] not in owned for x in normalized):
-                    raise ApiError(403,'Consultation type does not belong to doctor')
-                cur.execute('DELETE FROM doctor_availability WHERE doctor_id=%s',(uid,))
+                    raise ApiError(
+                        403,
+                        'Consultation type does not belong to doctor'
+                    )
+
+                # =============================================
+                # 9. REPLACE WEEKLY AVAILABILITY IN RDS
+                # =============================================
+
+                # 9.1 Delete the doctor's existing weekly patterns.
+                cur.execute(
+                    """
+                    DELETE FROM doctor_availability
+                    WHERE doctor_id = %s
+                    """,
+                    (uid,)
+                )
+
+                # 9.2 Insert the newly validated patterns.
                 if normalized:
-                    cur.executemany('''INSERT INTO doctor_availability
-                      (doctor_id,consultation_type_id,day_of_week,start_time,end_time)
-                      VALUES (%s,%s,%s,%s,%s)''',normalized)
+                    cur.executemany(
+                        """
+                        INSERT INTO doctor_availability (
+                            doctor_id,
+                            consultation_type_id,
+                            day_of_week,
+                            start_time,
+                            end_time
+                        )
+                        VALUES (%s, %s, %s, %s, %s)
+                        """,
+                        normalized
+                    )
+
+                # 9.3 Commit all changes to RDS.
                 conn.commit()
-                return respond(200,{'updated':len(normalized)},correlation)
-            day=data.get('day_of_week'); typ=data.get('consultation_type_id')
-            if type(day) is not int or not 0<=day<=6 or type(typ) is not int:
-                raise ApiError(400,'Invalid weekday or consultation type')
-            start=parse_time(data.get('start_time')); end=parse_time(data.get('end_time'))
-            if start>=end: raise ApiError(400,'Start time must precede end time')
-            cur.execute('SELECT 1 FROM consultation_types WHERE doctor_id=%s AND consultation_type_id=%s',(uid,typ))
-            if not cur.fetchone(): raise ApiError(403,'Consultation type does not belong to doctor')
-            cur.execute("""SELECT availability_id,start_time,end_time FROM doctor_availability
-                           WHERE doctor_id=%s AND day_of_week=%s""",(uid,day))
+
+                # 9.4 Return the number of saved patterns.
+                return respond(
+                    200,
+                    {'updated': len(normalized)},
+                    correlation
+                )
+
+            # =================================================
+            # 10. INDIVIDUAL POST / PUT - VALIDATE INPUT
+            # =================================================
+
+            # 10.1 Extract weekday and consultation type.
+            day = data.get('day_of_week')
+            typ = data.get('consultation_type_id')
+
+            # 10.2 Validate weekday and consultation type.
+            if (
+                type(day) is not int
+                or not 0 <= day <= 6
+                or type(typ) is not int
+            ):
+                raise ApiError(
+                    400,
+                    'Invalid weekday or consultation type'
+                )
+
+            # 10.3 Validate start and end times.
+            start = parse_time(data.get('start_time'))
+            end = parse_time(data.get('end_time'))
+
+            # 10.4 Ensure start time precedes end time.
+            if start >= end:
+                raise ApiError(
+                    400,
+                    'Start time must precede end time'
+                )
+
+            # =================================================
+            # 11. VERIFY CONSULTATION TYPE OWNERSHIP
+            # =================================================
+
+            # 11.1 Check whether the consultation type
+            # belongs to the authenticated doctor.
+            cur.execute(
+                """
+                SELECT 1
+                FROM consultation_types
+                WHERE doctor_id = %s
+                  AND consultation_type_id = %s
+                """,
+                (uid, typ)
+            )
+
+            # 11.2 Reject consultation types not owned by doctor.
+            if not cur.fetchone():
+                raise ApiError(
+                    403,
+                    'Consultation type does not belong to doctor'
+                )
+
+            # =================================================
+            # 12. CHECK EXISTING AVAILABILITY OVERLAPS
+            # =================================================
+
+            # 12.1 Retrieve existing availability for the weekday.
+            cur.execute(
+                """
+                SELECT
+                    availability_id,
+                    start_time,
+                    end_time
+                FROM doctor_availability
+                WHERE doctor_id = %s
+                  AND day_of_week = %s
+                """,
+                (uid, day)
+            )
+
+            # 12.2 Compare the new time window with existing ones.
             for row in cur.fetchall():
-                if row['availability_id']==item_id: continue
-                existing_start=parse_db_time(row['start_time'])
-                existing_end=parse_db_time(row['end_time'])
-                if start<existing_end and existing_start<end:
-                    raise ApiError(409,'Availability overlaps an existing time window')
-            if method=='POST':
-                cur.execute("""INSERT INTO doctor_availability
-                   (doctor_id,consultation_type_id,day_of_week,start_time,end_time)
-                   VALUES (%s,%s,%s,%s,%s)""",(uid,typ,day,start,end))
-                item_id=cur.lastrowid
+
+                # Skip the same record during an update.
+                if row['availability_id'] == item_id:
+                    continue
+
+                # Normalize saved MySQL TIME values.
+                existing_start = parse_db_time(row['start_time'])
+                existing_end = parse_db_time(row['end_time'])
+
+                # Reject overlapping time windows.
+                if (
+                    start < existing_end
+                    and existing_start < end
+                ):
+                    raise ApiError(
+                        409,
+                        'Availability overlaps an existing time window'
+                    )
+
+            # =================================================
+            # 13. POST - CREATE NEW AVAILABILITY ENTRY
+            # =================================================
+
+            if method == 'POST':
+
+                # 13.1 Insert a new weekly availability entry.
+                cur.execute(
+                    """
+                    INSERT INTO doctor_availability (
+                        doctor_id,
+                        consultation_type_id,
+                        day_of_week,
+                        start_time,
+                        end_time
+                    )
+                    VALUES (%s, %s, %s, %s, %s)
+                    """,
+                    (uid, typ, day, start, end)
+                )
+
+                # 13.2 Retrieve the generated availability ID.
+                item_id = cur.lastrowid
+
+            # =================================================
+            # 14. PUT - UPDATE EXISTING AVAILABILITY ENTRY
+            # =================================================
+
             else:
-                cur.execute("""UPDATE doctor_availability SET consultation_type_id=%s,
-                    day_of_week=%s,start_time=%s,end_time=%s
-                    WHERE doctor_id=%s AND availability_id=%s""",(typ,day,start,end,uid,item_id))
-                if not cur.rowcount: raise ApiError(404,'Availability entry not found')
+
+                # 14.1 Update the specified availability entry.
+                cur.execute(
+                    """
+                    UPDATE doctor_availability
+                    SET
+                        consultation_type_id = %s,
+                        day_of_week = %s,
+                        start_time = %s,
+                        end_time = %s
+                    WHERE doctor_id = %s
+                      AND availability_id = %s
+                    """,
+                    (typ, day, start, end, uid, item_id)
+                )
+
+                # 14.2 Check whether the entry existed.
+                if not cur.rowcount:
+                    raise ApiError(
+                        404,
+                        'Availability entry not found'
+                    )
+
+            # =================================================
+            # 15. COMMIT CHANGES AND RETURN RESPONSE
+            # =================================================
+
+            # 15.1 Save the INSERT or UPDATE in RDS MySQL.
             conn.commit()
-            return respond(201 if method=='POST' else 200,
-                {'availabilityId':item_id,'materialisation':'Next scheduled run or manual invocation'},correlation)
+
+            # 15.2 Return the availability ID.
+            # Slot materialisation happens separately.
+            return respond(
+                201 if method == 'POST' else 200,
+                {
+                    'availabilityId': item_id,
+                    'materialisation': (
+                        'Next scheduled run or manual invocation'
+                    )
+                },
+                correlation
+            )
+
+    # ========================================================
+    # 16. ERROR HANDLING AND CONNECTION CLEANUP
+    # ========================================================
+
     except Exception:
+
+        # 16.1 Roll back uncommitted database changes.
         conn.rollback()
         raise
+
     finally:
+
+        # 16.2 Always close the RDS MySQL connection.
         conn.close()
+
 
 
 # ============================================================
 # DOCTOR BLACKOUT DATES
 # ============================================================
-# List, add, and remove dates when a doctor is unavailable.
-def blackouts(event,uid,method,item_id,correlation):
-    conn=db_connection()
+# GET    -> Fetch the doctor's blackout dates.
+# POST   -> Add a new blackout date.
+# DELETE -> Remove an existing blackout date.
+#
+# Blackout dates represent days when a doctor is unavailable.
+# All records are stored in the RDS MySQL doctor_blackouts table.
+# ============================================================
+
+def blackouts(event, uid, method, item_id, correlation):
+
+    # ========================================================
+    # 1. ESTABLISH DATABASE CONNECTION
+    # ========================================================
+
+    # 1.1 Connect to RDS MySQL.
+    conn = db_connection()
+
     try:
+        # 1.2 Create a database cursor for executing SQL.
         with conn.cursor() as cur:
-            # GET lists records for the authenticated doctor only.
-            if method=='GET':
-                cur.execute('SELECT blackout_id,blackout_date,reason FROM doctor_blackouts WHERE doctor_id=%s ORDER BY blackout_date',(uid,))
-                return respond(200,{'items':cur.fetchall()},correlation)
-            if method=='POST':
-                data=body_json(event)
-                day=parse_date(data.get('blackout_date'))
-                reason=data.get('reason')
-                if reason is not None and (not isinstance(reason,str) or len(reason)>255):
-                    raise ApiError(400,'Invalid reason')
-                cur.execute('SELECT blackout_id FROM doctor_blackouts WHERE doctor_id=%s AND blackout_date=%s',(uid,day))
+
+            # =================================================
+            # 2. GET - FETCH DOCTOR BLACKOUT DATES
+            # =================================================
+
+            if method == 'GET':
+
+                # 2.1 Retrieve all blackout dates belonging
+                # to the authenticated doctor.
+                cur.execute(
+                    """
+                    SELECT
+                        blackout_id,
+                        blackout_date,
+                        reason
+                    FROM doctor_blackouts
+                    WHERE doctor_id = %s
+                    ORDER BY blackout_date
+                    """,
+                    (uid,)
+                )
+
+                # 2.2 Return the blackout records.
+                return respond(
+                    200,
+                    {'items': cur.fetchall()},
+                    correlation
+                )
+
+            # =================================================
+            # 3. POST - CREATE A NEW BLACKOUT DATE
+            # =================================================
+
+            if method == 'POST':
+
+                # 3.1 Extract JSON data from the request body.
+                data = body_json(event)
+
+                # 3.2 Extract and validate the blackout date.
+                day = parse_date(data.get('blackout_date'))
+
+                # 3.3 Extract the optional blackout reason.
+                reason = data.get('reason')
+
+                # =================================================
+                # 4. VALIDATE BLACKOUT REASON
+                # =================================================
+
+                # 4.1 Reason must be a string of at most
+                # 255 characters if provided.
+                if reason is not None and (
+                    not isinstance(reason, str)
+                    or len(reason) > 255
+                ):
+                    raise ApiError(
+                        400,
+                        'Invalid reason'
+                    )
+
+                # =================================================
+                # 5. CHECK FOR EXISTING BLACKOUT DATE
+                # =================================================
+
+                # 5.1 Check whether the authenticated doctor
+                # already has a blackout on the requested date.
+                cur.execute(
+                    """
+                    SELECT blackout_id
+                    FROM doctor_blackouts
+                    WHERE doctor_id = %s
+                      AND blackout_date = %s
+                    """,
+                    (uid, day)
+                )
+
+                # 5.2 Reject duplicate blackout dates.
                 if cur.fetchone():
-                    raise ApiError(409,'Blackout already exists')
-                cur.execute('INSERT INTO doctor_blackouts (doctor_id,blackout_date,reason) VALUES (%s,%s,%s)',(uid,day,reason))
+                    raise ApiError(
+                        409,
+                        'Blackout already exists'
+                    )
+
+                # =================================================
+                # 6. INSERT NEW BLACKOUT DATE INTO RDS
+                # =================================================
+
+                # 6.1 Insert the validated blackout record.
+                cur.execute(
+                    """
+                    INSERT INTO doctor_blackouts (
+                        doctor_id,
+                        blackout_date,
+                        reason
+                    )
+                    VALUES (%s, %s, %s)
+                    """,
+                    (uid, day, reason)
+                )
+
+                # 6.2 Commit the new blackout record to RDS.
                 conn.commit()
-                return respond(201,{'blackoutId':cur.lastrowid},correlation)
-            # Delete only records belonging to the authenticated doctor.
-            if method=='DELETE':
-                cur.execute('DELETE FROM doctor_blackouts WHERE doctor_id=%s AND blackout_id=%s',(uid,item_id))
+
+                # 6.3 Return the newly generated blackout ID.
+                return respond(
+                    201,
+                    {'blackoutId': cur.lastrowid},
+                    correlation
+                )
+
+            # =================================================
+            # 7. DELETE - REMOVE AN EXISTING BLACKOUT DATE
+            # =================================================
+
+            if method == 'DELETE':
+
+                # 7.1 Delete only the blackout record belonging
+                # to the authenticated doctor.
+                cur.execute(
+                    """
+                    DELETE FROM doctor_blackouts
+                    WHERE doctor_id = %s
+                      AND blackout_id = %s
+                    """,
+                    (uid, item_id)
+                )
+
+                # 7.2 Return 404 if the blackout was not found.
                 if not cur.rowcount:
-                    raise ApiError(404,'Blackout not found')
+                    raise ApiError(
+                        404,
+                        'Blackout not found'
+                    )
+
+                # 7.3 Commit the deletion to RDS.
                 conn.commit()
-                return respond(200,{'deleted':True},correlation)
+
+                # 7.4 Return successful deletion response.
+                return respond(
+                    200,
+                    {'deleted': True},
+                    correlation
+                )
+
+    # ========================================================
+    # 8. ERROR HANDLING AND CONNECTION CLEANUP
+    # ========================================================
+
     except Exception:
+
+        # 8.1 Roll back any uncommitted database changes.
         conn.rollback()
         raise
+
     finally:
+
+        # 8.2 Always close the RDS MySQL connection.
         conn.close()
+
 
 
 # ============================================================
 # DAILY APPOINTMENT SCHEDULE
 # ============================================================
 # Read materialised DynamoDB slots and attach appointment/patient data from MySQL.
-def schedule(event,uid,correlation):
-    day=parse_date((event.get('queryStringParameters') or {}).get('date'))
+
+# ============================================================
+# DAILY APPOINTMENT SCHEDULE
+# ============================================================
+# GET -> Retrieve the doctor's daily appointment schedule.
+#
+# DynamoDB:
+#   - Fetch materialised appointment slots.
+#   - Filter slots by doctor, date, and availability status.
+#
+# RDS MySQL:
+#   - Fetch appointment details.
+#   - Retrieve patient information using a SQL JOIN.
+#
+# Combine DynamoDB slots and MySQL appointments using slot ID.
+# ============================================================
+
+def schedule(event, uid, correlation):
+
+    # ========================================================
+    # 1. EXTRACT AND VALIDATE REQUESTED DATE
+    # ========================================================
+
+    # 1.1 Retrieve the selected date from query parameters.
+    day = parse_date(
+        (event.get('queryStringParameters') or {}).get('date')
+    )
+
+    # ========================================================
+    # 2. IMPORT REQUIRED LIBRARIES
+    # ========================================================
+
     import datetime as dt
     from zoneinfo import ZoneInfo
     from boto3.dynamodb.conditions import Key
-    start=dt.datetime.combine(day,dt.time.min,tzinfo=ZoneInfo('Asia/Kolkata')).astimezone(dt.timezone.utc)
-    end=(dt.datetime.combine(day+dt.timedelta(days=1),dt.time.min,tzinfo=ZoneInfo('Asia/Kolkata'))).astimezone(dt.timezone.utc)
-    table=boto3.resource('dynamodb').Table(os.environ['SLOTS_TABLE'])
-    params={'IndexName':'DoctorStartIndex','KeyConditionExpression':Key('doctorId').eq(str(uid)) &
-            Key('startTimeUTC').between(start.isoformat(),end.isoformat()),'Limit':100}
-    items=[]
+
+    # ========================================================
+    # 3. CONVERT IST DATE RANGE INTO UTC
+    # ========================================================
+
+    # 3.1 Convert the start of the selected day
+    # from Asia/Kolkata timezone into UTC.
+    start = dt.datetime.combine(
+        day,
+        dt.time.min,
+        tzinfo=ZoneInfo('Asia/Kolkata')
+    ).astimezone(dt.timezone.utc)
+
+    # 3.2 Convert the start of the next day
+    # from Asia/Kolkata timezone into UTC.
+    end = (
+        dt.datetime.combine(
+            day + dt.timedelta(days=1),
+            dt.time.min,
+            tzinfo=ZoneInfo('Asia/Kolkata')
+        )
+    ).astimezone(dt.timezone.utc)
+
+    # ========================================================
+    # 4. CONNECT TO DYNAMODB SLOTS TABLE
+    # ========================================================
+
+    # 4.1 Access the DynamoDB slots table using
+    # the SLOTS_TABLE environment variable.
+    table = boto3.resource('dynamodb').Table(
+        os.environ['SLOTS_TABLE']
+    )
+
+    # ========================================================
+    # 5. PREPARE DYNAMODB QUERY
+    # ========================================================
+
+    # 5.1 Query the DoctorStartIndex to retrieve slots
+    # belonging to the authenticated doctor within
+    # the requested UTC date range.
+    params = {
+        'IndexName': 'DoctorStartIndex',
+
+        'KeyConditionExpression': (
+            Key('doctorId').eq(str(uid))
+            & Key('startTimeUTC').between(
+                start.isoformat(),
+                end.isoformat()
+            )
+        ),
+
+        # Maximum number of items evaluated per query call.
+        'Limit': 100
+    }
+
+    # ========================================================
+    # 6. FETCH SLOTS FROM DYNAMODB
+    # ========================================================
+
+    # 6.1 Initialize the list for storing matching slots.
+    items = []
+
     while True:
-        res=table.query(**params)
-        items.extend(x for x in res['Items'] if x['startTimeUTC']<end.isoformat() and x.get('status')=='AVAILABLE')
-        if 'LastEvaluatedKey' not in res:break
-        params['ExclusiveStartKey']=res['LastEvaluatedKey']
-    conn=db_connection()
+
+        # 6.2 Execute the DynamoDB query.
+        res = table.query(**params)
+
+        # 6.3 Add slots that belong to the requested day
+        # and have AVAILABLE status.
+        items.extend(
+            x for x in res['Items']
+            if (
+                x['startTimeUTC'] < end.isoformat()
+                and x.get('status') == 'AVAILABLE'
+            )
+        )
+
+        # 6.4 Stop if DynamoDB has no additional pages.
+        if 'LastEvaluatedKey' not in res:
+            break
+
+        # 6.5 Continue querying the next page.
+        params['ExclusiveStartKey'] = res['LastEvaluatedKey']
+
+    # ========================================================
+    # 7. CONNECT TO RDS MYSQL
+    # ========================================================
+
+    # 7.1 Establish a database connection.
+    conn = db_connection()
+
     try:
         with conn.cursor() as cur:
-            cur.execute("""SELECT a.appointment_id,a.slot_id,a.status,a.start_time_utc,
-                u.user_id AS patient_id,u.name AS patient_name FROM appointments a
-                JOIN users u ON u.user_id=a.patient_id
-                WHERE a.doctor_id=%s AND a.start_time_utc >= %s AND a.start_time_utc < %s
-                ORDER BY a.start_time_utc""",(uid,start.replace(tzinfo=None),end.replace(tzinfo=None)))
-            appointments=cur.fetchall()
-    finally:conn.close()
-    by_slot={}
-    for a in appointments:by_slot.setdefault(a['slot_id'],[]).append(a)
-    for slot in items:slot['appointments']=by_slot.get(slot['slotId'],[])
-    return respond(200,{'date':day.isoformat(),'timezone':'Asia/Kolkata','slots':items},correlation)
+
+            # =================================================
+            # 8. FETCH APPOINTMENTS AND PATIENT DETAILS
+            # =================================================
+
+            # 8.1 Retrieve appointments belonging to the doctor
+            # within the requested UTC date range.
+            #
+            # JOIN the users table to obtain patient names.
+            cur.execute(
+                """
+                SELECT
+                    a.appointment_id,
+                    a.slot_id,
+                    a.status,
+                    a.start_time_utc,
+                    u.user_id AS patient_id,
+                    u.name AS patient_name
+                FROM appointments a
+                JOIN users u
+                    ON u.user_id = a.patient_id
+                WHERE a.doctor_id = %s
+                  AND a.start_time_utc >= %s
+                  AND a.start_time_utc < %s
+                ORDER BY a.start_time_utc
+                """,
+                (
+                    uid,
+                    start.replace(tzinfo=None),
+                    end.replace(tzinfo=None)
+                )
+            )
+
+            # 8.2 Fetch all matching appointment records.
+            appointments = cur.fetchall()
+
+    # ========================================================
+    # 9. CLOSE RDS MYSQL CONNECTION
+    # ========================================================
+
+    finally:
+
+        # 9.1 Close the database connection.
+        conn.close()
+
+    # ========================================================
+    # 10. GROUP APPOINTMENTS BY SLOT ID
+    # ========================================================
+
+    # 10.1 Create a dictionary to group appointments
+    # under their corresponding slot IDs.
+    by_slot = {}
+
+    for a in appointments:
+
+        # 10.2 Add each appointment to its matching slot group.
+        by_slot.setdefault(
+            a['slot_id'],
+            []
+        ).append(a)
+
+    # ========================================================
+    # 11. ATTACH APPOINTMENTS TO DYNAMODB SLOTS
+    # ========================================================
+
+    # 11.1 Match DynamoDB slotId with MySQL slot_id.
+    for slot in items:
+
+        # 11.2 Attach the appointment records to each slot.
+        # Use an empty list if no appointments exist.
+        slot['appointments'] = by_slot.get(
+            slot['slotId'],
+            []
+        )
+
+    # ========================================================
+    # 12. RETURN DAILY SCHEDULE RESPONSE
+    # ========================================================
+
+    # 12.1 Return the requested date, timezone,
+    # and combined slot/appointment information.
+    return respond(
+        200,
+        {
+            'date': day.isoformat(),
+            'timezone': 'Asia/Kolkata',
+            'slots': items
+        },
+        correlation
+    )
 
 
 # ============================================================

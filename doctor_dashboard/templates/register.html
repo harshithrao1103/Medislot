@@ -58,7 +58,6 @@
                 ('email', 'Email', 'email'),
                 ('password', 'Password', 'password'),
                 ('licence_number', 'Licence number (MED-YYYY-NNNNNN)', 'text'),
-                ('specialization', 'Specialization', 'text'),
                 ('experience_years', 'Experience (years)', 'number'),
                 ('qualifications', 'Qualifications', 'text'),
                 ('hospital_name', 'Hospital name', 'text'),
@@ -89,6 +88,15 @@
 
             {% endfor %}
 
+
+            <label>Specialization
+                <select name="specialization_id" required>
+                    <option value="" disabled selected>Select specialization</option>
+                    {% for item in specializations %}
+                    <option value="{{ item.specialization_id }}">{{ item.specialization_name }}</option>
+                    {% endfor %}
+                </select>
+            </label>
 
             <!-- ========================================= -->
             <!-- 4. TIMEZONE SELECTION                    -->

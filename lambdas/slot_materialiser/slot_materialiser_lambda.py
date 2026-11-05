@@ -300,6 +300,7 @@ def materialise(
             )
 
             # Store doctor/date pairs for efficient lookup.
+            #store doctor id and date as pair
             blackouts = {
                 (
                     str(x['doctor_id']),
@@ -410,7 +411,7 @@ def materialise(
 
             try:
 
-                table.update_item(
+                table.update_item(  
                     Key={
                         'slotId': slot['slotId']
                     },
@@ -491,7 +492,7 @@ def materialise(
             }
         }
 
-        # ----------------------------------------------------
+         # ----------------------------------------------------
         # 5.10 PROCESS PAGINATED DYNAMODB QUERY RESULTS
         # ----------------------------------------------------
 

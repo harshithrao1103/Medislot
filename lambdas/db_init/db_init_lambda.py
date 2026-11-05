@@ -73,7 +73,8 @@ def lambda_handler(event, context):
         # cannot change old column layouts; never drop production tables automatically.
         expected = {
             'users': {'user_id', 'name', 'email', 'password_hash', 'role', 'created_at'},
-            'doctors': {'user_id', 'licence_number', 'specialization', 'experience_years', 'qualifications', 'hospital_name', 'clinic_address', 'city', 'languages', 'timezone', 'photo_key'},
+            'specializations': {'specialization_id', 'specialization_name'},
+            'doctors': {'user_id', 'licence_number', 'specialization_id', 'experience_years', 'qualifications', 'hospital_name', 'clinic_address', 'city', 'languages', 'timezone', 'photo_key'},
             'patients': {'user_id', 'date_of_birth', 'gender', 'phone', 'city', 'emergency_contact', 'notes'},
             'consultation_types': {'consultation_type_id', 'doctor_id', 'name', 'duration_minutes', 'fee', 'capacity'},
             'doctor_availability': {'availability_id', 'doctor_id', 'consultation_type_id', 'day_of_week', 'start_time', 'end_time'},

@@ -206,11 +206,15 @@ def _registration_profile(data, role):
         fields = {
             key: _required_text(data, key, limit)
             for key, limit in (
-                ('licence_number', 100), ('specialization', 100),
+                ('licence_number', 100),
                 ('qualifications', 65535), ('hospital_name', 200),
                 ('clinic_address', 500), ('city', 100), ('timezone', 64)
             )
         }
+
+        fields['specialization_id'] = data.get('specialization_id')
+        if type(fields['specialization_id']) is not int or fields['specialization_id'] < 1:
+            raise ValueError('Select a valid specialization')
 
         # Medical licence number format: MED-YYYY-NNNNNN
         # Example: MED-2026-123456
@@ -343,15 +347,19 @@ def register(event, role):
             user_id = cursor.lastrowid
 
             if role == 'doctor':
+                cursor.execute('SELECT specialization_id FROM specializations WHERE specialization_id=%s', (profile['specialization_id'],))
+                if cursor.fetchone() is None:
+                    connection.rollback()
+                    return response(400, {'error': 'Invalid specialization_id'}, correlation)
                 cursor.execute(
                     """INSERT INTO doctors
-                    (user_id,licence_number,specialization,experience_years,qualifications,
+                    (user_id,licence_number,specialization_id,experience_years,qualifications,
                      hospital_name,clinic_address,city,languages,timezone,photo_key)
                     VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)""",
                     (
                         user_id,
                         profile['licence_number'],
-                        profile['specialization'],
+                        profile['specialization_id'],
                         profile['experience_years'],
                         profile['qualifications'],
                         profile['hospital_name'],

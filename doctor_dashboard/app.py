@@ -26,6 +26,10 @@ API = os.environ['MEDISLOT_API_BASE_URL'].rstrip('/')
 # ====================================================================
 # TOKEN REFRESH
 # ====================================================================
+# Refreshes the doctor's access token using the refresh token stored in the Flask session.
+# Calls the Token Lambda through API Gateway and updates the session with the new JWT and expiry.
+# If the refresh token is invalid or expired, clears the session and returns False.
+
 def refresh_access():
     """Exchange the session refresh token for a new access token and update expiry timestamps."""
     token = session.get('refresh_token')
@@ -51,6 +55,10 @@ def refresh_access():
 # ====================================================================
 # AUTHENTICATED API REQUESTS
 # ====================================================================
+# Sends authenticated requests from Flask to API Gateway using the doctor's JWT.
+# Automatically refreshes the access token if it is missing or expires within 60 seconds.
+# If the API returns HTTP 401, attempts token refresh and retries the request once.
+
 def api(method, path, **kwargs):
     """Attach the access token, refresh it near expiry, and retry once after HTTP 401."""
     headers = kwargs.pop('headers', {}).copy()
@@ -70,37 +78,51 @@ def api(method, path, **kwargs):
 # ====================================================================
 # DOCTOR ROUTE GUARD
 # ====================================================================
+# Protects doctor dashboard pages by validating the user's session.
 def protected(fn):
     """Require a doctor session with a non-expired refresh token before loading a protected page."""
+
     @wraps(fn)
     def inner(*args, **kwargs):
+
+        # Redirect to login if the user is not a doctor or has no refresh token.
         if session.get('role') != 'doctor' or not session.get('refresh_token'):
             return redirect(url_for('login'))
+
+        # If the refresh token has expired, clear the session and require login again.
         if session.get('refresh_expires_at') and int(session['refresh_expires_at']) <= int(datetime.now(timezone.utc).timestamp()):
             session.clear()
             flash('Your refresh token has expired. Please sign in again.')
             return redirect(url_for('login'))
+
+        # Session checks passed; execute the requested page function.
         return fn(*args, **kwargs)
+
     return inner
 
-
 # ====================================================================
-# CSRF TOKEN GENERATION
+# CSRF TOKEN GENERATION(Cross-Site Request Forgery)
 # ====================================================================
+# Generate a random CSRF token once per session to protect HTML forms.
 def csrf():
     """Create one random CSRF token per session for use in HTML forms."""
     if not session.get('csrf'):
         session['csrf'] = secrets.token_urlsafe(32)
     return session['csrf']
+
+# Make csrf_token() accessible inside Flask HTML templates.
 app.jinja_env.globals['csrf_token'] = csrf
 
 
 # ====================================================================
 # CSRF REQUEST VALIDATION
 # ====================================================================
+# Validate CSRF tokens before processing incoming POST form requests.
 @app.before_request
 def check_csrf():
     """Reject POST form submissions when their CSRF token does not match the session token."""
+
+    # Reject POST requests if the submitted token differs from the session token.
     if request.method == 'POST' and request.form.get('csrf_token') != csrf():
         return 'Invalid CSRF token', 403
 
@@ -125,52 +147,84 @@ def welcome():
     return render_template('welcome.html')
 
 
+def load_specializations():
+    """Load the authoritative dropdown choices from the public API."""
+    try:
+        result = requests.get(API + '/specializations', timeout=15)
+        result.raise_for_status()
+        return result.json()['specializations']
+    except (requests.RequestException, ValueError, KeyError, TypeError):
+        flash('Specializations unavailable. Please try again later.')
+        return []
+
+
 # ====================================================================
 # DOCTOR REGISTRATION
 # ====================================================================
+# Displays the doctor registration form and processes submitted details.
 @app.route('/doctor/register', methods=['GET', 'POST'])
 def register():
     """Collect registration form data and submit it to the doctor registration API."""
+
     if request.method == 'POST':
         try:
+            # Collect doctor details from the HTML form and remove extra spaces.
             payload = {k: request.form.get(k, '').strip() for k in
-                       ('name','email','password','licence_number','specialization','qualifications',
+                       ('name','email','password','licence_number','qualifications',
                         'hospital_name','clinic_address','city','timezone')}
+
+            payload['specialization_id'] = int(request.form['specialization_id'])
+
+            # Convert experience to an integer and languages into a list.
             payload['experience_years'] = int(request.form['experience_years'])
             payload['languages'] = [v.strip() for v in request.form.get('languages','').split(',') if v.strip()]
+
+            # Send registration details to Doctor Register Lambda through API Gateway.
             r = requests.post(API + '/auth/doctors/register', json=payload, timeout=15)
+
             if r.ok:
                 flash('Registration successful. Please sign in to continue.')
                 return redirect(url_for('login'))
+
             flash(api_error(r))
+
         except (ValueError, requests.RequestException):
             flash('Please check your registration details or try again later.')
-    return render_template('register.html')
+
+    return render_template('register.html', specializations=load_specializations())
 
 
 # ====================================================================
 # DOCTOR LOGIN
 # ====================================================================
+# Display the doctor login page and authenticate submitted credentials.
 @app.route('/doctor/login', methods=['GET','POST'])
 def login():
     """Authenticate doctor credentials and save access and refresh tokens in the session."""
     if request.method=='POST':
         try:
+            # Send doctor credentials to the Login Lambda through API Gateway.
             r=requests.post(API + '/auth/doctors/login',json={'email':request.form['email'],'password':request.form['password']},timeout=15)
             data=r.json()
+
             if r.ok:
+                # Clear the previous session and store the new authentication tokens.
                 session.clear()
                 session['access_token']=data.get('accessToken') or data.get('access_token')
                 session['refresh_token']=data.get('refreshToken') or data.get('refresh_token')
                 session['access_expires_at']=data.get('expiresAt',0)
                 session['refresh_expires_at']=data.get('refreshExpiresAt',0)
+
+                # Redirect to the doctor profile only when both tokens are present.
                 if not session['access_token'] or not session['refresh_token']:
                     flash('Login response did not include access token')
                 else:
                     session['role']='doctor'
                     return redirect(url_for('profile'))
             else:flash(data.get('error','Login failed'))
+
         except (requests.RequestException, ValueError):flash('Login API unavailable or returned an invalid response')
+
     return render_template('login.html')
 
 
@@ -204,18 +258,27 @@ def api_error(r):
 # ====================================================================
 # PAGE DATA FETCHING
 # ====================================================================
+# Fetch data from protected backend APIs and handle authentication or API errors.
 def page_get(path):
     """Fetch JSON for a page and display errors using Flask flash messages."""
     try:
+        # Make an authenticated GET request using the shared api() helper.
         r = api('GET', path)
+
+        # Clear the session if authentication still fails.
         if r.status_code == 401:
             session.clear()
             flash('Your session has expired. Please sign in again.')
             return None
+
+        # Display backend errors and return an empty dictionary.
         if not r.ok:
             flash(api_error(r))
             return {}
+
+        # Return the successfully fetched JSON data.
         return r.json()
+
     except (requests.RequestException, ValueError):
         flash('Unable to load data from the API')
         return {}
@@ -242,25 +305,47 @@ def page_post(method, path, payload):
 # ====================================================================
 # DOCTOR PROFILE
 # ====================================================================
+# Display the doctor's profile and process profile updates.
 @app.route('/doctor/profile',methods=['GET','POST'])
 @protected
 def profile():
     """Display doctor profile data and submit edited professional details."""
+
     if request.method=='POST':
-        payload={key:request.form[key] for key in ('name','specialization','qualifications','hospital_name','clinic_address','city','timezone')}
+        # Collect the updated profile fields from the HTML form.
+        payload={key:request.form[key] for key in ('name','qualifications','hospital_name','clinic_address','city','timezone')}
+
+        try:
+            payload['specialization_id'] = int(request.form['specialization_id'])
+        except (ValueError, KeyError):
+            flash('Select a valid specialization')
+            return redirect(url_for('profile'))
+
+        # Validate and convert experience years to an integer.
         try:
             payload['experience_years']=int(request.form['experience_years'])
         except (ValueError, KeyError):
             flash('Experience years must be a valid number')
             return redirect(url_for('profile'))
+
+        # Convert comma-separated languages into a list.
         payload['languages']=[x.strip() for x in request.form['languages'].split(',') if x.strip()]
+
+        # Send the updated profile details to the backend API.
         page_post('PUT','/doctors/me',payload)
         return redirect(url_for('profile'))
+
+    # Fetch the doctor's existing profile details.
     data=page_get('/doctors/me')
+
     if data is None:return redirect(url_for('login'))
-    return render_template('profile.html',data=data)
 
+    # Display the fetched profile information in the HTML template.
+    return render_template('profile.html',data=data,specializations=load_specializations())
 
+# ====================================================================
+# CONSULTATION TYPES
+# ====================================================================
 # ====================================================================
 # CONSULTATION TYPES
 # ====================================================================
@@ -269,27 +354,41 @@ def profile():
 def consultations():
     """List, create, update, or delete predefined consultation types."""
     if request.method=='POST':
+
+        # Delete an existing consultation type if a delete ID is provided.
         if request.form.get('delete_id'):
             page_post('DELETE','/doctors/me/consultation-types/'+request.form['delete_id'],{})
         else:
             try:
+                # Define allowed consultation types with duration and capacity limits.
                 presets={'Quick Consult':(15,1,1),'Standard Consult':(30,1,1),
                          'Detailed Consult':(45,1,1),'Health Camp Session':(60,2,10)}
+
+                # Get the selected consultation and its predefined limits.
                 name=request.form['name']
                 duration,low,high=presets[name]
+
+                # Determine capacity and validate it against the allowed range.
                 capacity=int(request.form.get('capacity',1)) if low != high else low
                 if not low <= capacity <= high: raise ValueError('Invalid capacity')
+
+                # Prepare consultation details for the backend API.
                 payload={'name':name,'duration_minutes':duration,
                          'fee':request.form['fee'],'capacity':capacity}
+
             except (ValueError, KeyError):
                 flash('Please enter valid consultation details')
                 return redirect(url_for('consultations'))
+
+            # Update an existing consultation or create a new one.
             item_id=request.form.get('item_id')
             page_post('PUT' if item_id else 'POST','/doctors/me/consultation-types'+('/'+item_id if item_id else ''),payload)
+
         return redirect(url_for('consultations'))
+
+    # Fetch existing consultation types and display them in the HTML page.
     data=page_get('/doctors/me/consultation-types')
     return render_template('consultations.html',items=(data or {}).get('items',[]))
-
 
 # ====================================================================
 # WEEKLY AVAILABILITY
@@ -300,24 +399,38 @@ def availability():
     """List and manage the doctor weekly availability rules."""
     if request.method=='POST':
         try:
+            # Delete an existing availability rule if a delete ID is provided.
             if request.form.get('delete_id'):
                 page_post('DELETE','/doctors/me/availability/'+request.form['delete_id'],{})
             else:
+                # Collect consultation type, weekday, and time range from the form.
                 item={'consultation_type_id':int(request.form['consultation_type_id']),
                       'day_of_week':int(request.form['day_of_week']),
                       'start_time':request.form['start_time'], 'end_time':request.form['end_time']}
+
+                # Update an existing rule or create a new availability rule.
                 item_id=request.form.get('item_id')
                 page_post('PUT' if item_id else 'POST', '/doctors/me/availability'+('/'+item_id if item_id else ''),item)
+
         except (ValueError, KeyError):
             flash('Please enter valid availability details')
+
         return redirect(url_for('availability'))
+
+    # Fetch weekly availability rules and consultation types from the backend.
     data=page_get('/doctors/me/availability')
     consults=page_get('/doctors/me/consultation-types')
+
+    # Redirect to login if authentication has expired.
     if data is None or consults is None: return redirect(url_for('login'))
+
+    # Display existing availability rules and consultation options.
     return render_template('availability.html',items=(data or {}).get('items',[]),
                            consultations=(consults or {}).get('items',[]))
 
-
+# ====================================================================
+# DOCTOR BLACKOUT DATES
+# ====================================================================
 # ====================================================================
 # DOCTOR BLACKOUT DATES
 # ====================================================================
@@ -326,12 +439,19 @@ def availability():
 def blackouts():
     """List, add, or remove dates when the doctor is unavailable."""
     if request.method=='POST':
+
+        # Delete an existing blackout date if a delete ID is provided.
         if request.form.get('delete_id'):
             page_post('DELETE','/doctors/me/blackouts/'+request.form['delete_id'],{})
+
         else:
+            # Add a new blackout date with an optional reason.
             page_post('POST','/doctors/me/blackouts',{'blackout_date':request.form['blackout_date'],
                 'reason':request.form.get('reason','')})
+
         return redirect(url_for('blackouts'))
+
+    # Fetch existing blackout dates and display them in the HTML page.
     data=page_get('/doctors/me/blackouts')
     return render_template('blackouts.html',items=(data or {}).get('items',[]))
 
@@ -339,22 +459,38 @@ def blackouts():
 # ====================================================================
 # DAY SCHEDULE
 # ====================================================================
+# ====================================================================
+# DAY SCHEDULE
+# ====================================================================
 @app.route('/doctor/schedule')
 @protected
 def schedule():
     """Validate the selected date and load its slots and consultation names."""
+
+    # Get the selected date from the URL, or use today's date by default.
     day=request.args.get('date',date.today().isoformat())
+
+    # Validate the date and fall back to today if it is invalid.
     try:
         day = date.fromisoformat(day).isoformat()
     except ValueError:
         flash('Invalid schedule date')
         day = date.today().isoformat()
+
+    # Fetch the doctor's schedule for the selected date.
     data=page_get('/doctors/me/schedule?' + urlencode({'date': day}))
+
+    # Fetch consultation types to display their names instead of IDs.
     consults=page_get('/doctors/me/consultation-types')
     names={str(x['consultation_type_id']):x['name'] for x in (consults or {}).get('items',[])}
+
+    # Render the daily schedule with slots, date, and consultation names.
     return render_template('schedule.html',data=data or {},day=day,consultation_names=names)
 
 
+# ====================================================================
+# PROFILE PHOTO UPLOAD
+# ====================================================================
 # ====================================================================
 # PROFILE PHOTO UPLOAD
 # ====================================================================
@@ -362,47 +498,72 @@ def schedule():
 @protected
 def upload_photo():
     """Validate an uploaded image and send it using a presigned upload form."""
+
+    # Get the uploaded photo and validate its MIME type.
     photo=request.files.get('photo')
     if not photo or photo.mimetype not in ('image/jpeg','image/png','image/webp'):
         flash('Choose a JPEG, PNG or WebP image')
         return redirect(url_for('profile'))
+
+    # Read the photo and ensure its size is between 1 byte and 5 MB.
     data=photo.read(5*1024*1024+1)
     if not 0<len(data)<=5*1024*1024:
         flash('Image must be 5 MB or smaller')
         return redirect(url_for('profile'))
+
     try:
+        # Request a presigned S3 upload form from the Doctor API Lambda.
         presigned=api('POST','/doctors/me/photo',json={'contentType':photo.mimetype,'sizeBytes':len(data)})
         presigned.raise_for_status()
+
+        # Extract the S3 upload URL and required form fields.
         upload=presigned.json()['upload']
         fields=upload['fields']
+
+        # Upload the image directly to S3 using the presigned form.
         result=requests.post(upload['url'],data=fields,files={'file':(photo.filename,data,photo.mimetype)},timeout=30)
         result.raise_for_status()
+
         flash('Profile photo uploaded')
+
     except (requests.RequestException,KeyError):
         flash('Profile photo upload failed')
+
     return redirect(url_for('profile'))
 
 
 # ====================================================================
 # PROFILE PHOTO DISPLAY
 # ====================================================================
+
 @app.route('/doctor/photo/view')
 @protected
 def view_photo():
     """Fetch a doctor photo using its signed URL and return it as an image response."""
+
     try:
+        # Request a presigned photo download URL from the Doctor API Lambda.
         r=api('GET','/doctors/me/photo')
         if not r.ok:
             return '', 404
+
+        # Extract the S3 download URL from the API response.
         url=r.json().get('url')
         if not url:
             return '', 404
+
+        # Download the image directly from S3 using the presigned URL.
         image=requests.get(url,timeout=15,stream=True)
         image.raise_for_status()
         content=image.content
+
+        # Reject images larger than 5 MB.
         if len(content)>5*1024*1024:
             return '', 413
+
+        # Return the image to the browser with caching and security headers.
         return Response(content,content_type=image.headers.get('Content-Type','image/jpeg'),
                         headers={'Cache-Control':'private, max-age=120','X-Content-Type-Options':'nosniff'})
+
     except (requests.RequestException,ValueError):
         return '', 404

@@ -10,10 +10,31 @@ CREATE TABLE IF NOT EXISTS users (
   created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
 ) ENGINE=InnoDB;
 
+CREATE TABLE IF NOT EXISTS specializations (
+  specialization_id BIGINT AUTO_INCREMENT PRIMARY KEY,
+  specialization_name VARCHAR(100) NOT NULL UNIQUE
+) ENGINE=InnoDB;
+
+INSERT IGNORE INTO specializations (specialization_name) VALUES
+('Cardiology'),
+('Dermatology'),
+('Neurology'),
+('Orthopedics'),
+('Pediatrics'),
+('General Medicine'),
+('Gynecology'),
+('Psychiatry'),
+('ENT'),
+('Ophthalmology'),
+('Gastroenterology'),
+('Pulmonology'),
+('Urology'),
+('Oncology');
+
 CREATE TABLE IF NOT EXISTS doctors (
   user_id BIGINT PRIMARY KEY,
   licence_number VARCHAR(100) NOT NULL UNIQUE,
-  specialization VARCHAR(100) NOT NULL,
+  specialization_id BIGINT NOT NULL,
   experience_years SMALLINT UNSIGNED NOT NULL,
   qualifications TEXT NOT NULL,
   hospital_name VARCHAR(200) NOT NULL,
@@ -22,6 +43,7 @@ CREATE TABLE IF NOT EXISTS doctors (
   languages JSON NOT NULL,
   timezone VARCHAR(64) NOT NULL,
   photo_key VARCHAR(512) NULL,
+  CONSTRAINT fk_doctors_specialization FOREIGN KEY (specialization_id) REFERENCES specializations(specialization_id),
   CONSTRAINT fk_doctors_user FOREIGN KEY (user_id) REFERENCES users(user_id) ON DELETE CASCADE
 ) ENGINE=InnoDB;
 

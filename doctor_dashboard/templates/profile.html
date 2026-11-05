@@ -137,7 +137,6 @@
 
             {% for field in [
                 'name',
-                'specialization',
                 'experience_years',
                 'qualifications',
                 'hospital_name',
@@ -165,6 +164,15 @@
 
             {% endfor %}
 
+
+            <label>Specialization
+                <select name="specialization_id" required>
+                    <option value="" disabled>Select specialization</option>
+                    {% for item in specializations %}
+                    <option value="{{ item.specialization_id }}" {% if item.specialization_id == data.get('specialization_id') %}selected{% endif %}>{{ item.specialization_name }}</option>
+                    {% endfor %}
+                </select>
+            </label>
 
             <!-- ========================================= -->
             <!-- 6. LANGUAGES FIELD                       -->
