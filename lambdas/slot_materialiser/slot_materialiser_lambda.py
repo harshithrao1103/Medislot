@@ -339,8 +339,10 @@ def materialise(
     # 5.5 GENERATE THE DESIRED SLOTS
     # --------------------------------------------------------
 
-    # Dictionary of slots that should exist in DynamoDB.
-    # slotId is used as the key to avoid duplicates.
+    # Never create or alter elapsed slots on the current IST date.
+    # Historical explicit test windows retain their deterministic behavior.
+    now_ist = dt.datetime.now(IST)
+    live_window = start_day <= now_ist.date() < start_day + dt.timedelta(days=days)
     wanted = {}
 
     # Iterate over every date in the booking window.
@@ -359,7 +361,8 @@ def materialise(
 
             # Generate slots matching the weekday.
             for slot in make_slots(doctor, p, day):
-
+                if live_window and dt.datetime.fromisoformat(slot['endTimeUTC']) <= now_ist:
+                    continue
                 wanted[slot['slotId']] = slot
 
     # --------------------------------------------------------
@@ -415,19 +418,21 @@ def materialise(
                     Key={
                         'slotId': slot['slotId']
                     },
-                    UpdateExpression='SET #st=:active',
+                    UpdateExpression='SET #st=:active ADD #ver :one',
                     ConditionExpression=(
                         '#st=:inactive '
                         'AND bookedCount=:zero '
                         'AND heldCount=:zero'
                     ),
                     ExpressionAttributeNames={
-                        '#st': 'status'
+                        '#st': 'status',
+                        '#ver': 'version'
                     },
                     ExpressionAttributeValues={
                         ':active': 'AVAILABLE',
                         ':inactive': 'INACTIVE',
-                        ':zero': 0
+                        ':zero': 0,
+                        ':one': 1
                     }
                 )
 
@@ -453,7 +458,9 @@ def materialise(
     # previously generated slots may become obsolete.
     #
     # These slots are marked INACTIVE rather than deleted.
-    # Slots with bookings or active holds are not disabled.
+    # Existing bookings remain attached to their slot, but the slot becomes
+    # INACTIVE for new bookings when no hold is in progress. Active holds are
+    # left untouched until their hold-expiry workflow completes.
 
     for doctor in doctors:
 
@@ -471,11 +478,9 @@ def materialise(
                 Key('doctorId').eq(doctor)
                 &
                 Key('startTimeUTC').between(
-                    dt.datetime.combine(
-                        start_day,
-                        dt.time.min,
-                        tzinfo=IST
-                    ).astimezone(UTC).isoformat(),
+                    (now_ist if live_window else dt.datetime.combine(
+                        start_day, dt.time.min, tzinfo=IST
+                    )).astimezone(UTC).isoformat(),
 
                     dt.datetime.combine(
                         start_day + dt.timedelta(days=days),
@@ -517,8 +522,8 @@ def materialise(
                     try:
 
                         # Conditional update ensures the slot
-                        # is still available and has no
-                        # bookings or holds at update time.
+                        # is still available and has no active
+                        # holds at update time. Booked appointments stay stored.
 
                         table.update_item(
                             Key={
@@ -526,23 +531,24 @@ def materialise(
                             },
 
                             UpdateExpression=(
-                                'SET #st=:disabled'
+                                'SET #st=:disabled ADD #ver :one'
                             ),
 
                             ConditionExpression=(
                                 '#st=:active '
-                                'AND bookedCount=:zero '
                                 'AND heldCount=:zero'
                             ),
 
                             ExpressionAttributeNames={
-                                '#st': 'status'
+                                '#st': 'status',
+                                '#ver': 'version'
                             },
 
                             ExpressionAttributeValues={
                                 ':disabled': 'INACTIVE',
                                 ':active': 'AVAILABLE',
-                                ':zero': 0
+                                ':zero': 0,
+                                ':one': 1
                             }
                         )
 

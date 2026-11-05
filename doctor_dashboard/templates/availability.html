@@ -13,8 +13,7 @@
 
     <p>
         Add one availability window at a time.
-        Each save adds a new record without removing
-        previously saved windows.
+        Create a new window or edit an existing one. Changes to future slots are reconciled automatically.
     </p>
 
 
@@ -22,7 +21,7 @@
     <!-- 2. ADD / EDIT AVAILABILITY FORM            -->
     <!-- ========================================= -->
 
-    <h3>Add / edit availability</h3>
+    <h3 id="availability-form-heading">Add availability</h3>
 
     <form method="post" id="availability-form">
 
@@ -136,6 +135,7 @@
         <!-- Save new or edited availability -->
         <button
             type="submit"
+            id="availability-save"
             {% if not consultations %}disabled{% endif %}
         >
             Save availability
@@ -241,21 +241,16 @@
 
                 <td>
 
-                    <!-- Edit Availability Button -->
+                    <!-- Use escaped JSON data attributes instead of quoted inline JavaScript. -->
                     <button
                         type="button"
-                        class="secondary-button"
-                        onclick="editAvailability(
-                            {{ x.availability_id|tojson }},
-                            {{ x.consultation_type_id|tojson }},
-                            {{ x.day_of_week|tojson }},
-                            {{ x.start_time|tojson }},
-                            {{ x.end_time|tojson }}
-                        )"
-                    >
-                        Edit
-                    </button>
-
+                        class="secondary-button edit-availability"
+                        data-id="{{ x.availability_id }}"
+                        data-type="{{ x.consultation_type_id }}"
+                        data-day="{{ x.day_of_week }}"
+                        data-start="{{ x.start_time }}"
+                        data-end="{{ x.end_time }}"
+                    >Edit</button>
 
                     <!-- Delete Availability Form -->
                     <form
@@ -299,63 +294,44 @@
 <!-- ========================================= -->
 
 <script>
+(function () {
+    'use strict';
+    const form = document.getElementById('availability-form');
+    const id = document.getElementById('availability-id');
+    const type = document.getElementById('availability-type');
+    const day = document.getElementById('availability-day');
+    const start = document.getElementById('availability-start');
+    const end = document.getElementById('availability-end');
+    const heading = document.getElementById('availability-form-heading');
+    const save = document.getElementById('availability-save');
 
-    /*
-     * Reset Availability Form
-     *
-     * - Clears the form fields
-     * - Restores default values
-     * - Clears the availability ID
-     * - Switches from edit mode to add mode
-     */
     function resetAvailability() {
-
-        document.getElementById('availability-form').reset();
-
-        document.getElementById('availability-id').value = '';
-
+        form.reset();
+        id.value = '';
+        heading.textContent = 'Add availability';
+        save.textContent = 'Save availability';
     }
+    window.resetAvailability = resetAvailability;
 
-
-    /*
-     * Edit Existing Availability
-     *
-     * Parameters:
-     * id    -> Availability record ID
-     * type  -> Consultation type ID
-     * day   -> Day of week (0 = Monday, 6 = Sunday)
-     * start -> Existing start time
-     * end   -> Existing end time
-     *
-     * Populates the form with the selected record.
-     * The next Save action updates that record.
-     */
-    function editAvailability(id, type, day, start, end) {
-
-        // Store record ID for updating
-        document.getElementById('availability-id').value = id;
-
-        // Set consultation type
-        document.getElementById('availability-type').value = type;
-
-        // Set day of week
-        document.getElementById('availability-day').value = day;
-
-        // Set start time (HH:MM)
-        document.getElementById('availability-start').value =
-            start.slice(0, 5);
-
-        // Set end time (HH:MM)
-        document.getElementById('availability-end').value =
-            end.slice(0, 5);
-
-        // Scroll to availability form
-        document.getElementById('availability-form').scrollIntoView({
-            behavior: 'smooth'
+    document.querySelectorAll('.edit-availability').forEach(button => {
+        button.addEventListener('click', () => {
+            const value = button.dataset;
+            if (![...type.options].some(o => o.value === value.type)) {
+                alert('Consultation type no longer exists.');
+                return;
+            }
+            id.value = value.id;
+            type.value = value.type;
+            day.value = value.day;
+            start.value = value.start.substring(0, 5).padStart(5, '0');
+            end.value = value.end.substring(0, 5).padStart(5, '0');
+            heading.textContent = 'Edit availability';
+            save.textContent = 'Update availability';
+            form.scrollIntoView({behavior: 'smooth', block: 'start'});
+            start.focus({preventScroll: true});
         });
-
-    }
-
+    });
+})();
 </script>
 
 {% endblock %}

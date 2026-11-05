@@ -840,6 +840,8 @@ jobs:
               "aws s3 cp s3://${ARTIFACT_BUCKET}/dashboard/${GITHUB_SHA}.zip /tmp/medislot-dashboard.zip --region ${AWS_REGION}",
               "unzip -o /tmp/medislot-dashboard.zip -d /opt/medislot",
               "/opt/medislot/venv/bin/pip install -r /opt/medislot/requirements.txt",
+              "grep -q '^MEDISLOT_MATERIALISER_FUNCTION=' /etc/medislot.env && sed -i 's/^MEDISLOT_MATERIALISER_FUNCTION=.*/MEDISLOT_MATERIALISER_FUNCTION=medislot-${DEPLOY_ENV}-slot-materialiser/' /etc/medislot.env || printf 'MEDISLOT_MATERIALISER_FUNCTION=medislot-${DEPLOY_ENV}-slot-materialiser\\n' >> /etc/medislot.env",
+              "grep -q '^AWS_DEFAULT_REGION=' /etc/medislot.env && sed -i 's/^AWS_DEFAULT_REGION=.*/AWS_DEFAULT_REGION=${AWS_REGION}/' /etc/medislot.env || printf 'AWS_DEFAULT_REGION=${AWS_REGION}\\n' >> /etc/medislot.env",
               "systemctl restart medislot-doctor",
               "systemctl is-active --quiet medislot-doctor",
               "grep -q specialization_id /opt/medislot/templates/register.html",

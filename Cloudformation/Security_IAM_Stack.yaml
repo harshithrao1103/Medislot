@@ -796,6 +796,14 @@ Resources:
         - arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore
 
       Policies:
+        - PolicyName: InvokeSlotReconciliation
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Sid: InvokeMaterialiserAfterAvailabilityChange
+                Effect: Allow
+                Action: [lambda:InvokeFunction]
+                Resource: !Sub arn:${AWS::Partition}:lambda:${AWS::Region}:${AWS::AccountId}:function:medislot-${Environment}-slot-materialiser
         - PolicyName: ReadDashboardArtifact
           PolicyDocument:
             Version: '2012-10-17'

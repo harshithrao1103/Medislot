@@ -1146,6 +1146,8 @@ Resources:
           chmod 700 /var/lib/medislot/sessions
           cat > /etc/medislot.env <<'ENVFILE'
           MEDISLOT_API_BASE_URL=https://${AuthRestApi}.execute-api.${AWS::Region}.amazonaws.com/${Environment}
+          MEDISLOT_MATERIALISER_FUNCTION=medislot-${Environment}-slot-materialiser
+          AWS_DEFAULT_REGION=${AWS::Region}
           ENVFILE
           printf 'FLASK_SECRET_KEY=%s\n' "$(python3 -c 'import secrets; print(secrets.token_hex(32))')" >> /etc/medislot.env
           chmod 600 /etc/medislot.env

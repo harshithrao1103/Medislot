@@ -7,6 +7,8 @@ from functools import wraps
 from datetime import date, datetime, timezone, timedelta
 from urllib.parse import urlencode
 import requests
+import boto3
+from botocore.exceptions import BotoCoreError, ClientError
 from flask import Flask, render_template, request, redirect, session, url_for, flash, Response
 from flask_session import Session
 
@@ -393,6 +395,29 @@ def consultations():
     data=page_get('/doctors/me/consultation-types')
     return render_template('consultations.html',items=(data or {}).get('items',[]))
 
+def request_slot_reconciliation():
+    """Queue a 30-day reconciliation after a successful dashboard availability change.
+
+    The Lambda uses its own current IST date. The daily scheduler remains a
+    recovery mechanism if an asynchronous invocation fails after acceptance.
+    """
+    function_name = os.environ.get('MEDISLOT_MATERIALISER_FUNCTION')
+    if not function_name:
+        flash('Availability saved, but automatic slot refresh is not configured. Slots will refresh on the next scheduled run.')
+        return
+    try:
+        result = boto3.client('lambda').invoke(
+            FunctionName=function_name,
+            InvocationType='Event',
+            Payload=b'{}',
+        )
+        if result.get('StatusCode') != 202:
+            flash('Availability saved, but slot refresh was not accepted. Please contact support.')
+    except (BotoCoreError, ClientError, OSError):
+        app.logger.exception('Failed to queue slot reconciliation')
+        flash('Availability saved, but slot refresh could not be queued. Please contact support.')
+
+
 # ====================================================================
 # WEEKLY AVAILABILITY
 # ====================================================================
@@ -400,24 +425,27 @@ def consultations():
 @protected
 def availability():
     """List and manage the doctor weekly availability rules."""
-    if request.method=='POST':
+    if request.method == 'POST':
         try:
-            # Delete an existing availability rule if a delete ID is provided.
             if request.form.get('delete_id'):
-                page_post('DELETE','/doctors/me/availability/'+request.form['delete_id'],{})
+                ok = page_post('DELETE', '/doctors/me/availability/' + request.form['delete_id'], {})
             else:
-                # Collect consultation type, weekday, and time range from the form.
-                item={'consultation_type_id':int(request.form['consultation_type_id']),
-                      'day_of_week':int(request.form['day_of_week']),
-                      'start_time':request.form['start_time'], 'end_time':request.form['end_time']}
-
-                # Update an existing rule or create a new availability rule.
-                item_id=request.form.get('item_id')
-                page_post('PUT' if item_id else 'POST', '/doctors/me/availability'+('/'+item_id if item_id else ''),item)
-
+                item = {
+                    'consultation_type_id': int(request.form['consultation_type_id']),
+                    'day_of_week': int(request.form['day_of_week']),
+                    'start_time': request.form['start_time'],
+                    'end_time': request.form['end_time'],
+                }
+                item_id = request.form.get('item_id', '').strip()
+                ok = page_post(
+                    'PUT' if item_id else 'POST',
+                    '/doctors/me/availability' + ('/' + item_id if item_id else ''),
+                    item,
+                )
+            if ok:
+                request_slot_reconciliation()
         except (ValueError, KeyError):
             flash('Please enter valid availability details')
-
         return redirect(url_for('availability'))
 
     # Fetch weekly availability rules and consultation types from the backend.
