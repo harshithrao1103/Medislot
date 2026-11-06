@@ -100,6 +100,16 @@ def lambda_handler(event, context):
             for statement in statements:
                 cursor.execute(statement)
 
+        # Idempotent additive Milestone 4 indexes for existing databases.
+        with connection.cursor() as cursor:
+            for table, index_name, columns in (
+                ('users','idx_users_name','name'),
+                ('doctors','idx_doctors_hospital_city','hospital_name,city'),
+                ('doctors','idx_doctors_city_specialization','city,specialization_id'),
+            ):
+                cursor.execute(f'SHOW INDEX FROM `{table}` WHERE Key_name=%s',(index_name,))
+                if not cursor.fetchone():
+                    cursor.execute(f'CREATE INDEX `{index_name}` ON `{table}` ({columns})')
         logger.info("Database schema initialized successfully")
 
         return {

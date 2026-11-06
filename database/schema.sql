@@ -126,3 +126,9 @@ CREATE TABLE IF NOT EXISTS refund_ledger (
   CONSTRAINT chk_refund_amount CHECK (refund_amount >= 0 AND deduction_amount >= 0),
   INDEX idx_refund_appointment (appointment_id)
 ) ENGINE=InnoDB;
+
+-- Milestone 4 discovery indexes; idempotent on fresh installs. Existing databases need migration.
+-- users.name is used for name search and deterministic pagination.
+-- doctors hospital_name/city support discovery; specialization_id supports joins.
+-- Leading-wildcard LIKE searches cannot efficiently use standard B-tree indexes.
+-- See database/MILESTONE4_INDEXES.md for limitations and EXPLAIN verification.

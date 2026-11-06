@@ -661,6 +661,51 @@ Resources:
   # The private subnets have no NAT route; a VPC interface endpoint is required.
  
 
+  PatientDomainLambdaRole:
+    Type: AWS::IAM::Role
+    Metadata:
+      checkov:
+        skip:
+          - id: CKV_AWS_111
+            comment: Lambda VPC ENI permissions require wildcard resource.
+    Properties:
+      RoleName: !Sub medislot-${Environment}-patient-domain-lambda-role
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal: {Service: lambda.amazonaws.com}
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: PatientDomainPolicy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Sid: RDSCredentials
+                Effect: Allow
+                Action: [secretsmanager:GetSecretValue]
+                Resource: !Sub arn:${AWS::Partition}:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:rds!db-*
+              - Sid: DecryptRDSSecret
+                Effect: Allow
+                Action: [kms:Decrypt]
+                Resource: !Sub arn:${AWS::Partition}:kms:${AWS::Region}:${AWS::AccountId}:key/c73acad8-2834-4e89-96fe-e49523415470
+                Condition:
+                  StringEquals:
+                    kms:ViaService: !Sub secretsmanager.${AWS::Region}.amazonaws.com
+              - Sid: ReadSlotInventory
+                Effect: Allow
+                Action: [dynamodb:Query]
+                Resource:
+                  - !Sub arn:${AWS::Partition}:dynamodb:${AWS::Region}:${AWS::AccountId}:table/medislot-${Environment}-slots/index/DoctorStartIndex
+              - Sid: LambdaLogs
+                Effect: Allow
+                Action: [logs:CreateLogStream,logs:PutLogEvents]
+                Resource: !Sub arn:${AWS::Partition}:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/medislot-${Environment}-patient-domain:*
+              - Sid: LambdaVpcEni
+                Effect: Allow
+                Action: [ec2:CreateNetworkInterface,ec2:DescribeNetworkInterfaces,ec2:DeleteNetworkInterface,ec2:AssignPrivateIpAddresses,ec2:UnassignPrivateIpAddresses]
+                Resource: '*'
+
   DoctorApiLambdaRole:
     Type: AWS::IAM::Role
     Metadata:
@@ -926,6 +971,10 @@ Outputs:
       Name: !Sub medislot-${Environment}-ApiGatewayCloudWatchRoleArn
 
 
+  PatientDomainLambdaRoleArn:
+    Value: !GetAtt PatientDomainLambdaRole.Arn
+    Export:
+      Name: !Sub medislot-${Environment}-PatientDomainLambdaRoleArn
   DoctorApiLambdaRoleArn:
     Value: !GetAtt DoctorApiLambdaRole.Arn
     Export:

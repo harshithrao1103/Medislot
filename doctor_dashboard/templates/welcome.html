@@ -40,9 +40,11 @@
             class="btn secondary"
             href="{{ url_for('login') }}"
         >
-            Login
+            Login as doctor
         </a>
 
+      <a class="btn" href="{{ url_for('patient_register') }}">Register as patient</a>
+      <a class="btn secondary" href="{{ url_for('patient_login') }}">Login as patient</a>
     </div>
 
 </section>

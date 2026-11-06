@@ -1178,6 +1178,168 @@ Resources:
         - Key: Project
           Value: MediSlot
 
+  # Milestone 4 patient and public discovery Lambda.
+  PatientDomainLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub /aws/lambda/medislot-${Environment}-patient-domain
+      RetentionInDays: 14
+  PatientDomainLambda:
+    Type: AWS::Lambda::Function
+    Metadata:
+      checkov:
+        skip:
+          - id: CKV_AWS_115
+            comment: Development shared concurrency.
+          - id: CKV_AWS_116
+            comment: Synchronous API Lambda, no asynchronous DLQ.
+          - id: CKV_AWS_173
+            comment: AWS-managed environment encryption.
+    Properties:
+      FunctionName: !Sub medislot-${Environment}-patient-domain
+      Runtime: python3.12
+      Handler: patient_domain_lambda.lambda_handler
+      Role:
+        Fn::ImportValue: !Sub medislot-${Environment}-PatientDomainLambdaRoleArn
+      Code:
+        S3Bucket: !Ref ArtifactBucketName
+        S3Key: !Sub lambda/patient_domain/${CodeVersion}.zip
+      Timeout: 30
+      MemorySize: 256
+      VpcConfig:
+        SecurityGroupIds:
+          - Fn::ImportValue: !Sub medislot-${Environment}-LambdaSecurityGroupId
+        SubnetIds:
+          - Fn::ImportValue: !Sub medislot-${Environment}-PrivateSubnetAId
+          - Fn::ImportValue: !Sub medislot-${Environment}-PrivateSubnetBId
+      Environment:
+        Variables:
+          SLOTS_TABLE:
+            Fn::ImportValue: !Sub medislot-${Environment}-SlotInventoryTableName
+          DB_HOST:
+            Fn::ImportValue: !Sub medislot-${Environment}-DBEndpoint
+          DB_PORT:
+            Fn::ImportValue: !Sub medislot-${Environment}-DBPort
+          DB_NAME:
+            Fn::ImportValue: !Sub medislot-${Environment}-DBName
+          DB_SECRET_ARN:
+            Fn::ImportValue: !Sub medislot-${Environment}-DBMasterSecretArn
+  PatientMeRoot:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      RestApiId: !Ref AuthRestApi
+      ParentId: !GetAtt AuthRestApi.RootResourceId
+      PathPart: patients
+  PatientMeResource:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      RestApiId: !Ref AuthRestApi
+      ParentId: !Ref PatientMeRoot
+      PathPart: me
+  PublicDoctorId:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      RestApiId: !Ref AuthRestApi
+      ParentId: !Ref DoctorDomainRoot
+      PathPart: '{doctorId}'
+  PublicDoctorSlots:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      RestApiId: !Ref AuthRestApi
+      ParentId: !Ref PublicDoctorId
+      PathPart: slots
+  PatientMeRead:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref AuthRestApi
+      ResourceId: !Ref PatientMeResource
+      HttpMethod: GET
+      AuthorizationType: CUSTOM
+      AuthorizerId: !Ref JwtAuthorizer
+      Integration:
+        Type: AWS_PROXY
+        IntegrationHttpMethod: POST
+        Uri: !Sub arn:${AWS::Partition}:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${PatientDomainLambda.Arn}/invocations
+  PatientMeUpdate:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref AuthRestApi
+      ResourceId: !Ref PatientMeResource
+      HttpMethod: PUT
+      AuthorizationType: CUSTOM
+      AuthorizerId: !Ref JwtAuthorizer
+      Integration:
+        Type: AWS_PROXY
+        IntegrationHttpMethod: POST
+        Uri: !Sub arn:${AWS::Partition}:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${PatientDomainLambda.Arn}/invocations
+  PatientMeDelete:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref AuthRestApi
+      ResourceId: !Ref PatientMeResource
+      HttpMethod: DELETE
+      AuthorizationType: CUSTOM
+      AuthorizerId: !Ref JwtAuthorizer
+      Integration:
+        Type: AWS_PROXY
+        IntegrationHttpMethod: POST
+        Uri: !Sub arn:${AWS::Partition}:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${PatientDomainLambda.Arn}/invocations
+  DoctorDiscoveryGet:
+    Type: AWS::ApiGateway::Method
+    Metadata:
+      checkov:
+        skip:
+          - id: CKV_AWS_59
+            comment: Public read-only doctor discovery and free-seat lookup is required before patient login.
+    Properties:
+      RestApiId: !Ref AuthRestApi
+      ResourceId: !Ref DoctorDomainRoot
+      HttpMethod: GET
+      AuthorizationType: NONE
+      Integration:
+        Type: AWS_PROXY
+        IntegrationHttpMethod: POST
+        Uri: !Sub arn:${AWS::Partition}:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${PatientDomainLambda.Arn}/invocations
+  PublicDoctorGet:
+    Type: AWS::ApiGateway::Method
+    Metadata:
+      checkov:
+        skip:
+          - id: CKV_AWS_59
+            comment: Public read-only doctor discovery and free-seat lookup is required before patient login.
+    Properties:
+      RestApiId: !Ref AuthRestApi
+      ResourceId: !Ref PublicDoctorId
+      HttpMethod: GET
+      AuthorizationType: NONE
+      Integration:
+        Type: AWS_PROXY
+        IntegrationHttpMethod: POST
+        Uri: !Sub arn:${AWS::Partition}:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${PatientDomainLambda.Arn}/invocations
+  PublicDoctorSlotsGet:
+    Type: AWS::ApiGateway::Method
+    Metadata:
+      checkov:
+        skip:
+          - id: CKV_AWS_59
+            comment: Public read-only doctor discovery and free-seat lookup is required before patient login.
+    Properties:
+      RestApiId: !Ref AuthRestApi
+      ResourceId: !Ref PublicDoctorSlots
+      HttpMethod: GET
+      AuthorizationType: NONE
+      Integration:
+        Type: AWS_PROXY
+        IntegrationHttpMethod: POST
+        Uri: !Sub arn:${AWS::Partition}:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${PatientDomainLambda.Arn}/invocations
+  PatientDomainInvokePermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      Action: lambda:InvokeFunction
+      FunctionName: !Ref PatientDomainLambda
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub arn:${AWS::Partition}:execute-api:${AWS::Region}:${AWS::AccountId}:${AuthRestApi}/*/*/*
+
   AuthDeployment:
     Type: AWS::ApiGateway::Deployment
     DependsOn:
@@ -1215,6 +1377,12 @@ Resources:
       - DoctorBlackoutsPost
       - DoctorBlackoutsDelete
       - DoctorScheduleGet
+      - PatientMeRead
+      - PatientMeUpdate
+      - PatientMeDelete
+      - DoctorDiscoveryGet
+      - PublicDoctorGet
+      - PublicDoctorSlotsGet
     Properties:
       RestApiId: !Ref AuthRestApi
       Description: !Sub Doctor domain API deployment with photo GET ${CodeVersion}

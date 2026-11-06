@@ -64,7 +64,7 @@ def refresh_access():
 def api(method, path, **kwargs):
     """Attach the access token, refresh it near expiry, and retry once after HTTP 401."""
     headers = kwargs.pop('headers', {}).copy()
-    authenticated = bool(session.get('role') == 'doctor' and session.get('refresh_token'))
+    authenticated = bool(session.get('role') in ('doctor','patient') and session.get('refresh_token'))
     if authenticated and (not session.get('access_token') or
                           int(session.get('access_expires_at') or 0) <= int(datetime.now(timezone.utc).timestamp()) + 60):
         refresh_access()
@@ -135,7 +135,7 @@ def check_csrf():
 @app.route('/')
 def index():
     """Send signed-in doctors to their profile and visitors to the welcome page."""
-    return redirect(url_for('profile') if session.get('role')=='doctor' and session.get('refresh_token') else url_for('welcome'))
+    return redirect(url_for('profile') if session.get('role')=='doctor' and session.get('refresh_token') else url_for('patient_profile') if session.get('role')=='patient' and session.get('refresh_token') else url_for('welcome'))
 
 
 # ====================================================================
@@ -146,6 +146,8 @@ def welcome():
     """Display the public welcome page or redirect an authenticated doctor."""
     if session.get('role') == 'doctor' and session.get('refresh_token'):
         return redirect(url_for('profile'))
+    if session.get('role') == 'patient' and session.get('refresh_token'):
+        return redirect(url_for('patient_profile'))
     return render_template('welcome.html')
 
 
@@ -629,3 +631,106 @@ def view_photo():
 
     except (requests.RequestException,ValueError):
         return '', 404
+# ====================================================================
+# MILESTONE 4: PATIENT PORTAL ON THE SAME EC2 FLASK APPLICATION
+# ====================================================================
+
+def patient_protected(fn):
+    @wraps(fn)
+    def inner(*args, **kwargs):
+        if session.get('role') != 'patient' or not session.get('refresh_token'):
+            return redirect(url_for('patient_login'))
+        if session.get('refresh_expires_at') and int(session['refresh_expires_at']) <= int(datetime.now(timezone.utc).timestamp()):
+            session.clear()
+            flash('Session expired. Please sign in again.')
+            return redirect(url_for('patient_login'))
+        return fn(*args, **kwargs)
+    return inner
+
+@app.route('/patient/register',methods=['GET','POST'])
+def patient_register():
+    if request.method=='POST':
+        fields=('name','email','password','date_of_birth','gender','phone','city','emergency_contact','notes')
+        payload={k:request.form.get(k,'').strip() for k in fields}
+        try:
+            r=requests.post(API+'/auth/patients/register',json=payload,timeout=15)
+            if r.ok:
+                flash('Patient registered. Please sign in.')
+                return redirect(url_for('patient_login'))
+            flash(api_error(r))
+        except requests.RequestException:
+            flash('Registration service unavailable')
+    return render_template('patient_register.html')
+
+@app.route('/patient/login',methods=['GET','POST'])
+def patient_login():
+    if request.method=='POST':
+        try:
+            r=requests.post(API+'/auth/patients/login',json={'email':request.form.get('email',''),'password':request.form.get('password','')},timeout=15)
+            if r.ok:
+                data=r.json()
+                if not data.get('accessToken') or not data.get('refreshToken'):
+                    flash('Login tokens missing')
+                else:
+                    session.clear()
+                    session.update(role='patient',access_token=data['accessToken'],refresh_token=data['refreshToken'],
+                        access_expires_at=data.get('expiresAt',0),refresh_expires_at=data.get('refreshExpiresAt',0))
+                    return redirect(url_for('patient_search'))
+            else:flash(api_error(r))
+        except (requests.RequestException,ValueError):flash('Login unavailable')
+    return render_template('patient_login.html')
+
+@app.route('/patient/profile',methods=['GET','POST'])
+@patient_protected
+def patient_profile():
+    if request.method=='POST':
+        if request.form.get('delete_profile'):
+            r=api('DELETE','/patients/me')
+            if r.ok:
+                session.clear()
+                flash('Profile deleted')
+                return redirect(url_for('welcome'))
+            flash(api_error(r))
+        else:
+            fields=('name','date_of_birth','gender','phone','city','emergency_contact','notes')
+            r=api('PUT','/patients/me',json={k:request.form.get(k,'').strip() for k in fields})
+            flash('Profile saved' if r.ok else api_error(r))
+        return redirect(url_for('patient_profile'))
+    r=api('GET','/patients/me')
+    if not r.ok:
+        flash(api_error(r))
+        return redirect(url_for('patient_search'))
+    return render_template('patient_profile.html',data=r.json())
+
+@app.route('/patient/doctors')
+@patient_protected
+def patient_search():
+    filters={k:request.args.get(k,'').strip() for k in ('name','hospital','specialization','city')}
+    page=request.args.get('page','1')
+    try:
+        r=api('GET','/doctors',params={**filters,'page':page,'page_size':10})
+        data=r.json() if r.ok else {}
+        if not r.ok:flash(api_error(r))
+    except (requests.RequestException,ValueError):
+        data={};flash('Doctor search unavailable')
+    return render_template('patient_search.html',data=data,filters=filters)
+
+@app.route('/patient/doctors/<int:doctor_id>')
+@patient_protected
+def patient_doctor(doctor_id):
+    try:
+        r=api('GET',f'/doctors/{doctor_id}')
+        if not r.ok:
+            flash(api_error(r));return redirect(url_for('patient_search'))
+        doctor=r.json()
+        start=request.args.get('start_date',date.today().isoformat())
+        end=request.args.get('end_date',(date.today()+timedelta(days=7)).isoformat())
+        slots_response=api('GET',f'/doctors/{doctor_id}/slots',params={'start_date':start,'end_date':end})
+        slots=slots_response.json().get('slots',[]) if slots_response.ok else []
+        if not slots_response.ok:flash(api_error(slots_response))
+        for slot in slots:
+            slot['local_start']=datetime.fromisoformat(slot['startTimeUTC'].replace('Z','+00:00')).astimezone(__import__('zoneinfo').ZoneInfo('Asia/Kolkata')).strftime('%d %b %Y, %I:%M %p')
+        return render_template('patient_doctor.html',doctor=doctor,slots=slots,start=start,end=end)
+    except (requests.RequestException,ValueError):
+        flash('Doctor details unavailable')
+        return redirect(url_for('patient_search'))

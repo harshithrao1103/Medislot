@@ -845,7 +845,9 @@ jobs:
               "systemctl restart medislot-doctor",
               "systemctl is-active --quiet medislot-doctor",
               "grep -q specialization_id /opt/medislot/templates/register.html",
-              "grep -q specialization_id /opt/medislot/templates/profile.html"
+              "grep -q specialization_id /opt/medislot/templates/profile.html",
+              "test -f /opt/medislot/templates/patient_search.html",
+              "test -f /opt/medislot/templates/patient_profile.html"
             ]
           }
           EOF
@@ -948,3 +950,4 @@ jobs:
           fi
 
           MEDISLOT_API_BASE_URL="$API_BASE" python tests/smoke_auth.py
+          MEDISLOT_API_BASE_URL="$API_BASE" python tests/smoke_patient_domain.py

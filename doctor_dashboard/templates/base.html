@@ -14,7 +14,7 @@
         content="width=device-width, initial-scale=1"
     >
 
-    <title>MediSlot | Doctor Portal</title>
+    <title>MediSlot | Portal</title>
 
     <!-- Main CSS stylesheet -->
     <link
@@ -44,7 +44,7 @@
 
                 <span>
                     MediSlot
-                    <small>DOCTOR WORKSPACE</small>
+                    <small>{{ "PATIENT WORKSPACE" if session.get("role") == "patient" else "DOCTOR WORKSPACE" }}</small>
                 </span>
 
             </div>
@@ -64,7 +64,12 @@
 
                     <!-- My Profile -->
                     <a
-                        class="{% if request.endpoint == 'profile' %}active{% endif %}"
+                        class="{% if request.endpoint == 'patient_profile' %}Patient profile
+                        {% elif request.endpoint == 'patient_search' %}Find doctors
+                        {% elif request.endpoint == 'patient_doctor' %}Doctor details
+                        {% elif request.endpoint == 'patient_register' %}Patient registration
+                        {% elif request.endpoint == 'patient_login' %}Patient login
+                        {% elif request.endpoint == 'profile' %}active{% endif %}"
                         href="{{ url_for('profile') }}"
                     >
                         ◉ <span>My profile</span>
@@ -128,6 +133,13 @@
 
                 </form>
 
+            {% elif session.get('role') == 'patient' %}
+              <div class="nav-label">PATIENT WORKSPACE</div>
+              <nav aria-label="Patient portal">
+                <a href="{{ url_for('patient_profile') }}" class="{{ 'active' if request.endpoint == 'patient_profile' else '' }}">◉ <span>My profile</span></a>
+                <a href="{{ url_for('patient_search') }}" class="{{ 'active' if request.endpoint in ('patient_search','patient_doctor') else '' }}">⌕ <span>Find doctors</span></a>
+              </nav>
+              <form class="logout" method="post" action="{{ url_for('logout') }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button type="submit">Sign out</button></form>
             {% endif %}
 
         </aside>
@@ -148,13 +160,18 @@
                 <div>
 
                     <span class="eyebrow">
-                        MEDISLOT / DOCTOR PORTAL
+                        MEDISLOT / {{ "PATIENT" if session.get("role") == "patient" else "DOCTOR" }} PORTAL
                     </span>
 
                     <!-- Dynamic page heading -->
                     <h1>
 
-                        {% if request.endpoint == 'profile' %}
+                        {% if request.endpoint == 'patient_profile' %}Patient profile
+                        {% elif request.endpoint == 'patient_search' %}Find doctors
+                        {% elif request.endpoint == 'patient_doctor' %}Doctor details
+                        {% elif request.endpoint == 'patient_register' %}Patient registration
+                        {% elif request.endpoint == 'patient_login' %}Patient login
+                        {% elif request.endpoint == 'profile' %}
                             My profile
 
                         {% elif request.endpoint == 'consultations' %}
@@ -186,7 +203,7 @@
 
                 <!-- Workspace label -->
                 <div class="topbar-tag">
-                    Doctor workspace
+                    {{ "Patient workspace" if session.get("role") == "patient" else "Doctor workspace" }}
                 </div>
 
             </header>
