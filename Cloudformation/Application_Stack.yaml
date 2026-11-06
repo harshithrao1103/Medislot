@@ -1184,6 +1184,8 @@ Resources:
     Properties:
       LogGroupName: !Sub /aws/lambda/medislot-${Environment}-patient-domain
       RetentionInDays: 14
+      KmsKeyId:
+        Fn::ImportValue: !Sub medislot-${Environment}-CloudWatchLogsKmsKeyArn
   PatientDomainLambda:
     Type: AWS::Lambda::Function
     Metadata:

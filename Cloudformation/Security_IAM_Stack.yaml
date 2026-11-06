@@ -891,6 +891,40 @@ Resources:
         - Key: Name
           Value: !Sub medislot-${Environment}-doctor-dashboard-sg
 
+
+  # =====================================================
+  # CLOUDWATCH LOGS KMS ENCRYPTION
+  # =====================================================
+  CloudWatchLogsKmsKey:
+    Type: AWS::KMS::Key
+    Properties:
+      Description: !Sub MediSlot ${Environment} CloudWatch Logs encryption key
+      EnableKeyRotation: true
+      KeyPolicy:
+        Version: '2012-10-17'
+        Statement:
+          - Sid: EnableAccountIAMPermissions
+            Effect: Allow
+            Principal:
+              AWS: !Sub arn:${AWS::Partition}:iam::${AWS::AccountId}:root
+            Action: kms:*
+            Resource: '*'
+
+          - Sid: AllowCloudWatchLogsService
+            Effect: Allow
+            Principal:
+              Service: !Sub logs.${AWS::Region}.amazonaws.com
+            Action:
+              - kms:Encrypt
+              - kms:Decrypt
+              - kms:ReEncrypt*
+              - kms:GenerateDataKey*
+              - kms:DescribeKey
+            Resource: '*'
+            Condition:
+              ArnEquals:
+                kms:EncryptionContext:aws:logs:arn: !Sub arn:${AWS::Partition}:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/medislot-${Environment}-patient-domain
+
 # =====================================================
 # OUTPUTS
 # =====================================================
@@ -995,3 +1029,12 @@ Outputs:
     Value: !Ref DoctorDashboardSecurityGroup
     Export:
       Name: !Sub medislot-${Environment}-DoctorDashboardSecurityGroupId
+
+
+
+
+  CloudWatchLogsKmsKeyArn:
+    Description: KMS key ARN for MediSlot CloudWatch Logs encryption
+    Value: !GetAtt CloudWatchLogsKmsKey.Arn
+    Export:
+      Name: !Sub medislot-${Environment}-CloudWatchLogsKmsKeyArn
