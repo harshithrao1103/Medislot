@@ -776,6 +776,7 @@ jobs:
           (cd doctor_dashboard && zip -qr ../doctor_dashboard.zip app.py requirements.txt templates static)
           aws s3 cp doctor_dashboard.zip "s3://${ARTIFACT_BUCKET}/dashboard/${GITHUB_SHA}.zip" --region "$AWS_REGION"
 
+
       # =====================================================
       # 8. VALIDATE APPLICATION TEMPLATE
       # =====================================================
@@ -785,8 +786,14 @@ jobs:
         run: |
           set -euo pipefail
 
+          TEMPLATE_KEY="cloudformation/application/${GITHUB_SHA}.yaml"
+
+          aws s3 cp Cloudformation/Application_Stack.yaml \
+            "s3://${ARTIFACT_BUCKET}/${TEMPLATE_KEY}" \
+            --region "$AWS_REGION"
+
           aws cloudformation validate-template \
-            --template-body file://Cloudformation/Application_Stack.yaml \
+            --template-url "https://${ARTIFACT_BUCKET}.s3.${AWS_REGION}.amazonaws.com/${TEMPLATE_KEY}" \
             --region "$AWS_REGION"
 
       # =====================================================
@@ -800,6 +807,8 @@ jobs:
 
           aws cloudformation deploy \
             --template-file Cloudformation/Application_Stack.yaml \
+            --s3-bucket "$ARTIFACT_BUCKET" \
+            --s3-prefix "cloudformation/application" \
             --stack-name "$STACK_NAME" \
             --parameter-overrides \
               Environment="$DEPLOY_ENV" \
@@ -808,7 +817,6 @@ jobs:
             --role-arn "$CFN_EXECUTION_ROLE_ARN" \
             --region "$AWS_REGION" \
             --no-fail-on-empty-changeset
-
 
       # =====================================================
       # UPDATE EXISTING EC2 DOCTOR DASHBOARD
