@@ -733,8 +733,22 @@ def patient_doctor(doctor_id):
         slots_response=api('GET',f'/doctors/{doctor_id}/slots',params={'start_date':start,'end_date':end})
         slots=slots_response.json().get('slots',[]) if slots_response.ok else []
         if not slots_response.ok:flash(api_error(slots_response))
+
+        # Resolve each slot's internal consultation type ID to patient-friendly
+        # details from the doctor's public profile response. Keep the ID intact
+        # in the slot object for any future booking action; do not display it.
+        consultation_types = {
+            str(item.get('consultation_type_id')): item
+            for item in doctor.get('consultation_types', [])
+            if item.get('consultation_type_id') is not None
+        }
         for slot in slots:
             slot['local_start']=datetime.fromisoformat(slot['startTimeUTC'].replace('Z','+00:00')).astimezone(__import__('zoneinfo').ZoneInfo('Asia/Kolkata')).strftime('%d %b %Y, %I:%M %p')
+            consultation = consultation_types.get(str(slot.get('consultationTypeId')), {})
+            slot['consultation_type_name'] = consultation.get('name', 'Consultation')
+            slot['consultation_duration'] = consultation.get('duration_minutes')
+            slot['consultation_fee'] = consultation.get('fee')
+
         return render_template('patient_doctor.html',doctor=doctor,slots=slots,start=start,end=end)
     except (requests.RequestException,ValueError):
         flash('Doctor details unavailable')
