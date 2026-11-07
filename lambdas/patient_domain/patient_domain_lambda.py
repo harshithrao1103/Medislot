@@ -99,7 +99,12 @@ def search(event, correlation):
             value = text(q[field],field,100)
             clauses.append(sql+' LIKE %s')
             args.append('%'+value.replace(chr(92),chr(92)*2).replace('%',chr(92)+'%').replace('_',chr(92)+'_')+'%')
-    if q.get('specialization'):
+    if q.get('specialization_id'):
+        specialization_id=positive(q['specialization_id'],'specialization_id')
+        clauses.append('d.specialization_id=%s')
+        args.append(specialization_id)
+    elif q.get('specialization'):
+        # Backward compatibility for older clients that still submit a name.
         value=text(q['specialization'],'specialization',100)
         clauses.append('s.specialization_name LIKE %s')
         args.append('%'+value.replace(chr(92),chr(92)*2).replace('%',chr(92)+'%').replace('_',chr(92)+'_')+'%')

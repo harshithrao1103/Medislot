@@ -705,15 +705,20 @@ def patient_profile():
 @app.route('/patient/doctors')
 @patient_protected
 def patient_search():
-    filters={k:request.args.get(k,'').strip() for k in ('name','hospital','specialization','city')}
+    filters={k:request.args.get(k,'').strip() for k in ('name','hospital','city')}
+    filters['specialization_id']=request.args.get('specialization_id','').strip()
     page=request.args.get('page','1')
+    specializations=load_specializations()
     try:
-        r=api('GET','/doctors',params={**filters,'page':page,'page_size':10})
+        params={k:v for k,v in filters.items() if v}
+        params.update({'page':page,'page_size':10})
+        r=api('GET','/doctors',params=params)
         data=r.json() if r.ok else {}
         if not r.ok:flash(api_error(r))
     except (requests.RequestException,ValueError):
         data={};flash('Doctor search unavailable')
-    return render_template('patient_search.html',data=data,filters=filters)
+    return render_template('patient_search.html',data=data,filters=filters,
+                           specializations=specializations)
 
 @app.route('/patient/doctors/<int:doctor_id>')
 @patient_protected

@@ -1,1 +1,53 @@
-{% extends 'base.html' %}{% block content %}<section class="card"><h2>Find doctors</h2><form method="get">{% for key in ['name','hospital','specialization','city'] %}<label>{{ key|capitalize }}<input name="{{ key }}" value="{{ filters[key] }}" placeholder="Search {{ key }}"></label>{% endfor %}<button class="btn" type="submit">Search</button></form><p>{{ data.get('total',0) }} doctors found</p>{% for doctor in data.get('items',[]) %}<div class="card"><h3><a href="{{ url_for('patient_doctor',doctor_id=doctor.doctor_id) }}">{{ doctor.name }}</a></h3><p>{{ doctor.specialization }} · {{ doctor.hospital_name }} · {{ doctor.city }}</p><a class="btn secondary" href="{{ url_for('patient_doctor',doctor_id=doctor.doctor_id) }}">View available slots</a></div>{% else %}<p>No matching doctors.</p>{% endfor %}{% if data.get('page',1)>1 %}<a href="{{ url_for('patient_search',**dict(filters,page=data.page-1)) }}">Previous</a>{% endif %} Page {{ data.get('page',1) }} of {{ data.get('total_pages',0) }} {% if data.get('page',1)<data.get('total_pages',0) %}<a href="{{ url_for('patient_search',**dict(filters,page=data.page+1)) }}">Next</a>{% endif %}</section>{% endblock %}
+{% extends 'base.html' %}
+{% block content %}
+<section class="card">
+  <h2>Find doctors</h2>
+  <form method="get">
+    <label>
+      Name
+      <input name="name" value="{{ filters.name }}" placeholder="Search name">
+    </label>
+    <label>
+      Hospital
+      <input name="hospital" value="{{ filters.hospital }}" placeholder="Search hospital">
+    </label>
+    <label>
+      Specialization
+      <select name="specialization_id" aria-label="Select specialization">
+        <option value="">All specializations</option>
+        {% for specialization in specializations %}
+          <option value="{{ specialization.specialization_id }}"
+            {% if filters.specialization_id|string == specialization.specialization_id|string %}selected{% endif %}>
+            {{ specialization.specialization_name }}
+          </option>
+        {% endfor %}
+      </select>
+    </label>
+    <label>
+      City
+      <input name="city" value="{{ filters.city }}" placeholder="Search city">
+    </label>
+    <button class="btn" type="submit">Search</button>
+    {% if filters.name or filters.hospital or filters.specialization_id or filters.city %}
+      <a class="btn secondary" href="{{ url_for('patient_search') }}">Clear filters</a>
+    {% endif %}
+  </form>
+  <p>{{ data.get('total',0) }} doctors found</p>
+  {% for doctor in data.get('items',[]) %}
+    <div class="card">
+      <h3><a href="{{ url_for('patient_doctor',doctor_id=doctor.doctor_id) }}">{{ doctor.name }}</a></h3>
+      <p>{{ doctor.specialization }} · {{ doctor.hospital_name }} · {{ doctor.city }}</p>
+      <a class="btn secondary" href="{{ url_for('patient_doctor',doctor_id=doctor.doctor_id) }}">View available slots</a>
+    </div>
+  {% else %}
+    <p>No matching doctors.</p>
+  {% endfor %}
+  {% if data.get('page',1)>1 %}
+    <a href="{{ url_for('patient_search',**dict(filters,page=data.page-1)) }}">Previous</a>
+  {% endif %}
+  Page {{ data.get('page',1) }} of {{ data.get('total_pages',0) }}
+  {% if data.get('page',1)<data.get('total_pages',0) %}
+    <a href="{{ url_for('patient_search',**dict(filters,page=data.page+1)) }}">Next</a>
+  {% endif %}
+</section>
+{% endblock %}

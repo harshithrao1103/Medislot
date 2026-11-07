@@ -1,7 +1,7 @@
 {
   "swagger" : "2.0",
   "info" : {
-    "version" : "2026-11-02T14:35:10Z",
+    "version" : "2026-11-05T06:56:27Z",
     "title" : "medislot-dev-auth-api"
   },
   "host" : "6z22fm70cf.execute-api.us-east-1.amazonaws.com",
@@ -70,7 +70,39 @@
           "medislot-dev-jwt-authorizer" : [ ]
         } ]
       },
+      "post" : {
+        "responses" : { },
+        "security" : [ {
+          "medislot-dev-jwt-authorizer" : [ ]
+        } ]
+      },
       "put" : {
+        "responses" : { },
+        "security" : [ {
+          "medislot-dev-jwt-authorizer" : [ ]
+        } ]
+      }
+    },
+    "/doctors/me/availability/{id}" : {
+      "put" : {
+        "parameters" : [ {
+          "name" : "id",
+          "in" : "path",
+          "required" : true,
+          "type" : "string"
+        } ],
+        "responses" : { },
+        "security" : [ {
+          "medislot-dev-jwt-authorizer" : [ ]
+        } ]
+      },
+      "delete" : {
+        "parameters" : [ {
+          "name" : "id",
+          "in" : "path",
+          "required" : true,
+          "type" : "string"
+        } ],
         "responses" : { },
         "security" : [ {
           "medislot-dev-jwt-authorizer" : [ ]
@@ -146,6 +178,12 @@
       }
     },
     "/doctors/me/photo" : {
+      "get" : {
+        "responses" : { },
+        "security" : [ {
+          "medislot-dev-jwt-authorizer" : [ ]
+        } ]
+      },
       "post" : {
         "responses" : { },
         "security" : [ {
@@ -159,6 +197,11 @@
         "security" : [ {
           "medislot-dev-jwt-authorizer" : [ ]
         } ]
+      }
+    },
+    "/specializations" : {
+      "get" : {
+        "responses" : { }
       }
     }
   },

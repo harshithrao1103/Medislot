@@ -20,3 +20,12 @@ def test_public_specializations_route():
     cf = (ROOT / 'Cloudformation/Application_Stack.yaml').read_text()
     assert 'PathPart: specializations' in cf
     assert 'SpecializationsGet:' in cf
+
+def test_patient_search_uses_specialization_dropdown_and_id_filter():
+    template = (ROOT / 'doctor_dashboard/templates/patient_search.html').read_text()
+    api = (ROOT / 'lambdas/patient_domain/patient_domain_lambda.py').read_text()
+    app = (ROOT / 'doctor_dashboard/app.py').read_text()
+    assert '<select name="specialization_id"' in template
+    assert 'specialization.specialization_name' in template
+    assert "filters['specialization_id']" in app
+    assert "clauses.append('d.specialization_id=%s')" in api
