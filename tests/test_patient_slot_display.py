@@ -4,14 +4,17 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 
 
-def test_patient_doctor_page_uses_selectable_slots_and_availability_states():
+def test_patient_doctor_page_uses_slot_cards_and_availability_states():
     template = (ROOT / "doctor_dashboard/templates/patient_doctor.html").read_text()
     assert "class=\"time-slot {% if slot.free_seats > 0 %}is-available" in template
     assert "is-booked" in template
     assert "slot.free_seats" in template
     assert "Fully booked" in template
+    assert "consultation_fee" in template
+    assert "consultation_duration" in template
     assert "appointmentSummary" in template
     assert "booking is not implemented yet" in template
+    assert "Consultations &amp; Fees" not in template
     assert "<table>" not in template
 
 

@@ -12,21 +12,6 @@
       </div>
       <span class="doctor-status"><span class="status-dot"></span> Profile available</span>
     </div>
-    <div class="consultation-section">
-      <h3 class="patient-section-title"><span class="title-icon">▱</span> Consultations &amp; Fees</h3>
-      <div class="consultation-options">
-        {% for c in doctor.consultation_types %}
-        <div class="consultation-option" data-consultation-id="{{ c.consultation_type_id }}">
-          <div class="consultation-icon" aria-hidden="true">◷</div>
-          <div>
-            <strong>{{ c.name }}</strong>
-            <p>{{ c.duration_minutes }} min <span>·</span> ₹{{ c.fee }}</p>
-          </div>
-          <span class="consultation-capacity">Capacity {{ c.capacity }}</span>
-        </div>
-        {% endfor %}
-      </div>
-    </div>
   </section>
 
   <section class="date-filter-card">
@@ -50,8 +35,8 @@
         <h3 class="patient-section-title"><span class="title-icon">◷</span> Available slots</h3>
       </div>
       <div class="availability-legend">
-        <span><i class="legend-dot available"></i> Available</span>
-        <span><i class="legend-dot booked"></i> Fully booked</span>
+        <span><i class="legend-dot available"></i> Available (seats remaining)</span>
+        <span><i class="legend-dot booked"></i> Fully booked (no seats)</span>
       </div>
     </div>
 
@@ -62,7 +47,7 @@
           <span class="calendar-mark">▦</span>
           <strong>{{ date_group.list[0].local_date_label }}</strong>
         </div>
-        <div class="slot-consultation-note">Select an available time below. Seat counts reflect the latest slot data returned by MediSlot.</div>
+        <div class="slot-consultation-note">Select an available time. Consultation type, duration, fee and remaining seats are shown for each slot.</div>
         <div class="slot-grid">
           {% for slot in date_group.list %}
           <button
@@ -77,13 +62,18 @@
             data-slot-id="{{ slot.get('slotId', '') }}"
             aria-pressed="false"{% endif %}
           >
-            <span class="time-slot-time">{% if slot.free_seats > 0 %}<span class="slot-check">✓</span>{% endif %}{{ slot.local_time }}</span>
-            {% if slot.free_seats > 0 %}
-              <span class="time-slot-state">Available · {{ slot.free_seats }} seat{% if slot.free_seats != 1 %}s{% endif %}</span>
-            {% else %}
-              <span class="time-slot-state">Fully booked</span>
-            {% endif %}
-            <span class="time-slot-meta">{{ slot.consultation_type_name }}{% if slot.consultation_duration %} · {{ slot.consultation_duration }} min{% endif %}</span>
+            <span class="time-slot-top">
+              <span class="time-slot-time">{{ slot.local_time }}</span>
+              <span class="time-slot-state">{% if slot.free_seats > 0 %}✓ Available{% else %}Fully booked{% endif %}</span>
+            </span>
+            <span class="time-slot-meta">
+              {{ slot.consultation_type_name }}
+              {% if slot.consultation_duration %} · {{ slot.consultation_duration }} min{% endif %}
+              {% if slot.consultation_fee is not none %} · ₹{{ slot.consultation_fee }}{% endif %}
+            </span>
+            <span class="time-slot-seats">
+              {% if slot.free_seats > 0 %}{{ slot.free_seats }} seat{% if slot.free_seats != 1 %}s{% endif %} remaining{% else %}0 seats remaining{% endif %}
+            </span>
           </button>
           {% endfor %}
         </div>
