@@ -314,6 +314,36 @@ Resources:
         - Key: Environment
           Value: !Ref Environment
 
+  # =====================================================
+  # 16. LAMBDA INTERFACE VPC ENDPOINT
+  # =====================================================
+
+  LambdaVPCEndpoint:
+    Type: AWS::EC2::VPCEndpoint
+    Properties:
+      VpcEndpointType: Interface
+
+      ServiceName: !Sub com.amazonaws.${AWS::Region}.lambda
+
+      VpcId: !Ref MediSlotVPC
+
+      SubnetIds:
+        - !Ref PrivateSubnetA
+        - !Ref PrivateSubnetB
+
+      SecurityGroupIds:
+        - !Ref SecretsManagerEndpointSecurityGroup
+
+      PrivateDnsEnabled: true
+
+      Tags:
+        - Key: Name
+          Value: !Sub medislot-${Environment}-lambda-endpoint
+        - Key: Project
+          Value: MediSlot
+        - Key: Environment
+          Value: !Ref Environment
+
 # =====================================================
 # OUTPUTS
 # =====================================================
@@ -367,3 +397,8 @@ Outputs:
     Value: !Ref SecretsManagerVPCEndpoint
     Export:
       Name: !Sub medislot-${Environment}-SecretsManagerVPCEndpointId
+  LambdaVPCEndpointId:
+    Description: Lambda Interface VPC Endpoint ID
+    Value: !Ref LambdaVPCEndpoint
+    Export:
+      Name: !Sub medislot-${Environment}-LambdaVPCEndpointId
