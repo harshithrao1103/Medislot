@@ -603,6 +603,32 @@ def parse_db_time(value):
     raise ApiError(400, 'Invalid saved availability time')
 
 
+def validate_availability_duration(start, end, duration_minutes):
+    """
+    Ensure an availability window contains one or more complete
+    consultation slots, with no unused minutes at the end.
+    """
+    if type(duration_minutes) is not int or duration_minutes <= 0:
+        raise ApiError(500, 'Invalid consultation duration configuration')
+
+    start_minutes = start.hour * 60 + start.minute
+    end_minutes = end.hour * 60 + end.minute
+    total_minutes = end_minutes - start_minutes
+
+    if total_minutes < duration_minutes:
+        raise ApiError(
+            400,
+            f'Availability must be at least {duration_minutes} minutes long'
+        )
+
+    if total_minutes % duration_minutes != 0:
+        raise ApiError(
+            400,
+            f'Availability duration must be an exact multiple of '
+            f'the {duration_minutes}-minute consultation duration'
+        )
+
+
 
 # ============================================================
 # WEEKLY AVAILABILITY CRUD
@@ -797,25 +823,32 @@ def availability(event, uid, method, correlation, item_id=None):
                 # 8.1 Retrieve consultation types owned by doctor.
                 cur.execute(
                     """
-                    SELECT consultation_type_id
+                    SELECT consultation_type_id, duration_minutes
                     FROM consultation_types
                     WHERE doctor_id = %s
                     """,
                     (uid,)
                 )
 
-                # 8.2 Store owned consultation IDs in a set.
-                owned = {
-                    r['consultation_type_id']
+                # 8.2 Map each owned consultation type to its duration.
+                owned_durations = {
+                    r['consultation_type_id']: r['duration_minutes']
                     for r in cur.fetchall()
                 }
 
-                # 8.3 Reject consultation types belonging
-                # to another doctor.
-                if any(x[1] not in owned for x in normalized):
+                # 8.3 Reject consultation types belonging to another doctor.
+                if any(x[1] not in owned_durations for x in normalized):
                     raise ApiError(
                         403,
                         'Consultation type does not belong to doctor'
+                    )
+
+                # 8.4 Validate every window before deleting existing records.
+                for pattern in normalized:
+                    validate_availability_duration(
+                        pattern[3],
+                        pattern[4],
+                        owned_durations[pattern[1]]
                     )
 
                 # =============================================
@@ -895,7 +928,7 @@ def availability(event, uid, method, correlation, item_id=None):
             # belongs to the authenticated doctor.
             cur.execute(
                 """
-                SELECT 1
+                SELECT duration_minutes
                 FROM consultation_types
                 WHERE doctor_id = %s
                   AND consultation_type_id = %s
@@ -903,12 +936,20 @@ def availability(event, uid, method, correlation, item_id=None):
                 (uid, typ)
             )
 
-            # 11.2 Reject consultation types not owned by doctor.
-            if not cur.fetchone():
+            # 11.2 Retrieve the duration and verify consultation ownership.
+            consultation = cur.fetchone()
+            if not consultation:
                 raise ApiError(
                     403,
                     'Consultation type does not belong to doctor'
                 )
+
+            # 11.3 Require the complete window to fit exact consultation slots.
+            validate_availability_duration(
+                start,
+                end,
+                consultation['duration_minutes']
+            )
 
             # =================================================
             # 12. CHECK EXISTING AVAILABILITY OVERLAPS

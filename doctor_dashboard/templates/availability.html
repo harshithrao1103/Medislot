@@ -62,7 +62,10 @@
                 >
                     {% for c in consultations %}
 
-                    <option value="{{ c.consultation_type_id }}">
+                    <option
+                        value="{{ c.consultation_type_id }}"
+                        data-duration="{{ c.duration_minutes }}"
+                    >
                         {{ c.name }} ({{ c.duration_minutes }} min)
                     </option>
 
@@ -127,6 +130,7 @@
 
         </div>
 
+        <p id="availability-duration-error" role="alert" hidden></p>
 
         <!-- ========================================= -->
         <!-- 4. FORM ACTION BUTTONS                    -->
@@ -304,9 +308,57 @@
     const end = document.getElementById('availability-end');
     const heading = document.getElementById('availability-form-heading');
     const save = document.getElementById('availability-save');
+    const durationError = document.getElementById('availability-duration-error');
+
+    function validateDuration(showMessage) {
+        durationError.hidden = true;
+        durationError.textContent = '';
+
+        const selectedOption = type.options[type.selectedIndex];
+        const duration = Number(selectedOption.dataset.duration);
+        const startParts = start.value.split(':').map(Number);
+        const endParts = end.value.split(':').map(Number);
+
+        if (
+            !Number.isInteger(duration) || duration <= 0 ||
+            startParts.length !== 2 || endParts.length !== 2 ||
+            !start.value || !end.value
+        ) {
+            return false;
+        }
+
+        const startMinutes = startParts[0] * 60 + startParts[1];
+        const endMinutes = endParts[0] * 60 + endParts[1];
+        const totalMinutes = endMinutes - startMinutes;
+
+        if (totalMinutes < duration || totalMinutes % duration !== 0) {
+            if (showMessage) {
+                durationError.textContent = totalMinutes < duration
+                    ? `Availability must be at least ${duration} minutes long.`
+                    : `Availability duration must be an exact multiple of ${duration} minutes.`;
+                durationError.hidden = false;
+            }
+            return false;
+        }
+
+        return true;
+    }
+
+    form.addEventListener('submit', event => {
+        if (!validateDuration(true)) {
+            event.preventDefault();
+            durationError.scrollIntoView({behavior: 'smooth', block: 'center'});
+        }
+    });
+
+    [type, start, end].forEach(control => {
+        control.addEventListener('change', () => validateDuration(false));
+    });
 
     function resetAvailability() {
         form.reset();
+        durationError.hidden = true;
+        durationError.textContent = '';
         id.value = '';
         heading.textContent = 'Add availability';
         save.textContent = 'Save availability';
