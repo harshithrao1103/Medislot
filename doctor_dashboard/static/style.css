@@ -2,3 +2,76 @@
 :root{font:15px 'DM Sans',system-ui,-apple-system,sans-serif;color:#1c2d42;background:#f5f7fb}*{box-sizing:border-box}body{margin:0}button,input,select,textarea{font:inherit}.app-shell{min-height:100vh;display:grid;grid-template-columns:252px minmax(0,1fr)}.sidebar{background:#102b43;color:#d7e6f0;padding:30px 18px;display:flex;flex-direction:column;gap:28px;min-height:100vh}.brand{display:flex;align-items:center;gap:12px;padding:0 12px;font-size:25px;font-weight:700;color:white;letter-spacing:-.8px}.brand-icon{background:#1c9b9a;color:white;width:39px;height:39px;display:grid;place-items:center;border-radius:11px;font-size:23px}.brand small{display:block;font-size:10px;letter-spacing:1.6px;font-weight:700;color:#8cb7c9;margin-top:1px}.nav-label{font-size:10px;letter-spacing:1.6px;font-weight:700;color:#83a3b6;padding:0 14px;margin-bottom:-18px}.sidebar nav{display:grid;gap:6px}.sidebar nav a{display:flex;gap:13px;align-items:center;color:#c9dce8;text-decoration:none;padding:13px 15px;border-radius:10px;font-weight:600}.sidebar nav a:hover,.sidebar nav a.active{background:#1e4960;color:white}.sidebar nav a.active{box-shadow:inset 3px 0 #48d1c5}.logout{margin-top:auto}.logout button{width:100%;background:#23465d;border:1px solid #416175;color:#e9f5fb}.main-column{min-width:0;display:flex;flex-direction:column}.topbar{background:white;border-bottom:1px solid #e3eaf0;display:flex;align-items:center;justify-content:space-between;padding:26px clamp(20px,4vw,56px);gap:16px}.eyebrow{font-size:10px;letter-spacing:1.7px;color:#74889b;font-weight:700}.topbar h1{margin:6px 0 0;font-size:26px;letter-spacing:-.8px;color:#132e46}.topbar-tag{border-radius:30px;padding:9px 14px;background:#e9f7f4;color:#117a73;font-size:12px;font-weight:700}main{width:100%;max-width:1180px;margin:0 auto;padding:34px clamp(18px,4vw,56px);flex:1}section{background:#fff;border:1px solid #e7edf2;border-radius:15px;padding:clamp(20px,3vw,34px);box-shadow:0 8px 28px #193b5410;margin-bottom:22px}h2{font-size:20px;letter-spacing:-.5px;margin:0 0 20px}h3{font-size:16px;margin:25px 0 15px;padding-top:22px;border-top:1px solid #e6edf3}p{line-height:1.6;color:#5d7082}label{display:block;margin:15px 0;color:#273f55;font-size:13px;font-weight:700}input,select,textarea{display:block;width:100%;padding:12px 13px;margin-top:7px;border:1px solid #cdd9e3;border-radius:8px;background:#fff;color:#172d42;outline:none;max-width:100%}input:focus,select:focus,textarea:focus{border-color:#169e9b;box-shadow:0 0 0 3px #1ca6a01c}textarea{min-height:130px}button{border:0;border-radius:8px;padding:11px 18px;background:#117d86;color:white;font-weight:700;cursor:pointer}button:hover{filter:brightness(1.07)}button:focus-visible,a:focus-visible{outline:3px solid #54d5ce;outline-offset:2px}table{border-collapse:collapse;width:100%;margin:16px 0 22px;display:block;overflow-x:auto}th,td{text-align:left;padding:14px 12px;border-bottom:1px solid #e8edf2;white-space:nowrap}th{color:#667b8e;background:#f8fafc;font-size:12px;text-transform:uppercase;letter-spacing:.5px}td{font-size:14px}.alert{background:#e7f5f6;color:#145b65;border-left:4px solid #159ca2;padding:15px 18px;border-radius:8px;margin-bottom:20px}.logout button{font-size:13px}footer{padding:20px 40px;color:#8b9ca9;font-size:12px}form{max-width:100%}@media(max-width:850px){.app-shell{display:block}.sidebar{min-height:auto;padding:15px;gap:15px}.brand{font-size:21px}.sidebar nav{display:flex;overflow-x:auto}.sidebar nav a{white-space:nowrap}.nav-label{display:none}.logout{margin:0}.logout button{width:auto}.topbar{padding:20px}.topbar h1{font-size:22px}.topbar-tag{display:none}main{padding:20px 14px}footer{padding:18px}}@media(max-width:500px){section{padding:17px}.sidebar nav a{padding:10px}.sidebar nav a span{font-size:13px}}
 
 .form-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:0 20px}.profile-heading{display:flex;align-items:center;gap:24px;flex-wrap:wrap}.avatar{width:120px;height:120px;flex-shrink:0;border-radius:50%;overflow:hidden;background:#e7f5f6;display:grid;place-items:center;font-size:56px}.avatar img{width:100%;height:100%;object-fit:cover}.actions{display:flex;gap:14px;flex-wrap:wrap}.btn{display:inline-block;padding:13px 20px;background:#117d86;color:white;text-decoration:none;border-radius:8px;font-weight:700}.btn.secondary,.secondary-button{background:#e7f1f5;color:#16475b}.inline-form{display:inline-block}.hint{font-size:12px;color:#697f91}button:disabled{opacity:.5;cursor:not-allowed}
+
+
+/* Patient doctor availability and slot selection */
+.patient-doctor-page{display:grid;gap:20px;color:#142d43}
+.patient-doctor-page>section{margin:0;padding:clamp(18px,2.6vw,30px);border:1px solid #e3edf0;border-radius:18px;box-shadow:0 8px 26px rgba(24,61,78,.055)}
+.doctor-profile-main{display:flex;align-items:center;gap:20px;flex-wrap:wrap}
+.doctor-avatar{width:76px;height:76px;display:grid;place-items:center;border-radius:50%;background:linear-gradient(145deg,#e4f6f2,#edf4fa);color:#078d7c;font-size:36px;border:1px solid #dcece9}
+.doctor-identity{flex:1;min-width:220px}
+.section-kicker{font-size:10px;letter-spacing:1.5px;font-weight:800;color:#138c80}
+.doctor-identity h2{font-size:27px;margin:4px 0 5px;color:#102b43}
+.doctor-identity p{margin:3px 0;color:#52697b;font-size:14px}
+.doctor-identity p span{padding:0 5px;color:#94a5b1}
+.doctor-status{display:inline-flex;align-items:center;gap:8px;padding:10px 14px;border-radius:30px;background:#e8f8ef;color:#13804e;font-size:13px;font-weight:700}
+.status-dot,.legend-dot{width:9px;height:9px;border-radius:50%;display:inline-block;background:#16a05b}
+.consultation-section{border-top:1px solid #e7eef1;margin-top:24px;padding-top:20px}
+.patient-section-title{font-size:19px;margin:0 0 16px;color:#142d43;display:flex;align-items:center;gap:10px}
+.title-icon{font-size:22px;color:#079681}
+.consultation-options{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}
+.consultation-option{display:flex;align-items:center;gap:14px;padding:15px;border:1px solid #d9e5e9;border-radius:13px;background:#fbfdfd;min-width:0}
+.consultation-option:first-child{border-color:#13a18e;background:#f0faf7}
+.consultation-icon{width:48px;height:48px;flex:none;border-radius:13px;background:#e4f5f0;color:#078d7c;display:grid;place-items:center;font-size:25px}
+.consultation-option strong{font-size:15px;color:#142d43}
+.consultation-option p{margin:5px 0 0;font-size:14px;color:#4c6375}
+.consultation-option p span{padding:0 5px}
+.consultation-capacity{margin-left:auto;color:#728695;font-size:11px;white-space:nowrap}
+.patient-date-form{display:grid;grid-template-columns:1fr 1fr auto;gap:14px;align-items:end}
+.patient-date-form label{margin:0;color:#52697b;font-size:13px}
+.patient-date-form input{height:46px;border-radius:9px}
+.patient-primary-button{display:inline-flex;align-items:center;justify-content:center;gap:18px;min-height:46px;padding:12px 19px;background:#078d80;color:white;border:0;border-radius:9px;font-weight:750;white-space:nowrap}
+.patient-primary-button:hover{background:#06786e}
+.patient-primary-button span{font-size:20px;line-height:12px}
+.patient-timezone-note{font-size:12px;margin:12px 0 0;color:#80919d}
+.slots-heading{display:flex;align-items:end;justify-content:space-between;gap:15px;flex-wrap:wrap;margin-bottom:18px}
+.slots-heading .patient-section-title{margin:4px 0 0}
+.availability-legend{display:flex;gap:16px;flex-wrap:wrap;color:#627788;font-size:12px}
+.availability-legend span{display:flex;align-items:center;gap:7px}
+.legend-dot{width:10px;height:10px}
+.legend-dot.booked{background:#e45c63}
+.slot-date-group{border:1px solid #dce8eb;border-radius:14px;overflow:hidden;margin-top:14px}
+.slot-date-heading{display:flex;align-items:center;gap:11px;padding:15px 18px;background:#f0faf8;color:#142d43;font-size:16px}
+.calendar-mark{font-size:21px;color:#078d80}
+.slot-consultation-note{padding:0 18px 13px;background:#f0faf8;color:#687f8e;font-size:12px}
+.slot-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;padding:16px}
+.time-slot{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:5px;min-width:0;min-height:74px;padding:10px 8px;border:1px solid #8bd4ae;border-radius:10px;background:#f3fbf6;color:#173d32;transition:transform .12s,border-color .12s,background .12s}
+.time-slot.is-available:hover{border-color:#079681;background:#e8f8f1;transform:translateY(-1px)}
+.time-slot-time{font-size:15px;font-weight:750;white-space:nowrap}
+.time-slot-state{font-size:11px;color:#16834f;white-space:nowrap}
+.time-slot-meta{font-size:10px;color:#71858f;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%}
+.time-slot.is-booked{border-color:#d6dfe5;background:#f0f3f5;color:#788792;cursor:not-allowed;opacity:1}
+.time-slot.is-booked .time-slot-state{color:#b14b53}
+.slot-check{margin-right:5px;color:#fff}
+.time-slot.is-selected{background:#078d80;border-color:#078d80;color:#fff;box-shadow:0 0 0 3px #078d8020}
+.time-slot.is-selected .time-slot-state,.time-slot.is-selected .time-slot-meta,.time-slot.is-selected .slot-check{color:#fff}
+.no-slots-state{padding:38px 20px;text-align:center;border:1px dashed #cbdce1;border-radius:13px;background:#fafcfd}
+.no-slots-icon{font-size:32px;color:#0b9886;margin-bottom:8px}
+.no-slots-state strong{display:block;color:#233e52;font-size:16px}
+.no-slots-state p{max-width:520px;margin:8px auto 0;font-size:13px}
+.appointment-summary{display:flex;align-items:center;gap:18px;flex-wrap:wrap;background:#f7fcfb!important;border-color:#d6ebe5!important}
+.appointment-summary[hidden],.booking-notice[hidden]{display:none!important}
+.summary-item{display:flex;align-items:center;gap:10px;flex:1;min-width:145px}
+.summary-icon{width:42px;height:42px;flex:none;border-radius:50%;display:grid;place-items:center;background:#e4f5ef;color:#078d80;font-size:20px;font-weight:800}
+.summary-item div{display:grid;gap:3px}
+.summary-item small{font-size:11px;color:#718592}
+.summary-item strong{font-size:14px;color:#18374b}
+.summary-item span:not(.summary-icon){font-size:12px;color:#627889}
+.book-placeholder{margin-left:auto}
+.booking-notice{display:flex;align-items:flex-start;gap:13px;padding:17px 19px;border:1px solid #f0d99b;border-radius:13px;background:#fff9e9;color:#614c1c}
+.notice-icon{width:27px;height:27px;flex:none;border-radius:50%;display:grid;place-items:center;background:#f6e6b7;font-weight:800}
+.booking-notice strong{font-size:14px}
+.booking-notice p{margin:5px 0 0;font-size:13px;color:#705f39}
+.notice-close{margin-left:auto;padding:0 6px;background:transparent;color:#705f39;font-size:22px}
+@media(max-width:900px){.patient-date-form{grid-template-columns:1fr 1fr}.patient-date-form button{grid-column:1/-1}.slot-grid{grid-template-columns:repeat(3,minmax(0,1fr))}}
+@media(max-width:600px){.doctor-profile-main{align-items:flex-start}.doctor-status{margin-left:0}.consultation-options{grid-template-columns:1fr}.consultation-capacity{display:none}.patient-date-form{grid-template-columns:1fr}.patient-date-form button{grid-column:auto}.slots-heading{align-items:flex-start}.slot-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;padding:11px}.time-slot{min-height:68px}.appointment-summary{align-items:stretch;gap:13px}.summary-item{min-width:calc(50% - 10px)}.book-placeholder{width:100%;margin:0}.doctor-identity h2{font-size:23px}}

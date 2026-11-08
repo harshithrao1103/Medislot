@@ -743,7 +743,12 @@ def patient_doctor(doctor_id):
             if item.get('consultation_type_id') is not None
         }
         for slot in slots:
-            slot['local_start']=datetime.fromisoformat(slot['startTimeUTC'].replace('Z','+00:00')).astimezone(__import__('zoneinfo').ZoneInfo('Asia/Kolkata')).strftime('%d %b %Y, %I:%M %p')
+            local_dt = datetime.fromisoformat(slot['startTimeUTC'].replace('Z','+00:00')).astimezone(__import__('zoneinfo').ZoneInfo('Asia/Kolkata'))
+            slot['local_start'] = local_dt.strftime('%d %b %Y, %I:%M %p')
+            slot['local_date'] = local_dt.strftime('%Y-%m-%d')
+            slot['local_date_label'] = local_dt.strftime('%a, %d %B %Y')
+            slot['local_time'] = local_dt.strftime('%I:%M %p')
+            slot['free_seats'] = int(slot.get('freeSeats', 0) or 0)
             consultation = consultation_types.get(str(slot.get('consultationTypeId')), {})
             slot['consultation_type_name'] = consultation.get('name', 'Consultation')
             slot['consultation_duration'] = consultation.get('duration_minutes')

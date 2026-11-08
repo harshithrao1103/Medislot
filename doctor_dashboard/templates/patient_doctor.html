@@ -1,64 +1,162 @@
 {% extends 'base.html' %}
 {% block content %}
-<section class="card">
-    <h2>{{ doctor.name }}</h2>
-    <p>{{ doctor.specialization }} · {{ doctor.hospital_name }} · {{ doctor.city }}</p>
-    <p>{{ doctor.qualifications }} · {{ doctor.experience_years }} years experience</p>
+<div class="patient-doctor-page">
+  <section class="doctor-profile-card">
+    <div class="doctor-profile-main">
+      <div class="doctor-avatar" aria-hidden="true">✚</div>
+      <div class="doctor-identity">
+        <span class="section-kicker">DOCTOR PROFILE</span>
+        <h2>{{ doctor.name }}</h2>
+        <p class="doctor-specialty">{{ doctor.specialization }} <span>·</span> {{ doctor.hospital_name }}, {{ doctor.city }}</p>
+        <p class="doctor-credentials">{{ doctor.qualifications }} <span>·</span> {{ doctor.experience_years }} years experience</p>
+      </div>
+      <span class="doctor-status"><span class="status-dot"></span> Profile available</span>
+    </div>
+    <div class="consultation-section">
+      <h3 class="patient-section-title"><span class="title-icon">▱</span> Consultations &amp; Fees</h3>
+      <div class="consultation-options">
+        {% for c in doctor.consultation_types %}
+        <div class="consultation-option" data-consultation-id="{{ c.consultation_type_id }}">
+          <div class="consultation-icon" aria-hidden="true">◷</div>
+          <div>
+            <strong>{{ c.name }}</strong>
+            <p>{{ c.duration_minutes }} min <span>·</span> ₹{{ c.fee }}</p>
+          </div>
+          <span class="consultation-capacity">Capacity {{ c.capacity }}</span>
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+  </section>
 
-    <h3>Consultations and fees</h3>
-    <table>
-        <thead>
-            <tr>
-                <th>Type</th>
-                <th>Duration</th>
-                <th>Fee</th>
-                <th>Capacity</th>
-            </tr>
-        </thead>
-        <tbody>
-            {% for c in doctor.consultation_types %}
-            <tr>
-                <td>{{ c.name }}</td>
-                <td>{{ c.duration_minutes }} min</td>
-                <td>₹{{ c.fee }}</td>
-                <td>{{ c.capacity }}</td>
-            </tr>
-            {% endfor %}
-        </tbody>
-    </table>
-
-    <h3>Available slots (IST)</h3>
-    <form method="get">
-        <label>From<input type="date" name="start_date" value="{{ start }}" required></label>
-        <label>To<input type="date" name="end_date" value="{{ end }}" required></label>
-        <button class="btn" type="submit">View slots</button>
+  <section class="date-filter-card">
+    <h3 class="patient-section-title"><span class="title-icon">▦</span> Find an appointment time</h3>
+    <form method="get" class="patient-date-form">
+      <label>From
+        <input type="date" name="start_date" value="{{ start }}" required>
+      </label>
+      <label>To
+        <input type="date" name="end_date" value="{{ end }}" min="{{ start }}" required>
+      </label>
+      <button class="patient-primary-button" type="submit">View availability <span>→</span></button>
     </form>
+    <p class="patient-timezone-note">All appointment times are displayed in India Standard Time (IST).</p>
+  </section>
 
-    <table>
-        <thead>
-            <tr>
-                <th>Date and time</th>
-                <th>Consultation type</th>
-                <th>Duration</th>
-                <th>Fee</th>
-                <th>Free seats</th>
-            </tr>
-        </thead>
-        <tbody>
-            {% for slot in slots %}
-            <tr>
-                <td>{{ slot.local_start }}</td>
-                <td>{{ slot.consultation_type_name }}</td>
-                <td>{% if slot.consultation_duration %}{{ slot.consultation_duration }} min{% else %}—{% endif %}</td>
-                <td>{% if slot.consultation_fee is not none %}₹{{ slot.consultation_fee }}{% else %}—{% endif %}</td>
-                <td>{{ slot.freeSeats }}</td>
-            </tr>
+  <section class="slots-section">
+    <div class="slots-heading">
+      <div>
+        <span class="section-kicker">CHOOSE A TIME</span>
+        <h3 class="patient-section-title"><span class="title-icon">◷</span> Available slots</h3>
+      </div>
+      <div class="availability-legend">
+        <span><i class="legend-dot available"></i> Available</span>
+        <span><i class="legend-dot booked"></i> Fully booked</span>
+      </div>
+    </div>
+
+    {% if slots %}
+      {% for date_group in slots|groupby('local_date') %}
+      <div class="slot-date-group">
+        <div class="slot-date-heading">
+          <span class="calendar-mark">▦</span>
+          <strong>{{ date_group.list[0].local_date_label }}</strong>
+        </div>
+        <div class="slot-consultation-note">Select an available time below. Seat counts reflect the latest slot data returned by MediSlot.</div>
+        <div class="slot-grid">
+          {% for slot in date_group.list %}
+          <button
+            type="button"
+            class="time-slot {% if slot.free_seats > 0 %}is-available{% else %}is-booked{% endif %}"
+            {% if slot.free_seats <= 0 %}disabled aria-disabled="true"{% else %}
+            data-time="{{ slot.local_time }}"
+            data-date="{{ slot.local_date_label }}"
+            data-fee="{{ slot.consultation_fee if slot.consultation_fee is not none else '—' }}"
+            data-duration="{{ slot.consultation_duration or '—' }}"
+            data-type="{{ slot.consultation_type_name }}"
+            data-slot-id="{{ slot.get('slotId', '') }}"
+            aria-pressed="false"{% endif %}
+          >
+            <span class="time-slot-time">{% if slot.free_seats > 0 %}<span class="slot-check">✓</span>{% endif %}{{ slot.local_time }}</span>
+            {% if slot.free_seats > 0 %}
+              <span class="time-slot-state">Available · {{ slot.free_seats }} seat{% if slot.free_seats != 1 %}s{% endif %}</span>
             {% else %}
-            <tr>
-                <td colspan="5">No available slots for selected dates.</td>
-            </tr>
-            {% endfor %}
-        </tbody>
-    </table>
-</section>
+              <span class="time-slot-state">Fully booked</span>
+            {% endif %}
+            <span class="time-slot-meta">{{ slot.consultation_type_name }}{% if slot.consultation_duration %} · {{ slot.consultation_duration }} min{% endif %}</span>
+          </button>
+          {% endfor %}
+        </div>
+      </div>
+      {% endfor %}
+    {% else %}
+      <div class="no-slots-state">
+        <div class="no-slots-icon">◷</div>
+        <strong>No slots available for these dates</strong>
+        <p>This doctor has no generated appointment slots in the selected date range. Try another date range.</p>
+      </div>
+    {% endif %}
+  </section>
+
+  <section class="appointment-summary" id="appointmentSummary" hidden aria-live="polite">
+    <div class="summary-item">
+      <span class="summary-icon">▦</span>
+      <div><small>Selected slot</small><strong id="summaryDate">—</strong><span id="summaryTime">—</span></div>
+    </div>
+    <div class="summary-item">
+      <span class="summary-icon">◷</span>
+      <div><small>Consultation</small><strong id="summaryType">—</strong><span id="summaryDuration">—</span></div>
+    </div>
+    <div class="summary-item">
+      <span class="summary-icon">₹</span>
+      <div><small>Consultation fee</small><strong id="summaryFee">—</strong></div>
+    </div>
+    <button type="button" class="patient-primary-button book-placeholder" id="bookAppointmentButton">Book appointment <span>→</span></button>
+  </section>
+
+  <div class="booking-notice" id="bookingNotice" role="status" aria-live="polite" hidden>
+    <div class="notice-icon">i</div>
+    <div>
+      <strong>Appointment booking is coming soon</strong>
+      <p>Your time slot is selected for review only. No appointment has been booked or reserved because patient booking is not implemented yet.</p>
+    </div>
+    <button type="button" class="notice-close" id="closeBookingNotice" aria-label="Close message">×</button>
+  </div>
+</div>
+
+<script>
+(() => {
+  const slots = Array.from(document.querySelectorAll('.time-slot.is-available'));
+  const summary = document.getElementById('appointmentSummary');
+  const notice = document.getElementById('bookingNotice');
+  const bookButton = document.getElementById('bookAppointmentButton');
+  if (!slots.length || !summary || !bookButton) return;
+
+  slots.forEach((button) => {
+    button.addEventListener('click', () => {
+      slots.forEach((item) => {
+        item.classList.remove('is-selected');
+        item.setAttribute('aria-pressed', 'false');
+      });
+      button.classList.add('is-selected');
+      button.setAttribute('aria-pressed', 'true');
+      document.getElementById('summaryDate').textContent = button.dataset.date;
+      document.getElementById('summaryTime').textContent = button.dataset.time;
+      document.getElementById('summaryType').textContent = button.dataset.type;
+      document.getElementById('summaryDuration').textContent = button.dataset.duration + ' min';
+      document.getElementById('summaryFee').textContent = button.dataset.fee === '—' ? 'Fee unavailable' : '₹' + button.dataset.fee;
+      summary.hidden = false;
+      notice.hidden = true;
+    });
+  });
+
+  bookButton.addEventListener('click', () => {
+    notice.hidden = false;
+    notice.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  });
+  document.getElementById('closeBookingNotice')?.addEventListener('click', () => {
+    notice.hidden = true;
+  });
+})();
+</script>
 {% endblock %}
