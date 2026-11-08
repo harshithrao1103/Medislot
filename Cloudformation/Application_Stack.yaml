@@ -757,6 +757,7 @@ Resources:
             Fn::ImportValue: !Sub medislot-${Environment}-ProfilePhotosBucketName
           SLOTS_TABLE:
             Fn::ImportValue: !Sub medislot-${Environment}-SlotInventoryTableName
+          SLOT_MATERIALISER_FUNCTION: !Sub medislot-${Environment}-slot-materialiser
           DB_HOST:
             Fn::ImportValue: !Sub medislot-${Environment}-DBEndpoint
           DB_PORT:

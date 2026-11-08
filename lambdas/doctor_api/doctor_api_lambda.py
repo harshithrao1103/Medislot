@@ -1079,6 +1079,23 @@ def availability(event, uid, method, correlation, item_id=None):
 
 
 
+def trigger_slot_reconciliation(day):
+    """
+    Ask the existing slot materialiser to reconcile the rolling window
+    immediately after a blackout is added or removed. The invocation is
+    asynchronous so the doctor API does not wait for the full materialiser.
+    """
+    function_name = os.environ.get('SLOT_MATERIALISER_FUNCTION')
+    if not function_name:
+        raise ApiError(500, 'Slot materialiser function is not configured')
+
+    boto3.client('lambda').invoke(
+        FunctionName=function_name,
+        InvocationType='Event',
+        Payload=json.dumps({'date': day.isoformat()}).encode('utf-8')
+    )
+
+
 # ============================================================
 # DOCTOR BLACKOUT DATES
 # ============================================================
@@ -1204,7 +1221,12 @@ def blackouts(event, uid, method, item_id, correlation):
                 # 6.2 Commit the new blackout record to RDS.
                 conn.commit()
 
-                # 6.3 Return the newly generated blackout ID.
+                # 6.3 Trigger immediate asynchronous slot reconciliation.
+                # The Schedule API also checks the blackout table directly,
+                # so the date disappears from the dashboard immediately.
+                trigger_slot_reconciliation(day)
+
+                # 6.4 Return the newly generated blackout ID.
                 return respond(
                     201,
                     {'blackoutId': cur.lastrowid},
@@ -1238,7 +1260,17 @@ def blackouts(event, uid, method, item_id, correlation):
                 # 7.3 Commit the deletion to RDS.
                 conn.commit()
 
-                # 7.4 Return successful deletion response.
+                # 7.4 Regenerate eligible slots for the rolling window.
+                # Existing inactive slot IDs are reactivated by the materialiser.
+                from datetime import datetime
+                from zoneinfo import ZoneInfo
+                trigger_slot_reconciliation(
+                    # Reconcile from today so the removed blackout date is
+                    # included in the rolling 30-day window.
+                    datetime.now(ZoneInfo('Asia/Kolkata')).date()
+                )
+
+                # 7.5 Return successful deletion response.
                 return respond(
                     200,
                     {'deleted': True},
@@ -1295,7 +1327,40 @@ def schedule(event, uid, correlation):
     )
 
     # ========================================================
-    # 2. IMPORT REQUIRED LIBRARIES
+    # 2. CHECK WHETHER THE REQUESTED DATE IS A DOCTOR BLACKOUT
+    # ========================================================
+
+    # Return an empty schedule immediately for blackout dates.
+    # This makes the dashboard reflect the change without waiting for
+    # the asynchronous DynamoDB reconciliation to finish.
+    blackout_conn = db_connection()
+    try:
+        with blackout_conn.cursor() as blackout_cur:
+            blackout_cur.execute(
+                """
+                SELECT blackout_id
+                FROM doctor_blackouts
+                WHERE doctor_id = %s
+                  AND blackout_date = %s
+                LIMIT 1
+                """,
+                (uid, day)
+            )
+            if blackout_cur.fetchone():
+                return respond(
+                    200,
+                    {
+                        'date': day.isoformat(),
+                        'timezone': 'Asia/Kolkata',
+                        'slots': []
+                    },
+                    correlation
+                )
+    finally:
+        blackout_conn.close()
+
+    # ========================================================
+    # 3. IMPORT REQUIRED LIBRARIES
     # ========================================================
 
     import datetime as dt

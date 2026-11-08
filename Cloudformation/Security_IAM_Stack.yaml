@@ -737,6 +737,10 @@ Resources:
                 Condition:
                   StringEquals:
                     kms:ViaService: !Sub secretsmanager.${AWS::Region}.amazonaws.com
+              - Sid: InvokeSlotMaterialiser
+                Effect: Allow
+                Action: [lambda:InvokeFunction]
+                Resource: !Sub arn:${AWS::Partition}:lambda:${AWS::Region}:${AWS::AccountId}:function:medislot-${Environment}-slot-materialiser
               - Sid: ProfilePhotoUpload
                 Effect: Allow
                 Action: [s3:PutObject, s3:GetObject]
