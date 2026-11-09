@@ -1389,9 +1389,9 @@ def schedule(event, uid, correlation):
         )
     ).astimezone(dt.timezone.utc)
 
-    # Exclude slots whose appointment time has already elapsed.
-    # This keeps the schedule accurate even before the asynchronous
-    # materialiser has updated their DynamoDB status.
+    # Exclude slots as soon as their start time is reached.
+    # Doctors must not see an in-progress slot as available for new bookings.
+    # This also keeps the schedule accurate before asynchronous materialisation.
     now_utc = dt.datetime.now(dt.timezone.utc)
 
     # ========================================================
@@ -1445,7 +1445,9 @@ def schedule(event, uid, correlation):
             if (
                 x['startTimeUTC'] < end.isoformat()
                 and x.get('status') == 'AVAILABLE'
-                and dt.datetime.fromisoformat(x['endTimeUTC']) > now_utc
+                and dt.datetime.fromisoformat(
+                    x['startTimeUTC'].replace('Z', '+00:00')
+                ).astimezone(dt.timezone.utc) > now_utc
             )
         )
 
