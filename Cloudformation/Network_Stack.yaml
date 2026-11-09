@@ -276,6 +276,12 @@ Resources:
           CidrIp: !Ref PrivateSubnetBCIDR
           Description: Allow HTTPS from private subnet B
 
+        - IpProtocol: tcp
+          FromPort: 443
+          ToPort: 443
+          CidrIp: !Ref PublicSubnetCIDR
+          Description: Allow HTTPS from EC2 public subnet
+
       Tags:
         - Key: Name
           Value: !Sub medislot-${Environment}-secretsmanager-endpoint-sg
