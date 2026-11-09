@@ -478,9 +478,12 @@ def materialise(
                 Key('doctorId').eq(doctor)
                 &
                 Key('startTimeUTC').between(
-                    (now_ist if live_window else dt.datetime.combine(
+                    # Query from the beginning of the first day, not from
+                    # the current time. This includes elapsed slots so they
+                    # can be marked INACTIVE during reconciliation.
+                    dt.datetime.combine(
                         start_day, dt.time.min, tzinfo=IST
-                    )).astimezone(UTC).isoformat(),
+                    ).astimezone(UTC).isoformat(),
 
                     dt.datetime.combine(
                         start_day + dt.timedelta(days=days),

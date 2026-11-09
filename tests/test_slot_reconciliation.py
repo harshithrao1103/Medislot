@@ -117,3 +117,55 @@ def test_active_hold_prevents_immediate_deactivation():
     table.rows[old_id]['heldCount'] = 0
     mod.materialise(day, 1, table=table, connection_factory=lambda: Conn([]))
     assert table.rows[old_id]['status'] == 'INACTIVE'
+
+
+def test_elapsed_slots_are_deactivated_during_live_window(monkeypatch):
+    """Elapsed slots must be reconciled even when the booking window is live."""
+    real_datetime = dt.datetime
+    day = _next_monday()
+    pattern = {'doctor_id': 5, 'consultation_type_id': 3, 'day_of_week': 0,
+               'start_time': dt.time(9), 'end_time': dt.time(12, 30),
+               'duration_minutes': 15, 'capacity': 1}
+    table = Table()
+
+    class FrozenDateTime(real_datetime):
+        current = real_datetime.combine(
+            day, dt.time(8), tzinfo=mod.IST
+        )
+
+        @classmethod
+        def now(cls, tz=None):
+            value = cls.current
+            return value if tz is None else value.astimezone(tz)
+
+    monkeypatch.setattr(mod.dt, 'datetime', FrozenDateTime)
+
+    # At 08:00 all slots are in the future and should be created.
+    first = mod.materialise(
+        day, 1, table=table,
+        connection_factory=lambda: Conn([pattern])
+    )
+    assert first['created'] == 14
+
+    # At 11:52, the morning slots have elapsed. Reconciliation must query
+    # from midnight so those old rows are found and deactivated.
+    FrozenDateTime.current = real_datetime.combine(
+        day, dt.time(11, 52), tzinfo=mod.IST
+    )
+    result = mod.materialise(
+        day, 1, table=table,
+        connection_factory=lambda: Conn([pattern])
+    )
+
+    slots = mod.make_slots('5', pattern, day)
+    elapsed_ids = {
+        slot['slotId'] for slot in slots
+        if real_datetime.fromisoformat(slot['endTimeUTC']) <= FrozenDateTime.current
+    }
+    future_ids = set(table.rows) - elapsed_ids
+
+    assert result['disabled'] == len(elapsed_ids)
+    assert all(table.rows[slot_id]['status'] == 'INACTIVE'
+               for slot_id in elapsed_ids)
+    assert all(table.rows[slot_id]['status'] == 'AVAILABLE'
+               for slot_id in future_ids)
