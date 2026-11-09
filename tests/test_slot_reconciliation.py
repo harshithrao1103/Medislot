@@ -72,8 +72,15 @@ class Conn:
         pass
 
 
+def _next_monday():
+    """Return a Monday strictly after today so tests never depend on wall-clock time."""
+    today = dt.datetime.now(mod.IST).date()
+    days_ahead = (7 - today.weekday()) % 7 or 7
+    return today + dt.timedelta(days=days_ahead)
+
+
 def test_edit_reuses_matching_slot_and_disables_old_one():
-    day = dt.date(2026, 11, 9)  # Future Monday
+    day = _next_monday()
     pattern = {'doctor_id': 5, 'consultation_type_id': 3, 'day_of_week': 0,
                'start_time': dt.time(9), 'end_time': dt.time(10),
                'duration_minutes': 30, 'capacity': 2}
@@ -97,7 +104,7 @@ def test_edit_reuses_matching_slot_and_disables_old_one():
 
 
 def test_active_hold_prevents_immediate_deactivation():
-    day = dt.date(2026, 11, 9)
+    day = _next_monday()
     pattern = {'doctor_id': 5, 'consultation_type_id': 3, 'day_of_week': 0,
                'start_time': dt.time(9), 'end_time': dt.time(9, 30),
                'duration_minutes': 30, 'capacity': 1}
