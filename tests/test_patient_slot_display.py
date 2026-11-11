@@ -13,7 +13,7 @@ def test_patient_doctor_page_uses_slot_cards_and_availability_states():
     assert "consultation_fee" in template
     assert "consultation_duration" in template
     assert "appointmentSummary" in template
-    assert "booking is not implemented yet" in template
+    assert "booking is not implemented yet" not in template
     assert "Consultations &amp; Fees" not in template
     assert "<table>" not in template
 
