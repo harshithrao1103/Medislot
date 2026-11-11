@@ -104,21 +104,12 @@
     <button type="button" class="patient-primary-button book-placeholder" id="bookAppointmentButton">Book appointment <span>→</span></button>
   </section>
 
-  <div class="booking-notice" id="bookingNotice" role="status" aria-live="polite" hidden>
-    <div class="notice-icon">i</div>
-    <div>
-      <strong>Appointment booking is coming soon</strong>
-      <p>Your time slot is selected for review only. No appointment has been booked or reserved because patient booking is not implemented yet.</p>
-    </div>
-    <button type="button" class="notice-close" id="closeBookingNotice" aria-label="Close message">×</button>
-  </div>
 </div>
 
 <script>
 (() => {
   const slots = Array.from(document.querySelectorAll('.time-slot.is-available'));
   const summary = document.getElementById('appointmentSummary');
-  const notice = document.getElementById('bookingNotice');
   const bookButton = document.getElementById('bookAppointmentButton');
   if (!slots.length || !summary || !bookButton) return;
 
@@ -136,17 +127,9 @@
       document.getElementById('summaryDuration').textContent = button.dataset.duration + ' min';
       document.getElementById('summaryFee').textContent = button.dataset.fee === '—' ? 'Fee unavailable' : '₹' + button.dataset.fee;
       summary.hidden = false;
-      notice.hidden = true;
     });
   });
 
-  bookButton.addEventListener('click', () => {
-    notice.hidden = false;
-    notice.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-  });
-  document.getElementById('closeBookingNotice')?.addEventListener('click', () => {
-    notice.hidden = true;
-  });
 })();
 </script>
 {% endblock %}
