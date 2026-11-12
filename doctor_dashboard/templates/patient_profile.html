@@ -1,1 +1,29 @@
-{% extends 'base.html' %}{% block content %}<section class="card"><h2>My patient profile</h2><p>{{ data.email }}</p><form method="post"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}">{% for key,label,typ in [('name','Name','text'),('date_of_birth','Date of birth','date'),('gender','Gender','text'),('phone','Phone','tel'),('city','City','text'),('emergency_contact','Emergency contact','text')] %}<label>{{ label }}<input name="{{ key }}" type="{{ typ }}" value="{{ data.get(key,'') }}" required></label>{% endfor %}<label>Notes<textarea name="notes">{{ data.get('notes') or '' }}</textarea></label><button class="btn" type="submit">Save profile</button></form><form method="post" onsubmit="return confirm('Delete your patient profile? This cannot be undone.')"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="delete_profile" value="1"><button class="btn secondary" type="submit">Delete profile</button></form></section>{% endblock %}
+{% extends 'base.html' %}
+{% block content %}
+<section class="card">
+  <h2>My patient profile</h2>
+  <h3>{{ data.get('first_name', '') }} {{ data.get('last_name', '') }}</h3>
+  <p>{{ data.email }}</p>
+  <form method="post">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    {% for key,label,typ in [
+      ('first_name','First name','text'),
+      ('last_name','Last name','text'),
+      ('date_of_birth','Date of birth','date'),
+      ('gender','Gender','text'),
+      ('phone','Phone','tel'),
+      ('city','City','text'),
+      ('emergency_contact','Emergency contact','text')
+    ] %}
+      <label>{{ label }}<input name="{{ key }}" type="{{ typ }}" value="{{ data.get(key,'') }}" {% if key in ('first_name','last_name') %}maxlength="50"{% endif %} required></label>
+    {% endfor %}
+    <label>Notes<textarea name="notes">{{ data.get('notes') or '' }}</textarea></label>
+    <button class="btn" type="submit">Save profile</button>
+  </form>
+  <form method="post" onsubmit="return confirm('Delete your patient profile? This cannot be undone.')">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <input type="hidden" name="delete_profile" value="1">
+    <button class="btn secondary" type="submit">Delete profile</button>
+  </form>
+</section>
+{% endblock %}

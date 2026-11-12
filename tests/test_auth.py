@@ -19,8 +19,12 @@ def test_password_policy(monkeypatch):
     monkeypatch.setattr(ac, 'config', lambda key, decrypt=False: '10')
     for password in ('short1', 'abcdefghij', '1234567890', ''):
         with pytest.raises(ValueError):
-            ac.validate_registration({'name': 'Test', 'email': 'test@example.org', 'password': password})
-    assert ac.validate_registration({'name': ' Test ', 'email': 'Test@Example.org', 'password': 'correctpass1'})[:2] == ('Test', 'test@example.org')
+            ac.validate_registration({'first_name': 'Test', 'last_name': 'User', 'email': 'test@example.org', 'password': password})
+    assert ac.validate_registration({'first_name': ' Test ', 'last_name': ' User ', 'email': 'Test@Example.org', 'password': 'correctpass1'}) == ('Test', 'User', 'test@example.org', 'correctpass1')
+    with pytest.raises(ValueError):
+        ac.validate_registration({'first_name': 'OnlyFirst', 'last_name': '', 'email': 'test@example.org', 'password': 'correctpass1'})
+    # Temporary compatibility for existing clients that still submit a full name.
+    assert ac.validate_registration({'name': 'Legacy Patient', 'email': 'legacy@example.org', 'password': 'correctpass1'})[:3] == ('Legacy', 'Patient', 'legacy@example.org')
 
 
 def test_bcrypt_work_factor():

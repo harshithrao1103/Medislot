@@ -72,7 +72,7 @@ def lambda_handler(event, context):
         # Fail closed on an existing incompatible schema. CREATE TABLE IF NOT EXISTS
         # cannot change old column layouts; never drop production tables automatically.
         expected = {
-            'users': {'user_id', 'name', 'email', 'password_hash', 'role', 'created_at'},
+            'users': {'user_id', 'name', 'first_name', 'last_name', 'email', 'password_hash', 'role', 'created_at'},
             'specializations': {'specialization_id', 'specialization_name'},
             'doctors': {'user_id', 'licence_number', 'specialization_id', 'experience_years', 'qualifications', 'hospital_name', 'clinic_address', 'city', 'languages', 'timezone', 'photo_key'},
             'patients': {'user_id', 'date_of_birth', 'gender', 'phone', 'city', 'emergency_contact', 'notes'},

@@ -174,7 +174,7 @@ def register():
         try:
             # Collect doctor details from the HTML form and remove extra spaces.
             payload = {k: request.form.get(k, '').strip() for k in
-                       ('name','email','password','licence_number','qualifications',
+                       ('first_name','last_name','email','password','licence_number','qualifications',
                         'hospital_name','clinic_address','city','timezone')}
 
             payload['specialization_id'] = int(request.form['specialization_id'])
@@ -317,7 +317,7 @@ def profile():
 
     if request.method=='POST':
         # Collect the updated profile fields from the HTML form.
-        payload={key:request.form[key] for key in ('name','qualifications','hospital_name','clinic_address','city','timezone')}
+        payload={key:request.form[key] for key in ('first_name','last_name','qualifications','hospital_name','clinic_address','city','timezone')}
 
         try:
             payload['specialization_id'] = int(request.form['specialization_id'])
@@ -650,7 +650,7 @@ def patient_protected(fn):
 @app.route('/patient/register',methods=['GET','POST'])
 def patient_register():
     if request.method=='POST':
-        fields=('name','email','password','date_of_birth','gender','phone','city','emergency_contact','notes')
+        fields=('first_name','last_name','email','password','date_of_birth','gender','phone','city','emergency_contact','notes')
         payload={k:request.form.get(k,'').strip() for k in fields}
         try:
             r=requests.post(API+'/auth/patients/register',json=payload,timeout=15)
@@ -692,7 +692,7 @@ def patient_profile():
                 return redirect(url_for('welcome'))
             flash(api_error(r))
         else:
-            fields=('name','date_of_birth','gender','phone','city','emergency_contact','notes')
+            fields=('first_name','last_name','date_of_birth','gender','phone','city','emergency_contact','notes')
             r=api('PUT','/patients/me',json={k:request.form.get(k,'').strip() for k in fields})
             flash('Profile saved' if r.ok else api_error(r))
         return redirect(url_for('patient_profile'))

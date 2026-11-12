@@ -99,6 +99,8 @@ def fetch_doctor(cur, uid):
         SELECT
             u.user_id,
             u.name,
+            u.first_name,
+            u.last_name,
             u.email,
             d.licence_number,
             d.specialization_id,
@@ -150,15 +152,29 @@ def profile(event, uid, method, correlation):
                 return respond(200, fetch_doctor(cur, uid), correlation)
             data = body_json(event)
             # Only explicitly permitted profile fields can be updated.
-            allowed = {'name','specialization_id','experience_years','qualifications',
+            allowed = {'name','first_name','last_name','specialization_id','experience_years','qualifications',
                        'hospital_name','clinic_address','city','languages','timezone'}
             if not data or set(data) - allowed:
                 raise ApiError(400, 'Unsupported or empty profile update')
             fields = {}
-            for field, limit in [('name',150),('qualifications',65535),
-                                 ('hospital_name',200),('clinic_address',500),('city',100)]:
+            for field, limit in [('first_name',50),('last_name',50),('name',100),
+                                 ('qualifications',65535),('hospital_name',200),
+                                 ('clinic_address',500),('city',100)]:
                 if field in data:
                     fields[field] = require_text(data[field], field, limit)
+            if 'name' in fields and not ({'first_name', 'last_name'} & set(fields)):
+                parts = fields.pop('name').split(None, 1)
+                fields['first_name'] = parts[0]
+                fields['last_name'] = parts[1] if len(parts) > 1 else ''
+            if 'first_name' in fields or 'last_name' in fields:
+                cur.execute('SELECT first_name,last_name FROM users WHERE user_id=%s', (uid,))
+                current_name = cur.fetchone()
+                first = fields.pop('first_name', current_name['first_name'])
+                last = fields.pop('last_name', current_name['last_name'])
+                if not first or not last:
+                    raise ApiError(400, 'First name and last name are required')
+                cur.execute('UPDATE users SET first_name=%s,last_name=%s,name=%s WHERE user_id=%s',
+                            (first,last,f'{first} {last}',uid))
             if 'specialization_id' in data:
                 sid = data['specialization_id']
                 if type(sid) is not int or sid < 1:
@@ -183,9 +199,7 @@ def profile(event, uid, method, correlation):
                     raise ApiError(400, 'Milestone 3 supports Asia/Kolkata only')
                 fields['timezone'] = data['timezone']
             fetch_doctor(cur, uid)
-            # Name belongs to users; other professional details belong to doctors.
-            if 'name' in fields:
-                cur.execute('UPDATE users SET name=%s WHERE user_id=%s', (fields.pop('name'), uid))
+            # Professional details belong to doctors; name fields were updated in users.
             if fields:
                 cur.execute('UPDATE doctors SET '+', '.join(f'{key}=%s' for key in fields)+
                             ' WHERE user_id=%s', (*fields.values(), uid))

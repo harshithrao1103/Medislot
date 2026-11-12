@@ -19,7 +19,7 @@ password='MediSlotPatient123!'
 accounts=[]
 for n in range(2):
     email=f'm4-{suffix}-{n}@example.com'
-    payload={'name':f'Test Patient {n}','email':email,'password':password,'date_of_birth':'1998-05-20',
+    payload={'first_name':'Test','last_name':f'Patient {n}','email':email,'password':password,'date_of_birth':'1998-05-20',
         'gender':'Other','phone':'9876543210','city':'Hyderabad','emergency_contact':'9876543211','notes':''}
     status,data=call('/auth/patients/register','POST',payload)
     assert status==201,('register',status,data)

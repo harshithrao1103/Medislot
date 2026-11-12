@@ -133,12 +133,23 @@ def body_json(event):
 # ============================================================
 
 def validate_registration(data):
-    name = data.get('name')
-    email = data.get('email')
-    password = data.get('password')
-
-    if not isinstance(name, str) or not 1 <= len(name.strip()) <= 100:
-        raise ValueError('Name must be 1-100 characters')
+    # New clients submit separate first_name and last_name fields. The legacy
+    # name field remains accepted temporarily for older API clients.
+    first_name = data.get('first_name')
+    last_name = data.get('last_name')
+    legacy_name = data.get('name')
+    if first_name is None and last_name is None and isinstance(legacy_name, str):
+        parts = legacy_name.strip().split(None, 1)
+        first_name = parts[0] if parts else ''
+        last_name = parts[1] if len(parts) > 1 else ''
+    if not isinstance(first_name, str) or not 1 <= len(first_name.strip()) <= 50:
+        raise ValueError('First name must be 1-50 characters')
+    if not isinstance(last_name, str) or not 1 <= len(last_name.strip()) <= 50:
+        raise ValueError('Last name must be 1-50 characters')
+    first_name, last_name = first_name.strip(), last_name.strip()
+    name = f'{first_name} {last_name}'
+    if len(name) > 100:
+        raise ValueError('Full name must not exceed 100 characters')
 
     if (
         not isinstance(email, str)
@@ -158,7 +169,7 @@ def validate_registration(data):
             'Password must contain at least 10 characters, one letter and one digit'
         )
 
-    return name.strip(), email.strip().lower(), password
+    return first_name, last_name, email.strip().lower(), password
 
 
 # ============================================================
@@ -315,7 +326,7 @@ def register(event, role):
 
     try:
         data = body_json(event)
-        name, email, password = validate_registration(data)
+        first_name, last_name, email, password = validate_registration(data)
         profile = _registration_profile(data, role)
 
         cost = int(config('bcrypt-work-factor'))
@@ -340,8 +351,8 @@ def register(event, role):
 
         with connection.cursor() as cursor:
             cursor.execute(
-                'INSERT INTO users (name,email,password_hash,role) VALUES (%s,%s,%s,%s)',
-                (name, email, password_hash, role.upper())
+                'INSERT INTO users (name,first_name,last_name,email,password_hash,role) VALUES (%s,%s,%s,%s,%s,%s)',
+                (f'{first_name} {last_name}', first_name, last_name, email, password_hash, role.upper())
             )
 
             user_id = cursor.lastrowid

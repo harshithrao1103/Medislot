@@ -4,6 +4,8 @@
 CREATE TABLE IF NOT EXISTS users (
   user_id BIGINT AUTO_INCREMENT PRIMARY KEY,
   name VARCHAR(100) NOT NULL,
+  first_name VARCHAR(50) NOT NULL,
+  last_name VARCHAR(50) NOT NULL,
   email VARCHAR(255) NOT NULL UNIQUE,
   password_hash VARCHAR(255) NOT NULL,
   role ENUM('PATIENT','DOCTOR') NOT NULL,
@@ -128,7 +130,7 @@ CREATE TABLE IF NOT EXISTS refund_ledger (
 ) ENGINE=InnoDB;
 
 -- Milestone 4 discovery indexes; idempotent on fresh installs. Existing databases need migration.
--- users.name is used for name search and deterministic pagination.
+-- users.first_name/last_name are the canonical name fields; users.name is maintained for legacy API compatibility.
 -- doctors hospital_name/city support discovery; specialization_id supports joins.
 -- Leading-wildcard LIKE searches cannot efficiently use standard B-tree indexes.
 -- See database/MILESTONE4_INDEXES.md for limitations and EXPLAIN verification.

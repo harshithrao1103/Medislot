@@ -65,7 +65,7 @@ print("Specializations fetched successfully")
 for role in ("doctors", "patients"):
 
     body = {
-        "name": "CI Test",
+        "first_name": "CI", "last_name": "Test",
         "email": f"m2-{role}-{suffix}@example.invalid",
         "password": password,
     }

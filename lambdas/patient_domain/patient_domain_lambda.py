@@ -42,7 +42,7 @@ def patient_profile(event, method, correlation):
     try:
         with conn.cursor() as cur:
             if method == 'GET':
-                cur.execute("""SELECT u.user_id,u.name,u.email,p.date_of_birth,p.gender,p.phone,p.city,
+                cur.execute("""SELECT u.user_id,u.name,u.first_name,u.last_name,u.email,p.date_of_birth,p.gender,p.phone,p.city,
                     p.emergency_contact,p.notes FROM users u JOIN patients p ON p.user_id=u.user_id
                     WHERE u.user_id=%s AND u.role='PATIENT' """, (uid,))
                 item = cur.fetchone()
@@ -52,11 +52,21 @@ def patient_profile(event, method, correlation):
             if method == 'PUT':
                 data = body_json(event)
                 if not isinstance(data, dict): raise BadRequest(400, 'Invalid JSON object')
-                allowed = {'name','date_of_birth','gender','phone','city','emergency_contact','notes'}
+                allowed = {'name','first_name','last_name','date_of_birth','gender','phone','city','emergency_contact','notes'}
                 if not data or any(k not in allowed for k in data):
                     raise BadRequest(400, 'Invalid profile fields')
-                if 'name' in data:
-                    cur.execute("UPDATE users SET name=%s WHERE user_id=%s AND role='PATIENT'", (text(data['name'],'name',100),uid))
+                if 'name' in data and not ({'first_name', 'last_name'} & set(data)):
+                    parts = text(data['name'], 'name', 100).split(None, 1)
+                    data['first_name'] = parts[0]
+                    data['last_name'] = parts[1] if len(parts) > 1 else ''
+                if 'first_name' in data or 'last_name' in data:
+                    cur.execute("SELECT first_name,last_name FROM users WHERE user_id=%s AND role='PATIENT'", (uid,))
+                    current = cur.fetchone()
+                    if not current: raise BadRequest(404, 'Patient not found')
+                    first = text(data.get('first_name', current['first_name']), 'first_name', 50)
+                    last = text(data.get('last_name', current['last_name']), 'last_name', 50)
+                    cur.execute("UPDATE users SET first_name=%s,last_name=%s,name=%s WHERE user_id=%s AND role='PATIENT'",
+                                (first,last,f'{first} {last}',uid))
                 updates = []
                 args = []
                 for field,limit in [('gender',30),('phone',20),('city',100),('emergency_contact',100),('notes',2000)]:
@@ -94,7 +104,14 @@ def search(event, correlation):
     if size > 50 or page > 10000: raise BadRequest(400,'Pagination limit exceeded')
     clauses = []
     args = []
-    for field,sql in [('name','u.name'),('hospital','d.hospital_name'),('city','d.city')]:
+    if q.get('name'):
+        value = text(q['name'], 'name', 100)
+        pattern = '%'+value.replace(chr(92),chr(92)*2).replace('%',chr(92)+'%').replace('_',chr(92)+'_')+'%'
+        clauses.append("(LOWER(u.first_name) LIKE LOWER(%s) ESCAPE '\\\\' OR LOWER(u.last_name) LIKE LOWER(%s) ESCAPE '\\\\' "
+                       "OR LOWER(CONCAT(u.first_name,' ',u.last_name)) LIKE LOWER(%s) ESCAPE '\\\\' "
+                       "OR LOWER(CONCAT(u.last_name,' ',u.first_name)) LIKE LOWER(%s) ESCAPE '\\\\' OR LOWER(u.name) LIKE LOWER(%s) ESCAPE '\\\\')")
+        args.extend([pattern] * 5)
+    for field,sql in [('hospital','d.hospital_name'),('city','d.city')]:
         if q.get(field):
             value = text(q[field],field,100)
             clauses.append(sql+' LIKE %s')
@@ -115,7 +132,7 @@ def search(event, correlation):
         with conn.cursor() as cur:
             cur.execute('SELECT COUNT(*) AS total'+frm+where,tuple(args))
             total=cur.fetchone()['total']
-            cur.execute("""SELECT d.user_id AS doctor_id,u.name,d.hospital_name,d.city,
+            cur.execute("""SELECT d.user_id AS doctor_id,u.name,u.first_name,u.last_name,d.hospital_name,d.city,
                 s.specialization_name AS specialization,d.experience_years,d.qualifications"""+frm+where+
                 ' ORDER BY u.name,u.user_id LIMIT %s OFFSET %s',(*args,size,(page-1)*size))
             items=cur.fetchall()
@@ -126,7 +143,7 @@ def public_doctor(doctor_id,correlation):
     conn=db_connection()
     try:
         with conn.cursor() as cur:
-            cur.execute("""SELECT d.user_id AS doctor_id,u.name,d.hospital_name,d.clinic_address,
+            cur.execute("""SELECT d.user_id AS doctor_id,u.name,u.first_name,u.last_name,d.hospital_name,d.clinic_address,
                 d.city,d.experience_years,d.qualifications,d.languages,d.timezone,
                 s.specialization_name AS specialization
                 FROM doctors d JOIN users u ON u.user_id=d.user_id

@@ -41,7 +41,7 @@
 
             <!-- Doctor Name -->
             <h2>
-                {{ data.get('name', 'My profile') }}
+                {{ data.get('first_name', '') }} {{ data.get('last_name', '') }}
             </h2>
 
             <!-- Specialization and Email -->
@@ -136,7 +136,8 @@
             -->
 
             {% for field in [
-                'name',
+                'first_name',
+                'last_name',
                 'experience_years',
                 'qualifications',
                 'hospital_name',
@@ -152,6 +153,9 @@
                     <input
                         name="{{ field }}"
                         value="{{ data.get(field, '') }}"
+                        {% if field in ('first_name', 'last_name') %}
+                            maxlength="50"
+                        {% endif %}
                         {% if field == 'experience_years' %}
                             type="number"
                             min="0"

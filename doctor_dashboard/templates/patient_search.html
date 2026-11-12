@@ -5,7 +5,7 @@
   <form method="get">
     <label>
       Name
-      <input name="name" value="{{ filters.name }}" placeholder="Search name">
+      <input name="name" value="{{ filters.name }}" placeholder="Search first name, last name or full name">
     </label>
     <label>
       Hospital
@@ -35,7 +35,7 @@
   <p>{{ data.get('total',0) }} doctors found</p>
   {% for doctor in data.get('items',[]) %}
     <div class="card">
-      <h3><a href="{{ url_for('patient_doctor',doctor_id=doctor.doctor_id) }}">{{ doctor.name }}</a></h3>
+      <h3><a href="{{ url_for('patient_doctor',doctor_id=doctor.doctor_id) }}">{{ doctor.first_name }} {{ doctor.last_name }}</a></h3>
       <p>{{ doctor.specialization }} · {{ doctor.hospital_name }} · {{ doctor.city }}</p>
       <a class="btn secondary" href="{{ url_for('patient_doctor',doctor_id=doctor.doctor_id) }}">View available slots</a>
     </div>
