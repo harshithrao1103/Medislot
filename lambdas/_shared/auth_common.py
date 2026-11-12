@@ -151,6 +151,10 @@ def validate_registration(data):
     if len(name) > 100:
         raise ValueError('Full name must not exceed 100 characters')
 
+    # Read credentials from the registration payload before validating them.
+    email = data.get('email')
+    password = data.get('password')
+
     if (
         not isinstance(email, str)
         or not re.fullmatch(r'[^\s@]+@[^\s@]+\.[^\s@]+', email.strip())
