@@ -3,7 +3,17 @@
 <div class="patient-doctor-page">
   <section class="doctor-profile-card">
     <div class="doctor-profile-main">
+      {% if doctor.profile_photo_url %}
+      <img
+        class="doctor-avatar doctor-profile-photo"
+        src="{{ doctor.profile_photo_url }}"
+        alt="Dr. {{ doctor.first_name }} {{ doctor.last_name }} profile photo"
+        loading="eager"
+        referrerpolicy="no-referrer"
+      >
+      {% else %}
       <div class="doctor-avatar" aria-hidden="true">✚</div>
+      {% endif %}
       <div class="doctor-identity">
         <span class="section-kicker">DOCTOR PROFILE</span>
         <h2>{{ doctor.first_name }} {{ doctor.last_name }}</h2>

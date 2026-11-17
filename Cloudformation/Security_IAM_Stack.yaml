@@ -739,6 +739,11 @@ Resources:
                 Condition:
                   StringEquals:
                     kms:ViaService: !Sub secretsmanager.${AWS::Region}.amazonaws.com
+              # Allow patient-facing doctor profiles to create presigned URLs for private profile photos.
+              - Sid: ReadDoctorProfilePhotos
+                Effect: Allow
+                Action: [s3:GetObject]
+                Resource: !Sub arn:${AWS::Partition}:s3:::medislot-${Environment}-profile-photos-${AWS::AccountId}-${AWS::Region}/*
               # Read appointment-slot inventory from the specified DynamoDB table or index.
               - Sid: ReadSlotInventory
                 Effect: Allow

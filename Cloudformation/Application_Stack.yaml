@@ -1311,6 +1311,8 @@ Resources:
             Fn::ImportValue: !Sub medislot-${Environment}-DBName
           DB_SECRET_ARN:
             Fn::ImportValue: !Sub medislot-${Environment}-DBMasterSecretArn
+          PHOTO_BUCKET:
+            Fn::ImportValue: !Sub medislot-${Environment}-ProfilePhotosBucketName
   # --- PatientMeRoot: Defines the /patients API path ---
   PatientMeRoot:
     Type: AWS::ApiGateway::Resource

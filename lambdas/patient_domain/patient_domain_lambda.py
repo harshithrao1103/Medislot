@@ -469,6 +469,7 @@ def public_doctor(doctor_id, correlation):
                     d.qualifications,
                     d.languages,
                     d.timezone,
+                    d.photo_key,
                     s.specialization_name AS specialization
                 FROM doctors AS d
                 JOIN users AS u
@@ -509,6 +510,20 @@ def public_doctor(doctor_id, correlation):
                 consultation["fee"] = str(consultation["fee"])
 
             doctor["consultation_types"] = consultations
+
+            # Keep the S3 object key private in the database. Return a short-lived
+            # URL so the patient browser can display the private profile photo.
+            photo_key = doctor.pop("photo_key", None)
+            doctor["profile_photo_url"] = None
+            if photo_key:
+                doctor["profile_photo_url"] = boto3.client("s3").generate_presigned_url(
+                    "get_object",
+                    Params={
+                        "Bucket": os.environ["PHOTO_BUCKET"],
+                        "Key": photo_key,
+                    },
+                    ExpiresIn=300,
+                )
 
             return result(200, doctor, correlation)
 
