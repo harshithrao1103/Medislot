@@ -911,9 +911,7 @@ def patient_doctor(doctor_id):
 
             # Get the number of remaining seats for this slot.
             # If freeSeats is missing or empty, use 0.
-            slot['free_seats'] = int(
-                slot.get('freeSeats', 0) or 0
-            )
+            slot['free_seats'] = int(slot.get('freeSeats', 0) or 0)
 
             # Find the consultation details corresponding
             # to this slot's consultationTypeId.

@@ -364,7 +364,7 @@ def search(event, correlation):
             "specialization_id",
         )
 
-        clauses.append("d.specialization_id=%s")
+        clauses.append('d.specialization_id=%s')
         args.append(specialization_id)
 
     elif query_params.get("specialization"):
