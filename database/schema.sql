@@ -11,6 +11,7 @@ CREATE TABLE IF NOT EXISTS users (
   role ENUM('PATIENT','DOCTOR') NOT NULL,
   created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
 ) ENGINE=InnoDB;
+# Inno DB  supports transactions and foreign keys.
 
 CREATE TABLE IF NOT EXISTS specializations (
   specialization_id BIGINT AUTO_INCREMENT PRIMARY KEY,

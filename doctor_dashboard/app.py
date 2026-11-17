@@ -386,6 +386,7 @@ def consultations():
 
             # Update an existing consultation or create a new one.
             item_id=request.form.get('item_id', '').strip()
+            #ITEM_ID TELL WEATHER ALREADY EXIST OR NEW IS BEEN CREATED
             if item_id and (not item_id.isdecimal() or int(item_id) < 1):
                 flash('Invalid consultation selected for editing')
                 return redirect(url_for('consultations'))
@@ -702,59 +703,266 @@ def patient_profile():
         return redirect(url_for('patient_search'))
     return render_template('patient_profile.html',data=r.json())
 
+
+# ============================================================
+# PATIENT DOCTOR SEARCH
+# ============================================================
+
+# Route used by patients to search for doctors.
 @app.route('/patient/doctors')
 @patient_protected
 def patient_search():
-    filters={k:request.args.get(k,'').strip() for k in ('name','hospital','city')}
-    filters['specialization_id']=request.args.get('specialization_id','').strip()
-    page=request.args.get('page','1')
-    specializations=load_specializations()
-    try:
-        params={k:v for k,v in filters.items() if v}
-        params.update({'page':page,'page_size':10})
-        r=api('GET','/doctors',params=params)
-        data=r.json() if r.ok else {}
-        if not r.ok:flash(api_error(r))
-    except (requests.RequestException,ValueError):
-        data={};flash('Doctor search unavailable')
-    return render_template('patient_search.html',data=data,filters=filters,
-                           specializations=specializations)
 
+    # Get search filters from URL query parameters.
+    # strip() removes unnecessary spaces from the values.
+    filters = {
+        k: request.args.get(k, '').strip()
+        for k in ('name', 'hospital', 'city')
+    }
+
+    # Get the selected specialization ID separately.
+    filters['specialization_id'] = request.args.get(
+        'specialization_id', ''
+    ).strip()
+
+    # Get the current pagination page.
+    # Default page is 1.
+    page = request.args.get('page', '1')
+
+    # Load available specializations for the search filter dropdown.
+    # Calls the load_specializations() function.
+    specializations = load_specializations()
+
+    try:
+        # Remove empty filters.
+        # Only non-empty search parameters will be sent to the API.
+        params = {k: v for k, v in filters.items() if v}
+
+        # Add pagination details.
+        # Each page displays a maximum of 10 doctors.
+        params.update({
+            'page': page,
+            'page_size': 10
+        })
+ 
+        # Call the backend API to retrieve doctors.
+        # API endpoint: GET /doctors
+        # Sends name, hospital, city, specialization and pagination.
+        r = api('GET', '/doctors', params=params)
+
+        # Convert the API response into a Python dictionary.
+        # If the API request fails, use an empty dictionary.
+        data = r.json() if r.ok else {}
+
+        # Display the backend API error if the request fails.
+        if not r.ok:
+            flash(api_error(r))
+
+    except (requests.RequestException, ValueError):
+
+        # Handle API connection errors or invalid JSON responses.
+        data = {}
+        flash('Doctor search unavailable')
+
+    # Send doctor search results, filters and specializations
+    # to patient_search.html for displaying on the webpage.
+    return render_template(
+        'patient_search.html',
+        data=data,
+        filters=filters,
+        specializations=specializations
+    )
+
+
+# ============================================================
+# PATIENT VIEW DOCTOR DETAILS AND AVAILABLE SLOTS
+# ============================================================
+
+# Route used when a patient clicks on a particular doctor.
+# <int:doctor_id> dynamically receives the doctor's ID.
 @app.route('/patient/doctors/<int:doctor_id>')
 @patient_protected
 def patient_doctor(doctor_id):
-    try:
-        r=api('GET',f'/doctors/{doctor_id}')
-        if not r.ok:
-            flash(api_error(r));return redirect(url_for('patient_search'))
-        doctor=r.json()
-        start=request.args.get('start_date',date.today().isoformat())
-        end=request.args.get('end_date',(date.today()+timedelta(days=7)).isoformat())
-        slots_response=api('GET',f'/doctors/{doctor_id}/slots',params={'start_date':start,'end_date':end})
-        slots=slots_response.json().get('slots',[]) if slots_response.ok else []
-        if not slots_response.ok:flash(api_error(slots_response))
 
-        # Resolve each slot's internal consultation type ID to patient-friendly
-        # details from the doctor's public profile response. Keep the ID intact
-        # in the slot object for any future booking action; do not display it.
+    try:
+        # ----------------------------------------------------
+        # 1. FETCH DOCTOR DETAILS
+        # ----------------------------------------------------
+
+        # Call the backend API to retrieve the selected doctor's profile.
+        # API endpoint: GET /doctors/{doctor_id}
+        r = api('GET', f'/doctors/{doctor_id}')
+
+        # If the doctor is not found or the API request fails,
+        # display the error and redirect to doctor search.
+        if not r.ok:
+            flash(api_error(r))
+            return redirect(url_for('patient_search'))
+
+        # Convert the doctor's API response into a Python dictionary.
+        doctor = r.json()
+
+        # ----------------------------------------------------
+        # 2. GET THE DATE RANGE FOR AVAILABLE SLOTS
+        # ----------------------------------------------------
+
+        # Get the starting date from the URL.
+        # If the patient does not provide a date, use today's date.
+        start = request.args.get(
+            'start_date',
+            date.today().isoformat()
+        )
+
+        # Get the ending date from the URL.
+        # If the patient does not provide an end date,
+        # use today + 7 days as the default.
+        end = request.args.get(
+            'end_date',
+            (date.today() + timedelta(days=7)).isoformat()
+        )
+
+        # ----------------------------------------------------
+        # 3. FETCH DOCTOR'S AVAILABLE APPOINTMENT SLOTS
+        # ----------------------------------------------------
+
+        # Call the backend API to retrieve available slots
+        # for the selected doctor within the requested date range.
+        #
+        # API endpoint:
+        # GET /doctors/{doctor_id}/slots
+        #
+        # Sends start_date and end_date as query parameters.
+        slots_response = api(
+            'GET',
+            f'/doctors/{doctor_id}/slots',
+            params={
+                'start_date': start,
+                'end_date': end
+            }
+        )
+
+        # If the API request succeeds, extract the slots list.
+        # Otherwise, use an empty list.
+        slots = (
+            slots_response.json().get('slots', [])
+            if slots_response.ok else []
+        )
+
+        # Display the backend error if slot retrieval fails.
+        if not slots_response.ok:
+            flash(api_error(slots_response))
+
+        # ----------------------------------------------------
+        # 4. MAP CONSULTATION TYPE IDs TO CONSULTATION DETAILS
+        # ----------------------------------------------------
+
+        # The doctor's public profile contains consultation types.
+        # Create a dictionary using consultation_type_id as the key.
+        #
+        # This helps identify the consultation name, duration and fee
+        # associated with each appointment slot.
         consultation_types = {
             str(item.get('consultation_type_id')): item
             for item in doctor.get('consultation_types', [])
             if item.get('consultation_type_id') is not None
         }
+
+        # ----------------------------------------------------
+        # 5. PROCESS EACH AVAILABLE SLOT
+        # ----------------------------------------------------
+
+        # Iterate through every appointment slot returned by the API.
         for slot in slots:
-            local_dt = datetime.fromisoformat(slot['startTimeUTC'].replace('Z','+00:00')).astimezone(__import__('zoneinfo').ZoneInfo('Asia/Kolkata'))
-            slot['local_start'] = local_dt.strftime('%d %b %Y, %I:%M %p')
-            slot['local_date'] = local_dt.strftime('%Y-%m-%d')
-            slot['local_date_label'] = local_dt.strftime('%a, %d %B %Y')
-            slot['local_time'] = local_dt.strftime('%I:%M %p')
-            slot['free_seats'] = int(slot.get('freeSeats', 0) or 0)
-            consultation = consultation_types.get(str(slot.get('consultationTypeId')), {})
-            slot['consultation_type_name'] = consultation.get('name', 'Consultation')
-            slot['consultation_duration'] = consultation.get('duration_minutes')
+
+            # Convert the slot's UTC starting time into Indian
+            # Standard Time (Asia/Kolkata).
+            #
+            # replace('Z', '+00:00') identifies the UTC timezone.
+            # astimezone() converts UTC into IST.
+            local_dt = datetime.fromisoformat(
+                slot['startTimeUTC'].replace('Z', '+00:00')
+            ).astimezone(
+                __import__('zoneinfo').ZoneInfo('Asia/Kolkata')
+            )
+
+            # Store the formatted date and time together.
+            # Example: 16 Nov 2026, 02:30 PM
+            slot['local_start'] = local_dt.strftime(
+                '%d %b %Y, %I:%M %p'
+            )
+
+            # Store only the date in YYYY-MM-DD format.
+            # Example: 2026-11-16
+            slot['local_date'] = local_dt.strftime(
+                '%Y-%m-%d'
+            )
+
+            # Store the date in a user-friendly format.
+            # Example: Mon, 16 November 2026
+            slot['local_date_label'] = local_dt.strftime(
+                '%a, %d %B %Y'
+            )
+
+            # Store only the appointment time.
+            # Example: 02:30 PM
+            slot['local_time'] = local_dt.strftime(
+                '%I:%M %p'
+            )
+
+            # Get the number of remaining seats for this slot.
+            # If freeSeats is missing or empty, use 0.
+            slot['free_seats'] = int(
+                slot.get('freeSeats', 0) or 0
+            )
+
+            # Find the consultation details corresponding
+            # to this slot's consultationTypeId.
+            consultation = consultation_types.get(
+                str(slot.get('consultationTypeId')),
+                {}
+            )
+
+            # Add the consultation name.
+            # Default name is 'Consultation' if not found.
+            slot['consultation_type_name'] = consultation.get(
+                'name',
+                'Consultation'
+            )
+
+            # Add the consultation duration in minutes.
+            slot['consultation_duration'] = consultation.get(
+                'duration_minutes'
+            )
+
+            # Add the consultation fee.
             slot['consultation_fee'] = consultation.get('fee')
 
-        return render_template('patient_doctor.html',doctor=doctor,slots=slots,start=start,end=end)
-    except (requests.RequestException,ValueError):
+        # ----------------------------------------------------
+        # 6. DISPLAY DOCTOR DETAILS AND AVAILABLE SLOTS
+        # ----------------------------------------------------
+
+        # Send the processed doctor details and appointment slots
+        # to patient_doctor.html.
+        #
+        # doctor = Doctor profile information
+        # slots  = Processed appointment slots
+        # start  = Selected starting date
+        # end    = Selected ending date
+        return render_template(
+            'patient_doctor.html',
+            doctor=doctor,
+            slots=slots,
+            start=start,
+            end=end
+        )
+
+    # --------------------------------------------------------
+    # 7. HANDLE ERRORS
+    # --------------------------------------------------------
+
+    # Handle API connection errors and date/time conversion errors.
+    except (requests.RequestException, ValueError):
+
+        # Display an error message and redirect to doctor search.
         flash('Doctor details unavailable')
         return redirect(url_for('patient_search'))

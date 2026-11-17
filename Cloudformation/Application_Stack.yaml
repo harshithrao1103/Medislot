@@ -27,6 +27,7 @@ Resources:
   # 1. DATABASE INITIALIZATION LAMBDA
   # =====================================================
 
+  # --- DBInitLambda: Initializes the application database schema and seed/setup data ---
   DBInitLambda:
     Type: AWS::Lambda::Function
     Metadata:
@@ -75,6 +76,7 @@ Resources:
   # 2. AUTHENTICATION LAMBDAS AND LOG GROUPS
   # =====================================================
 
+  # --- DoctorRegisterLogGroup: Stores logs produced by the doctor registration Lambda ---
   DoctorRegisterLogGroup:
     Type: AWS::Logs::LogGroup
     Metadata:
@@ -86,6 +88,7 @@ Resources:
       LogGroupName: !Sub /aws/lambda/medislot-${Environment}-doctor-register
       RetentionInDays: 14
 
+  # --- DoctorRegisterLambda: Handles doctor account registration ---
   DoctorRegisterLambda:
     Type: AWS::Lambda::Function
     Metadata:
@@ -133,6 +136,7 @@ Resources:
         - Key: Environment
           Value: !Ref Environment
 
+  # --- PatientRegisterLogGroup: Stores logs produced by the patient registration Lambda ---
   PatientRegisterLogGroup:
     Type: AWS::Logs::LogGroup
     Metadata:
@@ -144,6 +148,7 @@ Resources:
       LogGroupName: !Sub /aws/lambda/medislot-${Environment}-patient-register
       RetentionInDays: 14
 
+  # --- PatientRegisterLambda: Handles patient account registration ---
   PatientRegisterLambda:
     Type: AWS::Lambda::Function
     Metadata:
@@ -191,6 +196,7 @@ Resources:
         - Key: Environment
           Value: !Ref Environment
 
+  # --- LoginLogGroup: Stores logs produced by the login Lambda ---
   LoginLogGroup:
     Type: AWS::Logs::LogGroup
     Metadata:
@@ -202,6 +208,7 @@ Resources:
       LogGroupName: !Sub /aws/lambda/medislot-${Environment}-login
       RetentionInDays: 14
 
+  # --- LoginLambda: Authenticates doctor and patient login requests ---
   LoginLambda:
     Type: AWS::Lambda::Function
     Metadata:
@@ -249,6 +256,7 @@ Resources:
         - Key: Environment
           Value: !Ref Environment
 
+  # --- TokenLogGroup: Stores logs produced by the token management Lambda ---
   TokenLogGroup:
     Type: AWS::Logs::LogGroup
     Metadata:
@@ -260,6 +268,7 @@ Resources:
       LogGroupName: !Sub /aws/lambda/medislot-${Environment}-token
       RetentionInDays: 14
 
+  # --- TokenLambda: Handles token refresh and logout-related token operations ---
   TokenLambda:
     Type: AWS::Lambda::Function
     Metadata:
@@ -295,6 +304,7 @@ Resources:
         - Key: Environment
           Value: !Ref Environment
 
+  # --- AuthorizerLogGroup: Stores logs produced by the JWT authorizer Lambda ---
   AuthorizerLogGroup:
     Type: AWS::Logs::LogGroup
     Metadata:
@@ -306,6 +316,7 @@ Resources:
       LogGroupName: !Sub /aws/lambda/medislot-${Environment}-authorizer
       RetentionInDays: 14
 
+  # --- AuthorizerLambda: Validates JWT tokens for protected API Gateway routes ---
   AuthorizerLambda:
     Type: AWS::Lambda::Function
     Metadata:
@@ -341,6 +352,7 @@ Resources:
         - Key: Environment
           Value: !Ref Environment
 
+  # --- AuthTestLogGroup: Stores logs produced by the authentication test Lambda ---
   AuthTestLogGroup:
     Type: AWS::Logs::LogGroup
     Metadata:
@@ -352,6 +364,7 @@ Resources:
       LogGroupName: !Sub /aws/lambda/medislot-${Environment}-auth-test
       RetentionInDays: 14
 
+  # --- AuthTestLambda: Handles the protected doctor authentication-check endpoint ---
   AuthTestLambda:
     Type: AWS::Lambda::Function
     Metadata:
@@ -394,12 +407,14 @@ Resources:
   # NEW: Configure API Gateway to use the CloudWatch
   # IAM role created by the Security/IAM Stack.
 
+  # --- ApiGatewayAccount: Configures API Gateway's account-level CloudWatch logging role ---
   ApiGatewayAccount:
     Type: AWS::ApiGateway::Account
     Properties:
       CloudWatchRoleArn:
         Fn::ImportValue: !Sub medislot-${Environment}-ApiGatewayCloudWatchRoleArn
 
+  # --- AuthRestApi: Creates the regional MediSlot REST API ---
   AuthRestApi:
     Type: AWS::ApiGateway::RestApi
     Properties:
@@ -407,6 +422,7 @@ Resources:
       EndpointConfiguration:
         Types: [REGIONAL]
 
+  # --- SpecializationsResource: Defines the /specializations API path ---
   SpecializationsResource:
     Type: AWS::ApiGateway::Resource
     Properties:
@@ -414,6 +430,7 @@ Resources:
       ParentId: !GetAtt AuthRestApi.RootResourceId
       PathPart: specializations
 
+  # --- SpecializationsGet: Public GET endpoint for listing doctor specializations ---
   SpecializationsGet:
     Type: AWS::ApiGateway::Method
     Metadata:
@@ -423,13 +440,14 @@ Resources:
             comment: "Public read-only specialization list required during doctor registration before login."
     Properties:
       RestApiId: !Ref AuthRestApi
-      ResourceId: !Ref SpecializationsResource
+      ResourceId: !Ref SpecializationsResource  
       HttpMethod: GET
       AuthorizationType: NONE
       Integration:
         Type: AWS_PROXY
         IntegrationHttpMethod: POST
         Uri: !Sub arn:${AWS::Partition}:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${DoctorRegisterLambda.Arn}/invocations
+  # --- SpecializationsInvokePermission: Allows API Gateway to invoke the doctor registration Lambda for specializations ---
   SpecializationsInvokePermission:
     Type: AWS::Lambda::Permission
     Properties:
@@ -438,6 +456,7 @@ Resources:
       Principal: apigateway.amazonaws.com
       SourceArn: !Sub arn:${AWS::Partition}:execute-api:${AWS::Region}:${AWS::AccountId}:${AuthRestApi}/*/GET/specializations
 
+  # --- AuthResource: Defines the /auth API path ---
   AuthResource:
     Type: AWS::ApiGateway::Resource
     Properties:
@@ -445,6 +464,7 @@ Resources:
       ParentId: !GetAtt AuthRestApi.RootResourceId
       PathPart: auth
 
+  # --- DoctorsResource: Defines the /auth/doctors API path ---
   DoctorsResource:
     Type: AWS::ApiGateway::Resource
     Properties:
@@ -452,6 +472,7 @@ Resources:
       ParentId: !Ref AuthResource
       PathPart: doctors
 
+  # --- PatientsResource: Defines the /auth/patients API path ---
   PatientsResource:
     Type: AWS::ApiGateway::Resource
     Properties:
@@ -459,6 +480,7 @@ Resources:
       ParentId: !Ref AuthResource
       PathPart: patients
 
+  # --- DoctorCheckResource: Defines the /doctor-auth-check API path ---
   DoctorCheckResource:
     Type: AWS::ApiGateway::Resource
     Properties:
@@ -466,6 +488,7 @@ Resources:
       ParentId: !GetAtt AuthRestApi.RootResourceId
       PathPart: doctor-auth-check
 
+  # --- JwtAuthorizer: Configures the custom TOKEN-based JWT authorizer ---
   JwtAuthorizer:
     Type: AWS::ApiGateway::Authorizer
     Properties:
@@ -476,6 +499,7 @@ Resources:
       AuthorizerResultTtlInSeconds: 0
       AuthorizerUri: !Sub arn:${AWS::Partition}:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${AuthorizerLambda.Arn}/invocations
 
+  # --- AuthorizerInvokePermission: Allows API Gateway to invoke the JWT authorizer Lambda ---
   AuthorizerInvokePermission:
     Type: AWS::Lambda::Permission
     Properties:
@@ -484,6 +508,7 @@ Resources:
       Principal: apigateway.amazonaws.com
       SourceArn: !Sub arn:${AWS::Partition}:execute-api:${AWS::Region}:${AWS::AccountId}:${AuthRestApi}/authorizers/${JwtAuthorizer}
 
+  # --- DoctorRegisterResource: Defines the /auth/doctors/register API path ---
   DoctorRegisterResource:
     Type: AWS::ApiGateway::Resource
     Properties:
@@ -491,6 +516,7 @@ Resources:
       ParentId: !Ref DoctorsResource
       PathPart: register
 
+  # --- DoctorLoginResource: Defines the /auth/doctors/login API path ---
   DoctorLoginResource:
     Type: AWS::ApiGateway::Resource
     Properties:
@@ -498,6 +524,7 @@ Resources:
       ParentId: !Ref DoctorsResource
       PathPart: login
 
+  # --- PatientRegisterResource: Defines the /auth/patients/register API path ---
   PatientRegisterResource:
     Type: AWS::ApiGateway::Resource
     Properties:
@@ -505,6 +532,7 @@ Resources:
       ParentId: !Ref PatientsResource
       PathPart: register
 
+  # --- PatientLoginResource: Defines the /auth/patients/login API path ---
   PatientLoginResource:
     Type: AWS::ApiGateway::Resource
     Properties:
@@ -512,6 +540,7 @@ Resources:
       ParentId: !Ref PatientsResource
       PathPart: login
 
+  # --- RefreshResource: Defines the /auth/refresh API path ---
   RefreshResource:
     Type: AWS::ApiGateway::Resource
     Properties:
@@ -519,6 +548,7 @@ Resources:
       ParentId: !Ref AuthResource
       PathPart: refresh
 
+  # --- LogoutResource: Defines the /auth/logout API path ---
   LogoutResource:
     Type: AWS::ApiGateway::Resource
     Properties:
@@ -530,6 +560,7 @@ Resources:
   # 4. API GATEWAY METHODS AND PERMISSIONS
   # =====================================================
 
+  # --- DoctorRegisterMethod: POST endpoint for doctor registration ---
   DoctorRegisterMethod:
     Type: AWS::ApiGateway::Method
     Metadata:
@@ -547,6 +578,7 @@ Resources:
         IntegrationHttpMethod: POST
         Uri: !Sub arn:${AWS::Partition}:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${DoctorRegisterLambda.Arn}/invocations
 
+  # --- DoctorRegisterInvokePermission: Allows API Gateway to invoke the doctor registration Lambda ---
   DoctorRegisterInvokePermission:
     Type: AWS::Lambda::Permission
     Properties:
@@ -555,6 +587,7 @@ Resources:
       Principal: apigateway.amazonaws.com
       SourceArn: !Sub arn:${AWS::Partition}:execute-api:${AWS::Region}:${AWS::AccountId}:${AuthRestApi}/*/POST/*
 
+  # --- PatientRegisterMethod: POST endpoint for patient registration ---
   PatientRegisterMethod:
     Type: AWS::ApiGateway::Method
     Metadata:
@@ -572,6 +605,7 @@ Resources:
         IntegrationHttpMethod: POST
         Uri: !Sub arn:${AWS::Partition}:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${PatientRegisterLambda.Arn}/invocations
 
+  # --- PatientRegisterInvokePermission: Allows API Gateway to invoke the patient registration Lambda ---
   PatientRegisterInvokePermission:
     Type: AWS::Lambda::Permission
     Properties:
@@ -580,6 +614,7 @@ Resources:
       Principal: apigateway.amazonaws.com
       SourceArn: !Sub arn:${AWS::Partition}:execute-api:${AWS::Region}:${AWS::AccountId}:${AuthRestApi}/*/POST/*
 
+  # --- DoctorLoginMethod: POST endpoint for doctor login ---
   DoctorLoginMethod:
     Type: AWS::ApiGateway::Method
     Metadata:
@@ -597,6 +632,7 @@ Resources:
         IntegrationHttpMethod: POST
         Uri: !Sub arn:${AWS::Partition}:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${LoginLambda.Arn}/invocations
 
+  # --- DoctorLoginInvokePermission: Allows API Gateway to invoke the login Lambda for doctor login ---
   DoctorLoginInvokePermission:
     Type: AWS::Lambda::Permission
     Properties:
@@ -605,6 +641,7 @@ Resources:
       Principal: apigateway.amazonaws.com
       SourceArn: !Sub arn:${AWS::Partition}:execute-api:${AWS::Region}:${AWS::AccountId}:${AuthRestApi}/*/POST/*
 
+  # --- PatientLoginMethod: POST endpoint for patient login ---
   PatientLoginMethod:
     Type: AWS::ApiGateway::Method
     Metadata:
@@ -622,6 +659,7 @@ Resources:
         IntegrationHttpMethod: POST
         Uri: !Sub arn:${AWS::Partition}:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${LoginLambda.Arn}/invocations
 
+  # --- PatientLoginInvokePermission: Allows API Gateway to invoke the login Lambda for patient login ---
   PatientLoginInvokePermission:
     Type: AWS::Lambda::Permission
     Properties:
@@ -630,6 +668,7 @@ Resources:
       Principal: apigateway.amazonaws.com
       SourceArn: !Sub arn:${AWS::Partition}:execute-api:${AWS::Region}:${AWS::AccountId}:${AuthRestApi}/*/POST/*
 
+  # --- RefreshMethod: POST endpoint for refreshing authentication tokens ---
   RefreshMethod:
     Type: AWS::ApiGateway::Method
     Metadata:
@@ -647,6 +686,7 @@ Resources:
         IntegrationHttpMethod: POST
         Uri: !Sub arn:${AWS::Partition}:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${TokenLambda.Arn}/invocations
 
+  # --- RefreshInvokePermission: Allows API Gateway to invoke the token Lambda for token refresh ---
   RefreshInvokePermission:
     Type: AWS::Lambda::Permission
     Properties:
@@ -655,6 +695,7 @@ Resources:
       Principal: apigateway.amazonaws.com
       SourceArn: !Sub arn:${AWS::Partition}:execute-api:${AWS::Region}:${AWS::AccountId}:${AuthRestApi}/*/POST/*
 
+  # --- LogoutMethod: Authenticated POST endpoint for logging out ---
   LogoutMethod:
     Type: AWS::ApiGateway::Method
     Properties:
@@ -668,6 +709,7 @@ Resources:
         IntegrationHttpMethod: POST
         Uri: !Sub arn:${AWS::Partition}:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${TokenLambda.Arn}/invocations
 
+  # --- LogoutInvokePermission: Allows API Gateway to invoke the token Lambda for logout ---
   LogoutInvokePermission:
     Type: AWS::Lambda::Permission
     Properties:
@@ -676,6 +718,7 @@ Resources:
       Principal: apigateway.amazonaws.com
       SourceArn: !Sub arn:${AWS::Partition}:execute-api:${AWS::Region}:${AWS::AccountId}:${AuthRestApi}/*/POST/*
 
+  # --- DoctorCheckMethod: Authenticated GET endpoint for checking doctor authentication ---
   DoctorCheckMethod:
     Type: AWS::ApiGateway::Method
     Properties:
@@ -689,6 +732,7 @@ Resources:
         IntegrationHttpMethod: POST
         Uri: !Sub arn:${AWS::Partition}:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${AuthTestLambda.Arn}/invocations
 
+  # --- DoctorCheckInvokePermission: Allows API Gateway to invoke the authentication test Lambda ---
   DoctorCheckInvokePermission:
     Type: AWS::Lambda::Permission
     Properties:
@@ -703,6 +747,7 @@ Resources:
 
 
   # Milestone 3 doctor domain; existing auth resources are unchanged.
+  # --- DoctorApiLogGroup: Stores logs produced by the doctor API Lambda ---
   DoctorApiLogGroup:
     Type: AWS::Logs::LogGroup
     Metadata:
@@ -713,6 +758,7 @@ Resources:
     Properties:
       LogGroupName: !Sub /aws/lambda/medislot-${Environment}-doctor-api
       RetentionInDays: 14
+  # --- SlotMaterialiserLogGroup: Stores logs produced by the slot materialiser Lambda ---
   SlotMaterialiserLogGroup:
     Type: AWS::Logs::LogGroup
     Metadata:
@@ -723,6 +769,8 @@ Resources:
     Properties:
       LogGroupName: !Sub /aws/lambda/medislot-${Environment}-slot-materialiser
       RetentionInDays: 14
+
+  # --- DoctorApiLambda: Handles authenticated doctor profile, availability, consultation and schedule APIs ---
   DoctorApiLambda:
     Type: AWS::Lambda::Function
     Metadata:
@@ -766,6 +814,8 @@ Resources:
             Fn::ImportValue: !Sub medislot-${Environment}-DBName
           DB_SECRET_ARN:
             Fn::ImportValue: !Sub medislot-${Environment}-DBMasterSecretArn
+
+  # --- SlotMaterialiserLambda: Generates/materialises appointment slot inventory ---
   SlotMaterialiserLambda:
     Type: AWS::Lambda::Function
     Metadata:
@@ -807,6 +857,8 @@ Resources:
             Fn::ImportValue: !Sub medislot-${Environment}-DBName
           DB_SECRET_ARN:
             Fn::ImportValue: !Sub medislot-${Environment}-DBMasterSecretArn
+
+  # --- BookingWindowDaysParameter: Stores the rolling appointment booking window in SSM Parameter Store ---
   BookingWindowDaysParameter:
     Type: AWS::SSM::Parameter
     Properties:
@@ -815,6 +867,7 @@ Resources:
       Value: '30'
       Description: Rolling booking window length in days
 
+  # --- DailySlotMaterialiserSchedule: Runs the slot materialiser daily at the configured time ---
   DailySlotMaterialiserSchedule:
     Type: AWS::Scheduler::Schedule
     Properties:
@@ -830,66 +883,77 @@ Resources:
           Fn::ImportValue: !Sub medislot-${Environment}-MaterialiserSchedulerRoleArn
         Input: '{}'
 
+  # --- DoctorDomainRoot: Defines the /doctors API path ---
   DoctorDomainRoot:
     Type: AWS::ApiGateway::Resource
     Properties:
       RestApiId: !Ref AuthRestApi
       ParentId: !GetAtt AuthRestApi.RootResourceId
       PathPart: doctors
+  # --- DoctorMe: Defines the /doctors/me API path ---
   DoctorMe:
     Type: AWS::ApiGateway::Resource
     Properties:
       RestApiId: !Ref AuthRestApi
       ParentId: !Ref DoctorDomainRoot
       PathPart: me
+  # --- DoctorPhoto: Defines the /doctors/me/photo API path ---
   DoctorPhoto:
     Type: AWS::ApiGateway::Resource
     Properties:
       RestApiId: !Ref AuthRestApi
       ParentId: !Ref DoctorMe
       PathPart: photo
+  # --- DoctorConsultations: Defines the /doctors/me/consultation-types API path ---
   DoctorConsultations:
     Type: AWS::ApiGateway::Resource
     Properties:
       RestApiId: !Ref AuthRestApi
       ParentId: !Ref DoctorMe
       PathPart: consultation-types
+  # --- DoctorConsultationId: Defines the consultation-type item path /{id} ---
   DoctorConsultationId:
     Type: AWS::ApiGateway::Resource
     Properties:
       RestApiId: !Ref AuthRestApi
       ParentId: !Ref DoctorConsultations
       PathPart: '{id}'
+  # --- DoctorAvailability: Defines the /doctors/me/availability API path ---
   DoctorAvailability:
     Type: AWS::ApiGateway::Resource
     Properties:
       RestApiId: !Ref AuthRestApi
       ParentId: !Ref DoctorMe
       PathPart: availability
+  # --- DoctorAvailabilityId: Defines the availability item path /{id} ---
   DoctorAvailabilityId:
     Type: AWS::ApiGateway::Resource
     Properties:
       RestApiId: !Ref AuthRestApi
       ParentId: !Ref DoctorAvailability
       PathPart: '{id}'
+  # --- DoctorBlackouts: Defines the /doctors/me/blackouts API path ---
   DoctorBlackouts:
     Type: AWS::ApiGateway::Resource
     Properties:
       RestApiId: !Ref AuthRestApi
       ParentId: !Ref DoctorMe
       PathPart: blackouts
+  # --- DoctorBlackoutId: Defines the blackout item path /{id} ---
   DoctorBlackoutId:
     Type: AWS::ApiGateway::Resource
     Properties:
       RestApiId: !Ref AuthRestApi
       ParentId: !Ref DoctorBlackouts
       PathPart: '{id}'
+  # --- DoctorSchedule: Defines the /doctors/me/schedule API path ---
   DoctorSchedule:
     Type: AWS::ApiGateway::Resource
     Properties:
       RestApiId: !Ref AuthRestApi
       ParentId: !Ref DoctorMe
-      PathPart: schedule
+      PathPart: schedule  
+  # --- DoctorMeGet: Authenticated GET endpoint for the current doctor's profile ---
   DoctorMeGet:
     Type: AWS::ApiGateway::Method
     Properties:
@@ -902,6 +966,7 @@ Resources:
         Type: AWS_PROXY
         IntegrationHttpMethod: POST
         Uri: !Sub arn:${AWS::Partition}:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${DoctorApiLambda.Arn}/invocations
+  # --- DoctorMePut: Authenticated PUT endpoint for updating the current doctor's profile ---
   DoctorMePut:
     Type: AWS::ApiGateway::Method
     Properties:
@@ -914,6 +979,7 @@ Resources:
         Type: AWS_PROXY
         IntegrationHttpMethod: POST
         Uri: !Sub arn:${AWS::Partition}:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${DoctorApiLambda.Arn}/invocations
+  # --- DoctorPhotoPost: Authenticated POST endpoint for uploading/updating a doctor photo ---
   DoctorPhotoPost:
     Type: AWS::ApiGateway::Method
     Properties:
@@ -926,6 +992,7 @@ Resources:
         Type: AWS_PROXY
         IntegrationHttpMethod: POST
         Uri: !Sub arn:${AWS::Partition}:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${DoctorApiLambda.Arn}/invocations
+  # --- DoctorConsultGet: Authenticated GET endpoint for listing consultation types ---
   DoctorConsultGet:
     Type: AWS::ApiGateway::Method
     Properties:
@@ -938,6 +1005,7 @@ Resources:
         Type: AWS_PROXY
         IntegrationHttpMethod: POST
         Uri: !Sub arn:${AWS::Partition}:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${DoctorApiLambda.Arn}/invocations
+  # --- DoctorConsultPost: Authenticated POST endpoint for creating a consultation type ---
   DoctorConsultPost:
     Type: AWS::ApiGateway::Method
     Properties:
@@ -950,6 +1018,7 @@ Resources:
         Type: AWS_PROXY
         IntegrationHttpMethod: POST
         Uri: !Sub arn:${AWS::Partition}:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${DoctorApiLambda.Arn}/invocations
+  # --- DoctorConsultPut: Authenticated PUT endpoint for updating a consultation type ---
   DoctorConsultPut:
     Type: AWS::ApiGateway::Method
     Properties:
@@ -962,6 +1031,7 @@ Resources:
         Type: AWS_PROXY
         IntegrationHttpMethod: POST
         Uri: !Sub arn:${AWS::Partition}:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${DoctorApiLambda.Arn}/invocations
+  # --- DoctorConsultDelete: Authenticated DELETE endpoint for deleting a consultation type ---
   DoctorConsultDelete:
     Type: AWS::ApiGateway::Method
     Properties:
@@ -974,6 +1044,7 @@ Resources:
         Type: AWS_PROXY
         IntegrationHttpMethod: POST
         Uri: !Sub arn:${AWS::Partition}:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${DoctorApiLambda.Arn}/invocations
+  # --- DoctorAvailabilityGet: Authenticated GET endpoint for retrieving doctor availability ---
   DoctorAvailabilityGet:
     Type: AWS::ApiGateway::Method
     Properties:
@@ -986,6 +1057,7 @@ Resources:
         Type: AWS_PROXY
         IntegrationHttpMethod: POST
         Uri: !Sub arn:${AWS::Partition}:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${DoctorApiLambda.Arn}/invocations
+  # --- DoctorAvailabilityPut: Authenticated PUT endpoint for updating doctor availability ---
   DoctorAvailabilityPut:
     Type: AWS::ApiGateway::Method
     Properties:
@@ -998,6 +1070,7 @@ Resources:
         Type: AWS_PROXY
         IntegrationHttpMethod: POST
         Uri: !Sub arn:${AWS::Partition}:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${DoctorApiLambda.Arn}/invocations
+  # --- DoctorPhotoGet: Authenticated GET endpoint for retrieving the doctor photo ---
   DoctorPhotoGet:
     Type: AWS::ApiGateway::Method
     Properties:
@@ -1010,6 +1083,7 @@ Resources:
         Type: AWS_PROXY
         IntegrationHttpMethod: POST
         Uri: !Sub arn:${AWS::Partition}:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${DoctorApiLambda.Arn}/invocations
+  # --- DoctorAvailabilityPost: Authenticated POST endpoint for creating availability ---
   DoctorAvailabilityPost:
     Type: AWS::ApiGateway::Method
     Properties:
@@ -1022,6 +1096,7 @@ Resources:
         Type: AWS_PROXY
         IntegrationHttpMethod: POST
         Uri: !Sub arn:${AWS::Partition}:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${DoctorApiLambda.Arn}/invocations
+  # --- DoctorAvailabilityEntryPut: Authenticated PUT endpoint for updating one availability entry ---
   DoctorAvailabilityEntryPut:
     Type: AWS::ApiGateway::Method
     Properties:
@@ -1034,6 +1109,7 @@ Resources:
         Type: AWS_PROXY
         IntegrationHttpMethod: POST
         Uri: !Sub arn:${AWS::Partition}:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${DoctorApiLambda.Arn}/invocations
+  # --- DoctorAvailabilityEntryDelete: Authenticated DELETE endpoint for deleting one availability entry ---
   DoctorAvailabilityEntryDelete:
     Type: AWS::ApiGateway::Method
     Properties:
@@ -1046,6 +1122,7 @@ Resources:
         Type: AWS_PROXY
         IntegrationHttpMethod: POST
         Uri: !Sub arn:${AWS::Partition}:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${DoctorApiLambda.Arn}/invocations
+  # --- DoctorBlackoutsGet: Authenticated GET endpoint for listing blackout dates ---
   DoctorBlackoutsGet:
     Type: AWS::ApiGateway::Method
     Properties:
@@ -1058,6 +1135,7 @@ Resources:
         Type: AWS_PROXY
         IntegrationHttpMethod: POST
         Uri: !Sub arn:${AWS::Partition}:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${DoctorApiLambda.Arn}/invocations
+  # --- DoctorBlackoutsPost: Authenticated POST endpoint for creating a blackout date ---
   DoctorBlackoutsPost:
     Type: AWS::ApiGateway::Method
     Properties:
@@ -1070,6 +1148,7 @@ Resources:
         Type: AWS_PROXY
         IntegrationHttpMethod: POST
         Uri: !Sub arn:${AWS::Partition}:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${DoctorApiLambda.Arn}/invocations
+  # --- DoctorBlackoutsDelete: Authenticated DELETE endpoint for removing a blackout date ---
   DoctorBlackoutsDelete:
     Type: AWS::ApiGateway::Method
     Properties:
@@ -1082,6 +1161,7 @@ Resources:
         Type: AWS_PROXY
         IntegrationHttpMethod: POST
         Uri: !Sub arn:${AWS::Partition}:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${DoctorApiLambda.Arn}/invocations
+  # --- DoctorScheduleGet: Authenticated GET endpoint for retrieving the doctor's schedule ---
   DoctorScheduleGet:
     Type: AWS::ApiGateway::Method
     Properties:
@@ -1094,6 +1174,7 @@ Resources:
         Type: AWS_PROXY
         IntegrationHttpMethod: POST
         Uri: !Sub arn:${AWS::Partition}:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${DoctorApiLambda.Arn}/invocations
+  # --- DoctorApiInvokePermission: Allows API Gateway to invoke the doctor API Lambda ---
   DoctorApiInvokePermission:
     Type: AWS::Lambda::Permission
     Properties:
@@ -1104,6 +1185,7 @@ Resources:
 
 
   # EC2 first-version Flask doctor dashboard; no database credentials on EC2.
+  # --- DoctorDashboardInstance: Hosts the Flask-based doctor dashboard on EC2 ---
   DoctorDashboardInstance:
     Type: AWS::EC2::Instance
     Metadata:
@@ -1180,6 +1262,7 @@ Resources:
           Value: MediSlot
 
   # Milestone 4 patient and public discovery Lambda.
+  # --- PatientDomainLogGroup: Stores logs produced by the patient-domain Lambda ---
   PatientDomainLogGroup:
     Type: AWS::Logs::LogGroup
     Properties:
@@ -1187,6 +1270,7 @@ Resources:
       RetentionInDays: 14
       KmsKeyId:
         Fn::ImportValue: !Sub medislot-${Environment}-CloudWatchLogsKmsKeyArn
+  # --- PatientDomainLambda: Handles patient profile and public doctor-discovery APIs ---
   PatientDomainLambda:
     Type: AWS::Lambda::Function
     Metadata:
@@ -1227,30 +1311,35 @@ Resources:
             Fn::ImportValue: !Sub medislot-${Environment}-DBName
           DB_SECRET_ARN:
             Fn::ImportValue: !Sub medislot-${Environment}-DBMasterSecretArn
+  # --- PatientMeRoot: Defines the /patients API path ---
   PatientMeRoot:
     Type: AWS::ApiGateway::Resource
     Properties:
       RestApiId: !Ref AuthRestApi
       ParentId: !GetAtt AuthRestApi.RootResourceId
       PathPart: patients
+  # --- PatientMeResource: Defines the /patients/me API path ---
   PatientMeResource:
     Type: AWS::ApiGateway::Resource
     Properties:
       RestApiId: !Ref AuthRestApi
       ParentId: !Ref PatientMeRoot
       PathPart: me
+  # --- PublicDoctorId: Defines the public doctor detail path /doctors/{doctorId} ---
   PublicDoctorId:
     Type: AWS::ApiGateway::Resource
     Properties:
       RestApiId: !Ref AuthRestApi
       ParentId: !Ref DoctorDomainRoot
       PathPart: '{doctorId}'
+  # --- PublicDoctorSlots: Defines the public doctor slot path /doctors/{doctorId}/slots ---
   PublicDoctorSlots:
     Type: AWS::ApiGateway::Resource
     Properties:
       RestApiId: !Ref AuthRestApi
       ParentId: !Ref PublicDoctorId
       PathPart: slots
+  # --- PatientMeRead: Authenticated GET endpoint for the current patient's profile ---
   PatientMeRead:
     Type: AWS::ApiGateway::Method
     Properties:
@@ -1263,6 +1352,7 @@ Resources:
         Type: AWS_PROXY
         IntegrationHttpMethod: POST
         Uri: !Sub arn:${AWS::Partition}:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${PatientDomainLambda.Arn}/invocations
+  # --- PatientMeUpdate: Authenticated PUT endpoint for updating the current patient's profile ---
   PatientMeUpdate:
     Type: AWS::ApiGateway::Method
     Properties:
@@ -1275,6 +1365,7 @@ Resources:
         Type: AWS_PROXY
         IntegrationHttpMethod: POST
         Uri: !Sub arn:${AWS::Partition}:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${PatientDomainLambda.Arn}/invocations
+  # --- PatientMeDelete: Authenticated DELETE endpoint for the current patient's account ---
   PatientMeDelete:
     Type: AWS::ApiGateway::Method
     Properties:
@@ -1287,6 +1378,7 @@ Resources:
         Type: AWS_PROXY
         IntegrationHttpMethod: POST
         Uri: !Sub arn:${AWS::Partition}:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${PatientDomainLambda.Arn}/invocations
+  # --- DoctorDiscoveryGet: Public GET endpoint for browsing doctors ---
   DoctorDiscoveryGet:
     Type: AWS::ApiGateway::Method
     Metadata:
@@ -1303,6 +1395,7 @@ Resources:
         Type: AWS_PROXY
         IntegrationHttpMethod: POST
         Uri: !Sub arn:${AWS::Partition}:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${PatientDomainLambda.Arn}/invocations
+  # --- PublicDoctorGet: Public GET endpoint for retrieving one doctor's details ---
   PublicDoctorGet:
     Type: AWS::ApiGateway::Method
     Metadata:
@@ -1319,6 +1412,7 @@ Resources:
         Type: AWS_PROXY
         IntegrationHttpMethod: POST
         Uri: !Sub arn:${AWS::Partition}:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${PatientDomainLambda.Arn}/invocations
+  # --- PublicDoctorSlotsGet: Public GET endpoint for viewing a doctor's available slots ---
   PublicDoctorSlotsGet:
     Type: AWS::ApiGateway::Method
     Metadata:
@@ -1335,6 +1429,7 @@ Resources:
         Type: AWS_PROXY
         IntegrationHttpMethod: POST
         Uri: !Sub arn:${AWS::Partition}:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${PatientDomainLambda.Arn}/invocations
+  # --- PatientDomainInvokePermission: Allows API Gateway to invoke the patient-domain Lambda ---
   PatientDomainInvokePermission:
     Type: AWS::Lambda::Permission
     Properties:
@@ -1343,6 +1438,7 @@ Resources:
       Principal: apigateway.amazonaws.com
       SourceArn: !Sub arn:${AWS::Partition}:execute-api:${AWS::Region}:${AWS::AccountId}:${AuthRestApi}/*/*/*
 
+  # --- AuthDeployment: Deploys the authentication API methods ---
   AuthDeployment:
     Type: AWS::ApiGateway::Deployment
     DependsOn:
@@ -1358,6 +1454,7 @@ Resources:
       RestApiId: !Ref AuthRestApi
       Description: !Sub Authentication API deployment ${CodeVersion}
 
+  # --- DoctorDomainDeploymentMilestone4V1: Deploys doctor, patient and public discovery API methods ---
   DoctorDomainDeploymentMilestone4V1: 
     Type: AWS::ApiGateway::Deployment
     DependsOn:
@@ -1390,6 +1487,7 @@ Resources:
       RestApiId: !Ref AuthRestApi
       Description: !Sub Doctor domain API deployment with photo GET ${CodeVersion}
 
+  # --- AuthApiAccessLogGroup: Stores API Gateway access logs ---
   AuthApiAccessLogGroup:
     Type: AWS::Logs::LogGroup
     Metadata:
@@ -1403,6 +1501,7 @@ Resources:
 
   # UPDATED: AuthStage waits for ApiGatewayAccount.
 
+  # --- AuthStage: Publishes the API deployment with tracing, access logging and throttling ---
   AuthStage:
     Type: AWS::ApiGateway::Stage
     DependsOn:
@@ -1426,6 +1525,7 @@ Resources:
           ThrottlingBurstLimit: 20
           ThrottlingRateLimit: 10
 
+  # --- AuthUnauthorizedResponse: Defines the standard JSON response for unauthorized API requests ---
   AuthUnauthorizedResponse:
     Type: AWS::ApiGateway::GatewayResponse
     Properties:
@@ -1441,47 +1541,56 @@ Resources:
 
 Outputs:
 
+  # --- DBInitLambdaArn: Exports the database initialization Lambda ARN ---
   DBInitLambdaArn:
     Description: Database initialization Lambda ARN
     Value: !GetAtt DBInitLambda.Arn
     Export:
       Name: !Sub medislot-${Environment}-DBInitLambdaArn
 
+  # --- AuthApiBaseUrl: Exports the API Gateway base URL for this environment ---
   AuthApiBaseUrl:
     Description: Authentication API base URL
     Value: !Sub https://${AuthRestApi}.execute-api.${AWS::Region}.amazonaws.com/${Environment}
     Export:
       Name: !Sub medislot-${Environment}-AuthApiBaseUrl
 
+  # --- DoctorRegisterLambdaArn: Exports the doctor registration Lambda ARN ---
   DoctorRegisterLambdaArn:
     Value: !GetAtt DoctorRegisterLambda.Arn
     Export:
       Name: !Sub medislot-${Environment}-DoctorRegisterLambdaArn
 
+  # --- PatientRegisterLambdaArn: Exports the patient registration Lambda ARN ---
   PatientRegisterLambdaArn:
     Value: !GetAtt PatientRegisterLambda.Arn
     Export:
       Name: !Sub medislot-${Environment}-PatientRegisterLambdaArn
 
+  # --- LoginLambdaArn: Exports the login Lambda ARN ---
   LoginLambdaArn:
     Value: !GetAtt LoginLambda.Arn
     Export:
       Name: !Sub medislot-${Environment}-LoginLambdaArn
 
+  # --- TokenLambdaArn: Exports the token management Lambda ARN ---
   TokenLambdaArn:
     Value: !GetAtt TokenLambda.Arn
     Export:
       Name: !Sub medislot-${Environment}-TokenLambdaArn
 
+  # --- AuthorizerLambdaArn: Exports the JWT authorizer Lambda ARN ---
   AuthorizerLambdaArn:
     Value: !GetAtt AuthorizerLambda.Arn
     Export:
       Name: !Sub medislot-${Environment}-AuthorizerLambdaArn
 
+  # --- AuthTestLambdaArn: Exports the authentication test Lambda ARN ---
   AuthTestLambdaArn:
     Value: !GetAtt AuthTestLambda.Arn
     Export:
       Name: !Sub medislot-${Environment}-AuthTestLambdaArn
+  # --- DoctorDashboardUrl: Provides the doctor dashboard login URL ---
   DoctorDashboardUrl:
     Description: HTTP-only first version; configure HTTPS before production use
     Value: !Sub http://${DoctorDashboardInstance.PublicDnsName}/doctor/login

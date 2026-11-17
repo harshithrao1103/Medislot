@@ -5,7 +5,8 @@ Description: >
   RDS MySQL, DynamoDB, S3 and SSM Parameters.
 
 # ============================================================
-# PARAMETERS
+# TEMPLATE INPUTS - ENVIRONMENT, DATABASE SIZE AND APPLICATION SETTINGS
+# These values are supplied when the Data Stack is deployed.
 # ============================================================
 
 Parameters:
@@ -48,7 +49,8 @@ Parameters:
 
 
 # ============================================================
-# CONDITIONS
+# DEPLOYMENT CONDITIONS - ENABLE PRODUCTION-ONLY SETTINGS
+# IsProduction is true only when Environment is set to prod.
 # ============================================================
 
 Conditions:
@@ -59,15 +61,16 @@ Conditions:
 
 
 # ============================================================
-# RESOURCES
+# AWS RESOURCES - DATABASES, STORAGE BUCKETS AND CONFIGURATION
 # ============================================================
 
 Resources:
 
   # ==========================================================
-  # 1. RDS MYSQL
+  # 1. RDS MYSQL - PRIVATE DATABASE NETWORK AND MYSQL INSTANCE
   # ==========================================================
 
+  # Groups the two private subnets where RDS is allowed to place the database.
   DatabaseSubnetGroup:
     Type: AWS::RDS::DBSubnetGroup
 
@@ -92,6 +95,8 @@ Resources:
           Value: !Ref Environment
 
 
+  # Creates the MediSlot MySQL database, manages its master password in Secrets Manager,
+  # enables encryption/backups and applies production-only Multi-AZ and deletion protection.
   MySQLDatabase:
     Type: AWS::RDS::DBInstance
     Metadata:
@@ -119,6 +124,7 @@ Resources:
       AllocatedStorage: !Ref DBAllocatedStorage
 
       StorageType: gp3
+      #General Purpose SSD storage
 
       StorageEncrypted: true
       KmsKeyId: !Sub "arn:${AWS::Partition}:kms:${AWS::Region}:${AWS::AccountId}:key/c73acad8-2834-4e89-96fe-e49523415470"
@@ -163,7 +169,7 @@ Resources:
 
 
   # ==========================================================
-  # 2. DYNAMODB - SLOT INVENTORY
+  # 2. DYNAMODB - SLOT INVENTORY: STORE DOCTOR APPOINTMENT SLOTS
   # ==========================================================
 
   SlotInventoryTable:
@@ -212,7 +218,7 @@ Resources:
 
 
   # ==========================================================
-  # 3. DYNAMODB - IDEMPOTENCY
+  # 3. DYNAMODB - IDEMPOTENCY: PREVENT DUPLICATE REQUEST PROCESSING
   # ==========================================================
 
   IdempotencyTable:
@@ -251,7 +257,7 @@ Resources:
 
 
   # ==========================================================
-  # 4. DYNAMODB - REFRESH TOKENS
+  # 4. DYNAMODB - REFRESH TOKENS: STORE REFRESH-TOKEN RECORDS BY TOKEN HASH
   # ==========================================================
 
   RefreshTokensTable:
@@ -290,7 +296,7 @@ Resources:
 
 
   # ==========================================================
-  # 5. DYNAMODB - REVOKED JWT TOKENS
+  # 5. DYNAMODB - REVOKED JWT TOKENS: TRACK INVALIDATED JWT TOKENS
   # ==========================================================
 
   RevokedTokensTable:
@@ -329,7 +335,7 @@ Resources:
 
 
   # ==========================================================
-  # 6. DYNAMODB - WAITLIST
+  # 6. DYNAMODB - WAITLIST: STORE PATIENTS WAITING FOR AVAILABLE SLOTS
   # ==========================================================
 
   WaitlistTable:
@@ -376,7 +382,7 @@ Resources:
 
 
   # ==========================================================
-  # 7. DYNAMODB - NOTIFICATION DISPATCH
+  # 7. DYNAMODB - NOTIFICATION DISPATCH: TRACK NOTIFICATION WORK ITEMS
   # ==========================================================
 
   NotificationDispatchTable:
@@ -412,9 +418,10 @@ Resources:
 
 
   # ==========================================================
-  # 8. S3 - PROFILE PHOTOS BUCKET
+  # 8. S3 - PROFILE PHOTOS AND ACCESS-LOG STORAGE
   # ==========================================================
 
+  # Destination bucket for S3 server access logs; it does not store profile images.
   ServerAccessLogsBucket:
     Type: AWS::S3::Bucket
     Metadata:
@@ -451,6 +458,7 @@ Resources:
         - Key: Environment
           Value: !Ref Environment
 
+  # Allows S3 logging delivery from the configured source buckets and denies HTTP access.
   ServerAccessLogsBucketPolicy:
     Type: AWS::S3::BucketPolicy
     Properties:
@@ -482,6 +490,7 @@ Resources:
               Bool:
                 aws:SecureTransport: 'false'
 
+  # Stores patient and doctor profile images; sends its S3 access logs to the logs bucket.
   ProfilePhotosBucket:
     Type: AWS::S3::Bucket
 
@@ -529,9 +538,10 @@ Resources:
 
 
   # ==========================================================
-  # 9. S3 - PROFILE PHOTOS BUCKET POLICY
+  # 9. S3 - PROFILE PHOTOS BUCKET POLICY: ENFORCE HTTPS ACCESS
   # ==========================================================
 
+  # Enforces HTTPS-only access to the profile-photo bucket and its objects.
   ProfilePhotosBucketPolicy:
     Type: AWS::S3::BucketPolicy
 
@@ -565,9 +575,10 @@ Resources:
 
 
   # ==========================================================
-  # 10. S3 - SAM ARTIFACTS BUCKET
+  # 10. S3 - SAM ARTIFACTS BUCKET: STORE DEPLOYMENT PACKAGES
   # ==========================================================
 
+  # Stores packaged application artifacts used by AWS SAM deployments.
   SAMArtifactsBucket:
     Type: AWS::S3::Bucket
 
@@ -609,9 +620,10 @@ Resources:
 
 
   # ==========================================================
-  # 11. S3 - SAM ARTIFACTS BUCKET POLICY
+  # 11. S3 - SAM ARTIFACTS BUCKET POLICY: ENFORCE HTTPS ACCESS
   # ==========================================================
 
+  # Enforces HTTPS-only access to the SAM artifacts bucket and its objects.
   SAMArtifactsBucketPolicy:
     Type: AWS::S3::BucketPolicy
 
@@ -645,7 +657,7 @@ Resources:
 
 
   # ==========================================================
-  # 12. SSM - JWT ACCESS TOKEN EXPIRY
+  # 12. SSM PARAMETER STORE - CONFIGURE JWT ACCESS-TOKEN LIFETIME
   # ==========================================================
 
   AccessTokenMinutesParameter:
@@ -662,7 +674,7 @@ Resources:
 
 
   # ==========================================================
-  # 13. SSM - REFRESH TOKEN EXPIRY
+  # 13. SSM PARAMETER STORE - CONFIGURE REFRESH-TOKEN LIFETIME
   # ==========================================================
 
   RefreshTokenDaysParameter:
@@ -679,7 +691,7 @@ Resources:
 
 
   # ==========================================================
-  # 14. SSM - BCRYPT WORK FACTOR
+  # 14. SSM PARAMETER STORE - CONFIGURE PASSWORD-HASHING COST
   # ==========================================================
 
   BcryptWorkFactorParameter:
@@ -696,7 +708,7 @@ Resources:
 
 
   # ==========================================================
-  # 15. SSM - WAITLIST HOLD DURATION
+  # 15. SSM PARAMETER STORE - CONFIGURE WAITLIST HOLD DURATION
   # ==========================================================
 
   WaitlistHoldMinutesParameter:
@@ -711,6 +723,7 @@ Resources:
 
       Value: !Sub '${WaitlistHoldMinutes}'
 
+  # Stores the minimum password length consumed by the application.
   PasswordMinLengthParameter:
     Type: AWS::SSM::Parameter
     Properties:
@@ -720,7 +733,7 @@ Resources:
 
 
 # ============================================================
-# OUTPUTS
+# STACK OUTPUTS - EXPORT RESOURCE DETAILS FOR OTHER CLOUDFORMATION STACKS
 # ============================================================
 
 Outputs:
