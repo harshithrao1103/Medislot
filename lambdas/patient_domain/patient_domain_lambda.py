@@ -374,7 +374,8 @@ def search(event, correlation):
                     d.city,
                     s.specialization_name AS specialization,
                     d.experience_years,
-                    d.qualifications
+                    d.qualifications,
+                    d.photo_key
                 """
                 + from_clause
                 + where_clause
@@ -386,6 +387,23 @@ def search(event, correlation):
             )
 
             items = cur.fetchall()
+
+        # Keep private S3 object keys out of API responses. Attach a
+        # short-lived URL so patient search cards can display doctor photos.
+        s3 = boto3.client("s3")
+        photo_bucket = os.environ.get("PHOTO_BUCKET")
+        for item in items:
+            photo_key = item.pop("photo_key", None)
+            item["profile_photo_url"] = None
+            if photo_key and photo_bucket:
+                try:
+                    item["profile_photo_url"] = s3.generate_presigned_url(
+                        "get_object",
+                        Params={"Bucket": photo_bucket, "Key": photo_key},
+                        ExpiresIn=300,
+                    )
+                except Exception:
+                    logging.exception("Unable to generate doctor photo URL")
 
         total_pages = (total + page_size - 1) // page_size
 

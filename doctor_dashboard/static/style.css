@@ -79,3 +79,45 @@
 .notice-close{margin-left:auto;padding:0 6px;background:transparent;color:#705f39;font-size:22px}
 @media(max-width:900px){.patient-date-form{grid-template-columns:1fr 1fr}.patient-date-form button{grid-column:1/-1}}
 @media(max-width:600px){.doctor-profile-main{align-items:flex-start}.doctor-status{margin-left:0}.patient-date-form{grid-template-columns:1fr}.patient-date-form button{grid-column:auto}.slots-heading{align-items:flex-start}.slot-grid{grid-template-columns:1fr;gap:9px;padding:11px}.time-slot{min-height:76px;padding:11px 12px}.time-slot-time{font-size:15px}.appointment-summary{align-items:stretch;gap:13px}.summary-item{min-width:calc(50% - 10px)}.book-placeholder{width:100%;margin:0}.doctor-identity h2{font-size:23px}}
+
+
+/* Patient doctor directory: portrait-led doctor cards */
+.doctor-search-card{
+  display:flex;align-items:center;gap:18px;
+  padding:18px;margin:14px 0;
+  border:1px solid #e1eaf0;border-radius:16px;
+  background:#fff;box-shadow:0 5px 18px rgba(16,43,67,.045);
+  transition:transform .16s ease,box-shadow .16s ease,border-color .16s ease
+}
+.doctor-search-card:hover{transform:translateY(-2px);border-color:#c7e5df;box-shadow:0 10px 25px rgba(16,43,67,.08)}
+.doctor-search-photo-link{display:block;flex:0 0 88px;text-decoration:none}
+.doctor-search-photo{width:88px;height:88px;display:block;object-fit:cover;border-radius:16px;border:1px solid #e1eceb;background:#eaf6f3}
+.doctor-search-photo-fallback{display:grid;place-items:center;color:#078d80;font-size:34px;background:linear-gradient(145deg,#e3f5f0,#edf4fa)}
+.doctor-search-info{min-width:0;flex:1}
+.doctor-search-info h3{margin:0 0 5px;font-size:17px}
+.doctor-search-info h3 a{color:#12334a;text-decoration:none}
+.doctor-search-info h3 a:hover{color:#078d80}
+.doctor-search-specialty{margin:0 0 3px;color:#078d80;font-size:13px;font-weight:750}
+.doctor-search-meta{margin:0 0 12px;color:#657b8c;font-size:13px}
+.doctor-search-meta span{padding:0 4px;color:#a0afb9}
+.doctor-search-action{display:inline-flex;align-items:center;gap:10px}
+.time-slot{cursor:default}
+.time-slot.is-available.is-selected{background:#effaf6;border-color:#078d80;box-shadow:0 0 0 2px rgba(7,141,128,.12)}
+.slot-book-button{
+  display:inline-flex;align-items:center;justify-content:center;gap:10px;
+  align-self:flex-start;margin-top:5px;padding:9px 13px;
+  border:0;border-radius:9px;background:#078d80;color:#fff;
+  font-size:12px;font-weight:800;cursor:pointer;
+  transition:background .15s ease,transform .15s ease
+}
+.slot-book-button:hover{background:#06766d;transform:translateY(-1px)}
+.slot-book-button:focus-visible{outline:3px solid rgba(7,141,128,.25);outline-offset:2px}
+.slot-book-button.is-chosen{background:#e2f5ed;color:#087b54}
+.slot-book-unavailable{align-self:flex-start;margin-top:5px;padding:8px 11px;border-radius:9px;background:#e8edf1;color:#71818d;font-size:11px;font-weight:750}
+@media(max-width:600px){
+  .doctor-search-card{align-items:flex-start;gap:13px;padding:13px}
+  .doctor-search-photo-link,.doctor-search-photo{width:68px;height:68px;flex-basis:68px}
+  .doctor-search-info h3{font-size:15px}
+  .doctor-search-meta{font-size:12px}
+  .slot-book-button{width:100%}
+}

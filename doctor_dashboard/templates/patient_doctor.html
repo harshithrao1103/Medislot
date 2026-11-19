@@ -60,31 +60,36 @@
         <div class="slot-consultation-note">Select an available time. Consultation type, duration, fee and remaining seats are shown for each slot.</div>
         <div class="slot-grid">
           {% for slot in date_group.list %}
-          <button
-            type="button"
+          <article
             class="time-slot {% if slot.free_seats > 0 %}is-available{% else %}is-booked{% endif %}"
-            {% if slot.free_seats <= 0 %}disabled aria-disabled="true"{% else %}
+            {% if slot.free_seats <= 0 %}aria-disabled="true"{% else %}
+            data-slot-id="{{ slot.get('slotId', '') }}"
             data-time="{{ slot.local_time }}"
             data-date="{{ slot.local_date_label }}"
             data-fee="{{ slot.consultation_fee if slot.consultation_fee is not none else '—' }}"
             data-duration="{{ slot.consultation_duration or '—' }}"
-            data-type="{{ slot.consultation_type_name }}"
-            data-slot-id="{{ slot.get('slotId', '') }}"
-            aria-pressed="false"{% endif %}
+            data-type="{{ slot.consultation_type_name }}"{% endif %}
           >
-            <span class="time-slot-top">
+            <div class="time-slot-top">
               <span class="time-slot-time">{{ slot.local_time }}</span>
               <span class="time-slot-state">{% if slot.free_seats > 0 %}✓ Available{% else %}Fully booked{% endif %}</span>
-            </span>
-            <span class="time-slot-meta">
+            </div>
+            <div class="time-slot-meta">
               {{ slot.consultation_type_name }}
               {% if slot.consultation_duration %} · {{ slot.consultation_duration }} min{% endif %}
               {% if slot.consultation_fee is not none %} · ₹{{ slot.consultation_fee }}{% endif %}
-            </span>
-            <span class="time-slot-seats">
+            </div>
+            <div class="time-slot-seats">
               {% if slot.free_seats > 0 %}{{ slot.free_seats }} seat{% if slot.free_seats != 1 %}s{% endif %} remaining{% else %}0 seats remaining{% endif %}
-            </span>
-          </button>
+            </div>
+            {% if slot.free_seats > 0 %}
+            <button type="button" class="slot-book-button" data-book-slot aria-pressed="false">
+              Book appointment <span aria-hidden="true">→</span>
+            </button>
+            {% else %}
+            <span class="slot-book-unavailable">No seats available</span>
+            {% endif %}
+          </article>
           {% endfor %}
         </div>
       </div>
@@ -98,48 +103,34 @@
     {% endif %}
   </section>
 
-  <section class="appointment-summary" id="appointmentSummary" hidden aria-live="polite">
-    <div class="summary-item">
-      <span class="summary-icon">▦</span>
-      <div><small>Selected slot</small><strong id="summaryDate">—</strong><span id="summaryTime">—</span></div>
-    </div>
-    <div class="summary-item">
-      <span class="summary-icon">◷</span>
-      <div><small>Consultation</small><strong id="summaryType">—</strong><span id="summaryDuration">—</span></div>
-    </div>
-    <div class="summary-item">
-      <span class="summary-icon">₹</span>
-      <div><small>Consultation fee</small><strong id="summaryFee">—</strong></div>
-    </div>
-    <button type="button" class="patient-primary-button book-placeholder" id="bookAppointmentButton">Book appointment <span>→</span></button>
-  </section>
+
 
 </div>
 
 <script>
 (() => {
-  const slots = Array.from(document.querySelectorAll('.time-slot.is-available'));
-  const summary = document.getElementById('appointmentSummary');
-  const bookButton = document.getElementById('bookAppointmentButton');
-  if (!slots.length || !summary || !bookButton) return;
+  const cards = Array.from(document.querySelectorAll('.time-slot.is-available'));
+  cards.forEach((card) => {
+    const button = card.querySelector('[data-book-slot]');
+    if (!button) return;
 
-  slots.forEach((button) => {
     button.addEventListener('click', () => {
-      slots.forEach((item) => {
+      cards.forEach((item) => {
         item.classList.remove('is-selected');
-        item.setAttribute('aria-pressed', 'false');
+        const action = item.querySelector('[data-book-slot]');
+        if (action) {
+          action.classList.remove('is-chosen');
+          action.setAttribute('aria-pressed', 'false');
+          action.innerHTML = 'Book appointment <span aria-hidden="true">→</span>';
+        }
       });
-      button.classList.add('is-selected');
+
+      card.classList.add('is-selected');
+      button.classList.add('is-chosen');
       button.setAttribute('aria-pressed', 'true');
-      document.getElementById('summaryDate').textContent = button.dataset.date;
-      document.getElementById('summaryTime').textContent = button.dataset.time;
-      document.getElementById('summaryType').textContent = button.dataset.type;
-      document.getElementById('summaryDuration').textContent = button.dataset.duration + ' min';
-      document.getElementById('summaryFee').textContent = button.dataset.fee === '—' ? 'Fee unavailable' : '₹' + button.dataset.fee;
-      summary.hidden = false;
+      button.innerHTML = 'Selected <span aria-hidden="true">✓</span>';
     });
   });
-
 })();
 </script>
 {% endblock %}

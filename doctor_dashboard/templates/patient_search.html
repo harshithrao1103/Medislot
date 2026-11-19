@@ -34,11 +34,21 @@
   </form>
   <p>{{ data.get('total',0) }} doctors found</p>
   {% for doctor in data.get('items',[]) %}
-    <div class="card">
-      <h3><a href="{{ url_for('patient_doctor',doctor_id=doctor.doctor_id) }}">{{ doctor.first_name }} {{ doctor.last_name }}</a></h3>
-      <p>{{ doctor.specialization }} · {{ doctor.hospital_name }} · {{ doctor.city }}</p>
-      <a class="btn secondary" href="{{ url_for('patient_doctor',doctor_id=doctor.doctor_id) }}">View available slots</a>
-    </div>
+    <article class="doctor-search-card">
+      <a class="doctor-search-photo-link" href="{{ url_for('patient_doctor',doctor_id=doctor.doctor_id) }}" aria-label="View Dr. {{ doctor.first_name }} {{ doctor.last_name }}">
+        {% if doctor.profile_photo_url %}
+          <img class="doctor-search-photo" src="{{ doctor.profile_photo_url }}" alt="Dr. {{ doctor.first_name }} {{ doctor.last_name }}" loading="lazy" referrerpolicy="no-referrer">
+        {% else %}
+          <span class="doctor-search-photo doctor-search-photo-fallback" aria-hidden="true">✚</span>
+        {% endif %}
+      </a>
+      <div class="doctor-search-info">
+        <h3><a href="{{ url_for('patient_doctor',doctor_id=doctor.doctor_id) }}">Dr. {{ doctor.first_name }} {{ doctor.last_name }}</a></h3>
+        <p class="doctor-search-specialty">{{ doctor.specialization }}</p>
+        <p class="doctor-search-meta">{{ doctor.hospital_name }} <span>·</span> {{ doctor.city }}</p>
+        <a class="btn secondary doctor-search-action" href="{{ url_for('patient_doctor',doctor_id=doctor.doctor_id) }}">View available slots <span aria-hidden="true">→</span></a>
+      </div>
+    </article>
   {% else %}
     <p>No matching doctors.</p>
   {% endfor %}

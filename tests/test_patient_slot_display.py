@@ -12,7 +12,9 @@ def test_patient_doctor_page_uses_slot_cards_and_availability_states():
     assert "Fully booked" in template
     assert "consultation_fee" in template
     assert "consultation_duration" in template
-    assert "appointmentSummary" in template
+    assert "data-book-slot" in template
+    assert "Book appointment" in template
+    assert "appointmentSummary" not in template
     assert "booking is not implemented yet" not in template
     assert "Consultations &amp; Fees" not in template
     assert "<table>" not in template
@@ -25,3 +27,14 @@ def test_patient_route_enriches_slots_with_ist_display_fields():
     assert "slot['local_time']" in app
     assert "slot['free_seats'] = int(slot.get('freeSeats', 0) or 0)" in app
     assert "consultation_types = {" in app
+
+
+
+def test_patient_doctor_search_cards_render_private_profile_photos():
+    template = (ROOT / "doctor_dashboard/templates/patient_search.html").read_text()
+    assert "doctor.profile_photo_url" in template
+    assert "doctor-search-photo" in template
+    patient_api = (ROOT / "lambdas/patient_domain/patient_domain_lambda.py").read_text()
+    assert 'd.photo_key' in patient_api
+    assert 'generate_presigned_url' in patient_api
+    assert 'item["profile_photo_url"]' in patient_api
