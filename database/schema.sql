@@ -131,7 +131,7 @@ CREATE TABLE IF NOT EXISTS refund_ledger (
 ) ENGINE=InnoDB;
 
 -- Milestone 4 discovery indexes; idempotent on fresh installs. Existing databases need migration.
--- users.first_name/last_name are the canonical name fields; users.name is maintained for legacy API compatibility.
+-- users.first_name/last_name are canonical; users.name is generated as their combined display/search value.
 -- doctors hospital_name/city support discovery; specialization_id supports joins.
 -- Leading-wildcard LIKE searches cannot efficiently use standard B-tree indexes.
 -- See database/MILESTONE4_INDEXES.md for limitations and EXPLAIN verification.

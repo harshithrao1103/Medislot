@@ -221,23 +221,13 @@ def body_json(event):
 def validate_registration(data):
     # Check the common registration fields used by both doctors and patients.
 
-    # New clients submit separate first_name and last_name fields. The legacy
+    # Separate first and last names are mandatory for every registration.
 
-    # name field remains accepted temporarily for older API clients.
+    # The combined users.name value is generated internally after validation.
 
-    first_name = data.get('first_name')  # Read the first name supplied by the frontend.
+    first_name = data.get('first_name')
 
     last_name = data.get('last_name')
-
-    legacy_name = data.get('name')  # Older clients may still send one full-name field.
-
-    if first_name is None and last_name is None and isinstance(legacy_name, str):
-
-        parts = legacy_name.strip().split(None, 1)  # Split the old full name into first and last name.
-
-        first_name = parts[0] if parts else ''
-
-        last_name = parts[1] if len(parts) > 1 else ''
 
     if not isinstance(first_name, str) or not 1 <= len(first_name.strip()) <= 50:
 

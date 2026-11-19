@@ -21,7 +21,7 @@ For a disposable development environment only: take an RDS snapshot/backup, revi
 Example JSON:
 ```json
 {
-  "name": "Doctor Example", "email": "doctor@example.com", "password": "ExamplePassword123",
+  "first_name": "Doctor", "last_name": "Example", "email": "doctor@example.com", "password": "ExamplePassword123",
   "licence_number": "LIC-1001", "specialization": "Cardiology", "experience_years": 8,
   "qualifications": "MBBS, MD", "hospital_name": "Example Clinic",
   "clinic_address": "Main Road", "city": "Hyderabad",
@@ -34,7 +34,7 @@ Example JSON:
 Example JSON:
 ```json
 {
-  "name": "Patient Example", "email": "patient@example.com", "password": "ExamplePassword123",
+  "first_name": "Patient", "last_name": "Example", "email": "patient@example.com", "password": "ExamplePassword123",
   "date_of_birth": "2000-05-12", "gender": "MALE", "phone": "9999999999",
   "city": "Hyderabad", "emergency_contact": "8888888888", "notes": null
 }

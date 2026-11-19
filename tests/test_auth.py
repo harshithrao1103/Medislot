@@ -23,8 +23,11 @@ def test_password_policy(monkeypatch):
     assert ac.validate_registration({'first_name': ' Test ', 'last_name': ' User ', 'email': 'Test@Example.org', 'password': 'correctpass1'}) == ('Test', 'User', 'test@example.org', 'correctpass1')
     with pytest.raises(ValueError):
         ac.validate_registration({'first_name': 'OnlyFirst', 'last_name': '', 'email': 'test@example.org', 'password': 'correctpass1'})
-    # Temporary compatibility for existing clients that still submit a full name.
-    assert ac.validate_registration({'name': 'Legacy Patient', 'email': 'legacy@example.org', 'password': 'correctpass1'})[:3] == ('Legacy', 'Patient', 'legacy@example.org')
+    # A full-name-only payload is no longer accepted; both fields are mandatory.
+    with pytest.raises(ValueError):
+        ac.validate_registration({'name': 'Legacy Patient', 'email': 'legacy@example.org', 'password': 'correctpass1'})
+    with pytest.raises(ValueError):
+        ac.validate_registration({'first_name': 'OnlyFirst', 'email': 'legacy@example.org', 'password': 'correctpass1'})
 
 
 def test_bcrypt_work_factor():

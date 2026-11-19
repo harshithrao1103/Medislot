@@ -153,29 +153,28 @@ def profile(event, uid, method, correlation):
                 return respond(200, fetch_doctor(cur, uid), correlation)
             data = body_json(event)
             # Only explicitly permitted profile fields can be updated.
-            allowed = {'name','first_name','last_name','specialization_id','experience_years','qualifications',
+            allowed = {'first_name','last_name','specialization_id','experience_years','qualifications',
                        'hospital_name','clinic_address','city','languages','timezone'}
             if not data or set(data) - allowed:
                 raise ApiError(400, 'Unsupported or empty profile update')
             fields = {}
-            for field, limit in [('first_name',50),('last_name',50),('name',100),
+            for field, limit in [('first_name',50),('last_name',50),
                                  ('qualifications',65535),('hospital_name',200),
                                  ('clinic_address',500),('city',100)]:
                 if field in data:
                     fields[field] = require_text(data[field], field, limit)
-            if 'name' in fields and not ({'first_name', 'last_name'} & set(fields)):
-                parts = fields.pop('name').split(None, 1)
-                fields['first_name'] = parts[0]
-                fields['last_name'] = parts[1] if len(parts) > 1 else ''
-            if 'first_name' in fields or 'last_name' in fields:
-                cur.execute('SELECT first_name,last_name FROM users WHERE user_id=%s', (uid,))
-                current_name = cur.fetchone()
-                first = fields.pop('first_name', current_name['first_name'])
-                last = fields.pop('last_name', current_name['last_name'])
-                if not first or not last:
-                    raise ApiError(400, 'First name and last name are required')
-                cur.execute('UPDATE users SET first_name=%s,last_name=%s,name=%s WHERE user_id=%s',
-                            (first,last,f'{first} {last}',uid))
+            # Every profile update must carry both separate name fields.
+            # Never accept a full-name-only payload or silently retain one old component.
+            if 'first_name' not in data or 'last_name' not in data:
+                raise ApiError(400, 'Both first_name and last_name are required')
+            first = require_text(data['first_name'], 'first_name', 50)
+            last = require_text(data['last_name'], 'last_name', 50)
+            fields.pop('first_name', None)
+            fields.pop('last_name', None)
+            if len(f'{first} {last}') > 100:
+                raise ApiError(400, 'Full name must not exceed 100 characters')
+            cur.execute('UPDATE users SET first_name=%s,last_name=%s,name=%s WHERE user_id=%s',
+                        (first, last, f'{first} {last}', uid))
             if 'specialization_id' in data:
                 sid = data['specialization_id']
                 if type(sid) is not int or sid < 1:
