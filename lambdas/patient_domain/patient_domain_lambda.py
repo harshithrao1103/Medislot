@@ -13,6 +13,7 @@ import boto3
 from boto3.dynamodb.conditions import Key
 
 from auth_common import body_json, cid, db_connection, response
+from slot_common import get_doctor_slots
 
 
 class BadRequest(Exception):
@@ -609,98 +610,65 @@ def slots(doctor_id, event, correlation):
         .isoformat()
     )
 
-    # 7. Connect to the DynamoDB slots table
-    table = boto3.resource("dynamodb").Table(os.environ["SLOTS_TABLE"])
-
-    # 8. Prepare the DynamoDB query
-    query = {
-        # Use the index to search by doctor and start time.
-        "IndexName": "DoctorStartIndex",
-
-        "KeyConditionExpression": (
-            Key("doctorId").eq(str(doctor_id))
-            & Key("startTimeUTC").between(first_utc, last_utc)
-        ),
-
-        # Retrieve up to 100 items per query page.
-        "Limit": 100,
-    }
-
-    # Store all matching slots.
+    # 7. Retrieve slots using the shared DynamoDB query and pagination helper.
+    # Patient-specific visibility and capacity rules remain in this function.
+    raw_slots = get_doctor_slots(doctor_id, first_utc, last_utc)
     items = []
 
-    # 9. Retrieve slots using pagination
-    while True:
-        data = table.query(**query)
+    for slot in raw_slots:
+        # Accept only patient-visible statuses.
+        if slot.get("status") not in ("AVAILABLE", "ACTIVE"):
+            continue
 
-        # Process each slot returned by DynamoDB.
-        for slot in data.get("Items", []):
+        # Filter by consultation type if provided.
+        if (
+            consultation_type_id is not None
+            and str(slot.get("consultationTypeId"))
+            != str(consultation_type_id)
+        ):
+            continue
 
-            # Accept only patient-visible statuses.
-            if slot.get("status") not in ("AVAILABLE", "ACTIVE"):
-                continue
+        # Convert the slot's UTC start time into a datetime.
+        start_time = dt.datetime.fromisoformat(
+            slot["startTimeUTC"].replace("Z", "+00:00")
+        )
 
-            # Filter by consultation type if provided.
-            if (
-                consultation_type_id is not None
-                and str(slot.get("consultationTypeId"))
-                != str(consultation_type_id)
-            ):
-                continue
+        # Skip slots that have already started.
+        if start_time.astimezone(dt.timezone.utc) <= dt.datetime.now(
+            dt.timezone.utc
+        ):
+            continue
 
-            # Convert the slot's UTC start time into a datetime.
-            start_time = dt.datetime.fromisoformat(
-                slot["startTimeUTC"].replace("Z", "+00:00")
-            )
+        # Convert the slot time into Indian local date.
+        local_date = start_time.astimezone(india_timezone).date()
 
-            # Skip slots that have already started.
-            if start_time.astimezone(dt.timezone.utc) <= dt.datetime.now(
-                dt.timezone.utc
-            ):
-                continue
+        # Keep only slots within the requested date range.
+        if not start_date <= local_date <= end_date:
+            continue
 
-            # Convert the slot time into Indian local date.
-            local_date = start_time.astimezone(india_timezone).date()
+        # Calculate available capacity.
+        capacity = int(slot.get("capacity", 0))
+        booked_count = int(slot.get("bookedCount", 0))
+        held_count = int(slot.get("heldCount", 0))
+        free_seats = max(0, capacity - booked_count - held_count)
 
-            # Keep only slots within the requested date range.
-            if not start_date <= local_date <= end_date:
-                continue
+        # Skip slots that are completely full.
+        if free_seats <= 0:
+            continue
 
-            # 10. Calculate available capacity
-            capacity = int(slot.get("capacity", 0))
-            booked_count = int(slot.get("bookedCount", 0))
-            held_count = int(slot.get("heldCount", 0))
-
-            # Available seats = capacity - booked - held.
-            free_seats = max(
-                0,
-                capacity - booked_count - held_count,
-            )
-
-            # Skip slots that are completely full.
-            if free_seats <= 0:
-                continue
-
-            # 11. Add the valid slot to the result list
-            items.append(
-                {
-                    "slotId": slot["slotId"],
-                    "consultationTypeId": slot["consultationTypeId"],
-                    "startTimeUTC": slot["startTimeUTC"],
-                    "endTimeUTC": slot["endTimeUTC"],
-                    "capacity": int(slot["capacity"]),
-                    "bookedCount": booked_count,
-                    "heldCount": held_count,
-                    "freeSeats": free_seats,
-                }
-            )
-
-        # 12. Check whether another DynamoDB page exists as limit is 100 items per query. If not, exit the loop.
-        if "LastEvaluatedKey" not in data:
-            break
-
-        # Continue from the last retrieved item.
-        query["ExclusiveStartKey"] = data["LastEvaluatedKey"]
+        # Add the valid slot to the patient response.
+        items.append(
+            {
+                "slotId": slot["slotId"],
+                "consultationTypeId": slot["consultationTypeId"],
+                "startTimeUTC": slot["startTimeUTC"],
+                "endTimeUTC": slot["endTimeUTC"],
+                "capacity": int(slot["capacity"]),
+                "bookedCount": booked_count,
+                "heldCount": held_count,
+                "freeSeats": free_seats,
+            }
+        )
 
     # 13. Sort slots by starting time (earliest first).
     items.sort(key=lambda slot: slot["startTimeUTC"])

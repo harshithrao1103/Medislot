@@ -17,6 +17,9 @@ for lambda_dir in lambdas/*/; do
     if [ "$lambda_name" = "doctor_api" ]; then
       cp lambdas/_shared/doctor_common.py "$target/doctor_common.py"
     fi
+    if [ "$lambda_name" = "doctor_api" ] || [ "$lambda_name" = "patient_domain" ]; then
+      cp lambdas/_shared/slot_common.py "$target/slot_common.py"
+    fi
   fi
   if [ -f "${lambda_dir}/requirements.txt" ]; then
     python -m pip install --disable-pip-version-check \

@@ -6,6 +6,7 @@ import uuid
 from decimal import Decimal, InvalidOperation
 import boto3
 from doctor_common import *
+from slot_common import get_doctor_slots
 
 # Allowed photo MIME types and corresponding file extensions.
 PHOTO_TYPES = {'image/jpeg': 'jpg', 'image/png': 'png', 'image/webp': 'webp'}
@@ -1379,8 +1380,6 @@ def schedule(event, uid, correlation):
 
     import datetime as dt
     from zoneinfo import ZoneInfo
-    from boto3.dynamodb.conditions import Key
-
     # ========================================================
     # 3. CONVERT IST DATE RANGE INTO UTC
     # ========================================================
@@ -1409,68 +1408,25 @@ def schedule(event, uid, correlation):
     now_utc = dt.datetime.now(dt.timezone.utc)
 
     # ========================================================
-    # 4. CONNECT TO DYNAMODB SLOTS TABLE
+    # 4. RETRIEVE SLOTS USING THE SHARED SLOT HELPER
     # ========================================================
 
-    # 4.1 Access the DynamoDB slots table using
-    # the SLOTS_TABLE environment variable.
-    table = boto3.resource('dynamodb').Table(
-        os.environ['SLOTS_TABLE']
-    )
-
-    # ========================================================
-    # 5. PREPARE DYNAMODB QUERY
-    # ========================================================
-
-    # 5.1 Query the DoctorStartIndex to retrieve slots
-    # belonging to the authenticated doctor within
-    # the requested UTC date range.
-    params = {
-        'IndexName': 'DoctorStartIndex',
-
-        'KeyConditionExpression': (
-            Key('doctorId').eq(str(uid))
-            & Key('startTimeUTC').between(
-                start.isoformat(),
-                end.isoformat()
-            )
-        ),
-
-        # Maximum number of items evaluated per query call.
-        'Limit': 100
-    }
-
-    # ========================================================
-    # 6. FETCH SLOTS FROM DYNAMODB
-    # ========================================================
-
-    # 6.1 Initialize the list for storing matching slots.
-    items = []
-
-    while True:
-
-        # 6.2 Execute the DynamoDB query.
-        res = table.query(**params)
-
-        # 6.3 Add slots that belong to the requested day
-        # and have AVAILABLE status.
-        items.extend(
-            x for x in res['Items']
-            if (
-                x['startTimeUTC'] < end.isoformat()
-                and x.get('status') == 'AVAILABLE'
-                and dt.datetime.fromisoformat(
-                    x['startTimeUTC'].replace('Z', '+00:00')
-                ).astimezone(dt.timezone.utc) > now_utc
-            )
+    # Both doctor and patient APIs use the same DynamoDB query and
+    # pagination implementation. Doctor-specific visibility rules remain here.
+    items = [
+        slot for slot in get_doctor_slots(
+            uid,
+            start.isoformat(),
+            end.isoformat(),
         )
-
-        # 6.4 Stop if DynamoDB has no additional pages.
-        if 'LastEvaluatedKey' not in res:
-            break
-
-        # 6.5 Continue querying the next page.
-        params['ExclusiveStartKey'] = res['LastEvaluatedKey']
+        if (
+            slot['startTimeUTC'] < end.isoformat()
+            and slot.get('status') == 'AVAILABLE'
+            and dt.datetime.fromisoformat(
+                slot['startTimeUTC'].replace('Z', '+00:00')
+            ).astimezone(dt.timezone.utc) > now_utc
+        )
+    ]
 
     # ========================================================
     # 7. CONNECT TO RDS MYSQL
