@@ -1,254 +1,60 @@
-
 <!doctype html>
 <html lang="en">
-
 <head>
-    <!-- ========================================= -->
-    <!-- 1. PAGE METADATA AND STYLESHEET           -->
-    <!-- ========================================= -->
-
-    <meta charset="utf-8">
-
-    <meta
-        name="viewport"
-        content="width=device-width, initial-scale=1"
-    >
-
-    <title>MediSlot | Portal</title>
-
-    <!-- Main CSS stylesheet -->
-    <link
-        rel="stylesheet"
-        href="{{ url_for('static', filename='style.css') }}"
-    >
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#102b43">
+  <title>{% block title %}MediSlot | Care, better scheduled{% endblock %}</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700;800&family=Manrope:wght@500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}?v=4">
+  {% block head %}{% endblock %}
 </head>
-
 <body>
-
-    <!-- ========================================= -->
-    <!-- 2. MAIN APPLICATION LAYOUT                -->
-    <!-- ========================================= -->
-
-    <div class="app-shell">
-
-        <!-- ========================================= -->
-        <!-- 3. SIDEBAR                              -->
-        <!-- ========================================= -->
-
-        <aside class="sidebar">
-
-            <!-- Application Branding -->
-            <div class="brand">
-
-                <span class="brand-icon">✚</span>
-
-                <span>
-                    MediSlot
-                    <small>{{ "PATIENT WORKSPACE" if session.get("role") == "patient" else "DOCTOR WORKSPACE" }}</small>
-                </span>
-
-            </div>
-
-
-            <!-- ========================================= -->
-            <!-- 4. AUTHENTICATED DOCTOR NAVIGATION         -->
-            <!-- ========================================= -->
-
-            {% if session.get('role') == 'doctor' %}
-
-                <div class="nav-label">
-                    WORKSPACE
-                </div>
-
-                <nav aria-label="Doctor portal">
-
-                    <!-- My Profile -->
-                    <a
-                        class="{% if request.endpoint == 'patient_profile' %}Patient profile
-                        {% elif request.endpoint == 'patient_search' %}Find doctors
-                        {% elif request.endpoint == 'patient_doctor' %}Doctor details
-                        {% elif request.endpoint == 'patient_register' %}Patient registration
-                        {% elif request.endpoint == 'patient_login' %}Patient login
-                        {% elif request.endpoint == 'profile' %}active{% endif %}"
-                        href="{{ url_for('profile') }}"
-                    >
-                        ◉ <span>My profile</span>
-                    </a>
-
-                    <!-- Consultations -->
-                    <a
-                        class="{% if request.endpoint == 'consultations' %}active{% endif %}"
-                        href="{{ url_for('consultations') }}"
-                    >
-                        ▤ <span>Consultations</span>
-                    </a>
-
-                    <!-- Weekly Availability -->
-                    <a
-                        class="{% if request.endpoint == 'availability' %}active{% endif %}"
-                        href="{{ url_for('availability') }}"
-                    >
-                        ◷ <span>Availability</span>
-                    </a>
-
-                    <!-- Blackout Dates -->
-                    <a
-                        class="{% if request.endpoint == 'blackouts' %}active{% endif %}"
-                        href="{{ url_for('blackouts') }}"
-                    >
-                        ▦ <span>Blackouts</span>
-                    </a>
-
-                    <!-- Schedule -->
-                    <a
-                        class="{% if request.endpoint == 'schedule' %}active{% endif %}"
-                        href="{{ url_for('schedule') }}"
-                    >
-                        ▣ <span>Schedule</span>
-                    </a>
-
-                </nav>
-
-
-                <!-- ========================================= -->
-                <!-- 5. LOGOUT FORM                          -->
-                <!-- ========================================= -->
-
-                <form
-                    class="logout"
-                    method="post"
-                    action="{{ url_for('logout') }}"
-                >
-
-                    <!-- CSRF token for secure logout -->
-                    <input
-                        type="hidden"
-                        name="csrf_token"
-                        value="{{ csrf_token() }}"
-                    >
-
-                    <button type="submit">
-                        Sign out
-                    </button>
-
-                </form>
-
-            {% elif session.get('role') == 'patient' %}
-              <div class="nav-label">PATIENT WORKSPACE</div>
-              <nav aria-label="Patient portal">
-                <a href="{{ url_for('patient_profile') }}" class="{{ 'active' if request.endpoint == 'patient_profile' else '' }}">◉ <span>My profile</span></a>
-                <a href="{{ url_for('patient_search') }}" class="{{ 'active' if request.endpoint in ('patient_search','patient_doctor') else '' }}">⌕ <span>Find doctors</span></a>
-              </nav>
-              <form class="logout" method="post" action="{{ url_for('logout') }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button type="submit">Sign out</button></form>
-            {% endif %}
-
-        </aside>
-
-
-        <!-- ========================================= -->
-        <!-- 6. MAIN CONTENT COLUMN                  -->
-        <!-- ========================================= -->
-
-        <div class="main-column">
-
-            <!-- ========================================= -->
-            <!-- 7. TOP HEADER                           -->
-            <!-- ========================================= -->
-
-            <header class="topbar">
-
-                <div>
-
-                    <span class="eyebrow">
-                        MEDISLOT / {{ "PATIENT" if session.get("role") == "patient" else "DOCTOR" }} PORTAL
-                    </span>
-
-                    <!-- Dynamic page heading -->
-                    <h1>
-
-                        {% if request.endpoint == 'patient_profile' %}Patient profile
-                        {% elif request.endpoint == 'patient_search' %}Find doctors
-                        {% elif request.endpoint == 'patient_doctor' %}Doctor details
-                        {% elif request.endpoint == 'patient_register' %}Patient registration
-                        {% elif request.endpoint == 'patient_login' %}Patient login
-                        {% elif request.endpoint == 'profile' %}
-                            My profile
-
-                        {% elif request.endpoint == 'consultations' %}
-                            Consultations
-
-                        {% elif request.endpoint == 'availability' %}
-                            Weekly availability
-
-                        {% elif request.endpoint == 'blackouts' %}
-                            Blackout dates
-
-                        {% elif request.endpoint == 'schedule' %}
-                            Schedule
-
-                        {% elif request.endpoint == 'register' %}
-                            Doctor registration
-
-                        {% elif request.endpoint == 'welcome' %}
-                            Welcome
-
-                        {% else %}
-                            Doctor login
-
-                        {% endif %}
-
-                    </h1>
-
-                </div>
-
-                <!-- Workspace label -->
-                <div class="topbar-tag">
-                    {{ "Patient workspace" if session.get("role") == "patient" else "Doctor workspace" }}
-                </div>
-
-            </header>
-
-
-            <!-- ========================================= -->
-            <!-- 8. MAIN PAGE CONTENT                     -->
-            <!-- ========================================= -->
-
-            <main>
-
-                <!-- ========================================= -->
-                <!-- 9. FLASH MESSAGES                        -->
-                <!-- ========================================= -->
-
-                {% for message in get_flashed_messages() %}
-
-                    <div class="alert" role="status">
-                        {{ message }}
-                    </div>
-
-                {% endfor %}
-
-
-                <!-- ========================================= -->
-                <!-- 10. CHILD TEMPLATE CONTENT               -->
-                <!-- ========================================= -->
-
-                {% block content %}
-                {% endblock %}
-
-            </main>
-
-
-            <!-- ========================================= -->
-            <!-- 11. FOOTER                              -->
-            <!-- ========================================= -->
-
-            <footer>
-                © MediSlot portal
-            </footer>
-
-        </div>
-
-    </div>
-
+<div class="app-shell">
+  <aside class="sidebar">
+    <a class="brand" href="{{ url_for('welcome') }}" aria-label="MediSlot home">
+      <span class="brand-icon">✚</span><span class="brand-copy">MediSlot<small>CARE, BETTER SCHEDULED</small></span>
+    </a>
+    {% if session.get('role') == 'doctor' %}
+      <div class="nav-label">DOCTOR WORKSPACE</div>
+      <nav aria-label="Doctor portal">
+        <a class="{{ 'active' if request.endpoint == 'profile' else '' }}" href="{{ url_for('profile') }}"><span class="nav-icon">◉</span><span>My profile</span></a>
+        <a class="{{ 'active' if request.endpoint == 'consultations' else '' }}" href="{{ url_for('consultations') }}"><span class="nav-icon">▤</span><span>Consultations</span></a>
+        <a class="{{ 'active' if request.endpoint == 'availability' else '' }}" href="{{ url_for('availability') }}"><span class="nav-icon">◷</span><span>Availability</span></a>
+        <a class="{{ 'active' if request.endpoint == 'blackouts' else '' }}" href="{{ url_for('blackouts') }}"><span class="nav-icon">▦</span><span>Blackout dates</span></a>
+        <a class="{{ 'active' if request.endpoint == 'schedule' else '' }}" href="{{ url_for('schedule') }}"><span class="nav-icon">▣</span><span>Schedule</span></a>
+      </nav>
+      <div class="sidebar-note"><span class="sidebar-note-icon">✦</span><div><strong>Your practice, in sync</strong><small>Manage your time and appointments in one place.</small></div></div>
+      <form class="logout" method="post" action="{{ url_for('logout') }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button type="submit"><span>↪</span> Sign out</button></form>
+    {% elif session.get('role') == 'patient' %}
+      <div class="nav-label">PATIENT WORKSPACE</div>
+      <nav aria-label="Patient portal">
+        <a class="{{ 'active' if request.endpoint == 'patient_profile' else '' }}" href="{{ url_for('patient_profile') }}"><span class="nav-icon">◉</span><span>My profile</span></a>
+        <a class="{{ 'active' if request.endpoint in ('patient_search','patient_doctor') else '' }}" href="{{ url_for('patient_search') }}"><span class="nav-icon">⌕</span><span>Find doctors</span></a>
+      </nav>
+      <div class="sidebar-note"><span class="sidebar-note-icon">♥</span><div><strong>Your health, simplified</strong><small>Find care that fits your schedule.</small></div></div>
+      <form class="logout" method="post" action="{{ url_for('logout') }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button type="submit"><span>↪</span> Sign out</button></form>
+    {% else %}
+      <div class="sidebar-welcome"><span class="sidebar-welcome-mark">✦</span><h3>Welcome to better care.</h3><p>Simple scheduling for doctors and patients.</p></div>
+      <div class="sidebar-bottom">SECURE · SIMPLE · CONNECTED</div>
+    {% endif %}
+  </aside>
+  <div class="main-column">
+    <header class="topbar">
+      <div class="topbar-heading">
+        <span class="eyebrow">MEDISLOT <span class="eyebrow-separator">/</span> {{ 'PATIENT' if session.get('role') == 'patient' else 'DOCTOR' if session.get('role') == 'doctor' else 'HEALTHCARE PORTAL' }}</span>
+        <h1>{% if request.endpoint == 'patient_profile' %}My profile{% elif request.endpoint == 'patient_search' %}Find doctors{% elif request.endpoint == 'patient_doctor' %}Doctor details{% elif request.endpoint == 'patient_register' %}Patient registration{% elif request.endpoint == 'patient_login' %}Patient login{% elif request.endpoint == 'profile' %}My profile{% elif request.endpoint == 'consultations' %}Consultations{% elif request.endpoint == 'availability' %}Weekly availability{% elif request.endpoint == 'blackouts' %}Blackout dates{% elif request.endpoint == 'schedule' %}Schedule{% elif request.endpoint == 'register' %}Doctor registration{% elif request.endpoint == 'welcome' %}Welcome{% else %}Doctor login{% endif %}</h1>
+      </div>
+      <div class="topbar-right"><span class="topbar-status"><i></i> Portal online</span><span class="topbar-tag">{{ 'Patient workspace' if session.get('role') == 'patient' else 'Doctor workspace' if session.get('role') == 'doctor' else 'Welcome' }}</span></div>
+    </header>
+    <main>
+      {% for message in get_flashed_messages() %}<div class="alert" role="status"><span class="alert-mark">✓</span>{{ message }}</div>{% endfor %}
+      {% block content %}{% endblock %}
+    </main>
+    <footer><span>© MediSlot</span><span>Thoughtful care starts with a better schedule.</span></footer>
+  </div>
+</div>
 </body>
 </html>

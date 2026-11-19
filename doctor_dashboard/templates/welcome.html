@@ -1,52 +1,27 @@
-
 {% extends 'base.html' %}
-
 {% block content %}
-
-<!-- ========================================= -->
-<!-- 1. WELCOME SECTION                         -->
-<!-- ========================================= -->
-
-<section class="welcome">
-
-    <!-- ========================================= -->
-    <!-- 2. WELCOME HEADING AND DESCRIPTION        -->
-    <!-- ========================================= -->
-
-    <h2>Welcome to MediSlot</h2>
-
-    <p>
-        Manage your appointments and availability in one place.
-    </p>
-
-
-    <!-- ========================================= -->
-    <!-- 3. REGISTRATION AND LOGIN ACTIONS         -->
-    <!-- ========================================= -->
-
-    <div class="actions">
-
-        <!-- Doctor Registration Button -->
-        <a
-            class="btn"
-            href="{{ url_for('register') }}"
-        >
-            Register as doctor
-        </a>
-
-
-        <!-- Doctor Login Button -->
-        <a
-            class="btn secondary"
-            href="{{ url_for('login') }}"
-        >
-            Login as doctor
-        </a>
-
-      <a class="btn" href="{{ url_for('patient_register') }}">Register as patient</a>
-      <a class="btn secondary" href="{{ url_for('patient_login') }}">Login as patient</a>
+<section class="welcome-hero">
+  <div class="welcome-copy">
+    <span class="hero-kicker"><i></i> YOUR HEALTHCARE, IN HARMONY</span>
+    <h2>Make time for<br><em>what matters.</em></h2>
+    <p>MediSlot brings doctors and patients together with a simpler, more thoughtful way to manage care and appointments.</p>
+    <div class="actions welcome-actions">
+      <a class="btn" href="{{ url_for('patient_search') if session.get('role') == 'patient' else url_for('register') }}">{{ 'Find a doctor' if session.get('role') == 'patient' else 'Get started as a doctor' }} <span>→</span></a>
+      {% if not session.get('role') %}<a class="btn secondary" href="{{ url_for('patient_register') }}">Join as a patient</a>{% endif %}
     </div>
-
+  </div>
+  <div class="welcome-art" aria-hidden="true">
+    <div class="art-orbit orbit-one"></div><div class="art-orbit orbit-two"></div>
+    <div class="art-cross">✚</div>
+    <div class="art-card art-card-top"><span class="art-card-icon">✓</span><span><strong>Care, connected</strong><small>Everything in its right time</small></span></div>
+    <div class="art-card art-card-bottom"><span class="art-clock">◷</span><span><strong>More time for care</strong><small>Less time coordinating</small></span></div>
+  </div>
 </section>
-
+<section class="portal-options">
+  <div class="portal-intro"><span class="section-kicker">GET STARTED</span><h2>A better experience for everyone.</h2><p>Choose your workspace to continue.</p></div>
+  <div class="portal-grid">
+    <article class="portal-card doctor-card"><div class="portal-icon">✚</div><div><span class="portal-label">FOR HEALTHCARE PROFESSIONALS</span><h3>Doctor workspace</h3><p>Set your availability, manage consultation types and keep your schedule organised.</p></div><div class="portal-links"><a href="{{ url_for('register') }}">Create doctor account <span>→</span></a><a href="{{ url_for('login') }}">Doctor sign in</a></div></article>
+    <article class="portal-card patient-card"><div class="portal-icon">♥</div><div><span class="portal-label">FOR PATIENTS</span><h3>Patient workspace</h3><p>Discover doctors, explore available appointment times and manage your profile.</p></div><div class="portal-links"><a href="{{ url_for('patient_register') }}">Create patient account <span>→</span></a><a href="{{ url_for('patient_login') }}">Patient sign in</a></div></article>
+  </div>
+</section>
 {% endblock %}
