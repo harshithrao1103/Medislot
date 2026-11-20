@@ -30,11 +30,12 @@ class Table:
     def __init__(self):
         self.rows = {}
     def put_item(self, Item, ConditionExpression):
-        if Item['slotId'] in self.rows:
+        key = (Item['doctorId'], Item['slotKey'])
+        if key in self.rows:
             fail()
-        self.rows[Item['slotId']] = dict(Item)
+        self.rows[key] = dict(Item)
     def update_item(self, Key, UpdateExpression, ConditionExpression, ExpressionAttributeNames, ExpressionAttributeValues):
-        item = self.rows[Key['slotId']]
+        item = self.rows[(Key['doctorId'], Key['slotKey'])]
         if ':disabled' in UpdateExpression:
             if item['status'] != 'AVAILABLE' or item['heldCount'] != 0:
                 fail()
@@ -46,7 +47,15 @@ class Table:
             item['status'] = 'AVAILABLE'
             item['version'] += 1
     def query(self, **kwargs):
-        return {'Items': [{'slotId': k, 'status': v['status']} for k, v in self.rows.items()]}
+        return {'Items': [
+            {
+                'doctorId': v['doctorId'],
+                'slotKey': v['slotKey'],
+                'slotId': v['slotId'],
+                'status': v['status'],
+            }
+            for v in self.rows.values()
+        ]}
 
 
 class Cursor:
@@ -89,17 +98,18 @@ def test_edit_reuses_matching_slot_and_disables_old_one():
     assert run()['created'] == 2
     original = mod.make_slots('5', pattern, day)
     first_id, reused_id = [s['slotId'] for s in original]
-    table.rows[first_id]['bookedCount'] = 1
+    assert original[0]['slotKey'] == f"{original[0]['startTimeUTC']}#{first_id}"
+    table.rows[('5', next(v['slotKey'] for v in table.rows.values() if v['slotId'] == first_id))]['bookedCount'] = 1
     pattern.update(start_time=dt.time(9, 30), end_time=dt.time(10, 30))
     result = run()
     assert result['created'] == 1
-    assert table.rows[first_id]['status'] == 'INACTIVE'
-    assert table.rows[first_id]['bookedCount'] == 1  # Appointment retained
-    assert table.rows[first_id]['version'] == 1
-    assert table.rows[reused_id]['status'] == 'AVAILABLE'
-    assert table.rows[reused_id]['slotId'] == reused_id
+    assert table.rows[('5', next(v['slotKey'] for v in table.rows.values() if v['slotId'] == first_id))]['status'] == 'INACTIVE'
+    assert table.rows[('5', next(v['slotKey'] for v in table.rows.values() if v['slotId'] == first_id))]['bookedCount'] == 1  # Appointment retained
+    assert table.rows[('5', next(v['slotKey'] for v in table.rows.values() if v['slotId'] == first_id))]['version'] == 1
+    assert table.rows[('5', next(v['slotKey'] for v in table.rows.values() if v['slotId'] == reused_id))]['status'] == 'AVAILABLE'
+    assert table.rows[('5', next(v['slotKey'] for v in table.rows.values() if v['slotId'] == reused_id))]['slotId'] == reused_id
     new_id = mod.make_slots('5', pattern, day)[1]['slotId']
-    assert table.rows[new_id]['status'] == 'AVAILABLE'
+    assert table.rows[('5', next(v['slotKey'] for v in table.rows.values() if v['slotId'] == new_id))]['status'] == 'AVAILABLE'
     assert len(table.rows) == 3
 
 
@@ -110,13 +120,13 @@ def test_active_hold_prevents_immediate_deactivation():
                'duration_minutes': 30, 'capacity': 1}
     table = Table()
     mod.materialise(day, 1, table=table, connection_factory=lambda: Conn([pattern]))
-    old_id = next(iter(table.rows))
-    table.rows[old_id]['heldCount'] = 1
+    old_id = next(iter(table.rows.values()))['slotId']
+    next(v for v in table.rows.values() if v['slotId'] == old_id)['heldCount'] = 1
     mod.materialise(day, 1, table=table, connection_factory=lambda: Conn([]))
-    assert table.rows[old_id]['status'] == 'AVAILABLE'
-    table.rows[old_id]['heldCount'] = 0
+    assert next(v for v in table.rows.values() if v['slotId'] == old_id)['status'] == 'AVAILABLE'
+    next(v for v in table.rows.values() if v['slotId'] == old_id)['heldCount'] = 0
     mod.materialise(day, 1, table=table, connection_factory=lambda: Conn([]))
-    assert table.rows[old_id]['status'] == 'INACTIVE'
+    assert next(v for v in table.rows.values() if v['slotId'] == old_id)['status'] == 'INACTIVE'
 
 
 def test_elapsed_slots_are_deactivated_during_live_window(monkeypatch):
@@ -162,10 +172,10 @@ def test_elapsed_slots_are_deactivated_during_live_window(monkeypatch):
         slot['slotId'] for slot in slots
         if real_datetime.fromisoformat(slot['endTimeUTC']) <= FrozenDateTime.current
     }
-    future_ids = set(table.rows) - elapsed_ids
+    future_ids = {v['slotId'] for v in table.rows.values()} - elapsed_ids
 
     assert result['disabled'] == len(elapsed_ids)
-    assert all(table.rows[slot_id]['status'] == 'INACTIVE'
+    assert all(next(v for v in table.rows.values() if v['slotId'] == slot_id)['status'] == 'INACTIVE'
                for slot_id in elapsed_ids)
-    assert all(table.rows[slot_id]['status'] == 'AVAILABLE'
+    assert all(next(v for v in table.rows.values() if v['slotId'] == slot_id)['status'] == 'AVAILABLE'
                for slot_id in future_ids)

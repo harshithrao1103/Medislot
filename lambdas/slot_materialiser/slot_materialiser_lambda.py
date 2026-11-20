@@ -169,6 +169,7 @@ def make_slots(doctor, pattern, day):
         slots.append({
             'slotId': slot_id,
             'doctorId': str(doctor),
+            'slotKey': f"{utc_start}#{slot_id}",
             'consultationTypeId': str(
                 pattern['consultation_type_id']
             ),
@@ -416,7 +417,8 @@ def materialise(
 
                 table.update_item(  
                     Key={
-                        'slotId': slot['slotId']
+                        'doctorId': slot['doctorId'],
+                        'slotKey': slot['slotKey']
                     },
                     UpdateExpression='SET #st=:active ADD #ver :one',
                     ConditionExpression=(
@@ -466,34 +468,34 @@ def materialise(
 
         from boto3.dynamodb.conditions import Key
 
-        # Query the DoctorStartIndex for the doctor's slots
+        # Query the Slots table primary key for the doctor's slots
         # within the materialisation date window.
         #
         # Convert the IST window boundaries into UTC.
 
         query = {
-            'IndexName': 'DoctorStartIndex',
-
             'KeyConditionExpression': (
                 Key('doctorId').eq(doctor)
                 &
-                Key('startTimeUTC').between(
+                Key('slotKey').between(
                     # Query from the beginning of the first day, not from
-                    # the current time. This includes elapsed slots so they
-                    # can be marked INACTIVE during reconciliation.
+                    # the current time. Include all slot IDs at the upper
+                    # timestamp boundary; the range remains end-exclusive
+                    # at the application level because the end is next-day
+                    # midnight and no slot should start at that instant.
                     dt.datetime.combine(
                         start_day, dt.time.min, tzinfo=IST
-                    ).astimezone(UTC).isoformat(),
+                    ).astimezone(UTC).isoformat() + '#',
 
                     dt.datetime.combine(
                         start_day + dt.timedelta(days=days),
                         dt.time.min,
                         tzinfo=IST
-                    ).astimezone(UTC).isoformat()
+                    ).astimezone(UTC).isoformat() + '#~'
                 )
             ),
 
-            'ProjectionExpression': 'slotId,#st',
+            'ProjectionExpression': 'doctorId,slotKey,slotId,#st',
 
             'ExpressionAttributeNames': {
                 '#st': 'status'
@@ -530,7 +532,8 @@ def materialise(
 
                         table.update_item(
                             Key={
-                                'slotId': old['slotId']
+                                'doctorId': doctor,
+                                'slotKey': old['slotKey']
                             },
 
                             UpdateExpression=(

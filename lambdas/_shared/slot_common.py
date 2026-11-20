@@ -15,10 +15,12 @@ def get_doctor_slots(doctor_id, start_utc, end_utc):
     """
     table = boto3.resource("dynamodb").Table(os.environ["SLOTS_TABLE"])
     query = {
-        "IndexName": "DoctorStartIndex",
         "KeyConditionExpression": (
             Key("doctorId").eq(str(doctor_id))
-            & Key("startTimeUTC").between(start_utc, end_utc)
+            & Key("slotKey").between(
+                f"{start_utc}#",
+                f"{end_utc}#~",
+            )
         ),
         "Limit": 100,
     }

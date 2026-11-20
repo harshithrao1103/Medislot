@@ -50,13 +50,18 @@ class FakeConn:
 class FakeTable:
     def __init__(self):self.rows={}
     def put_item(self,Item,ConditionExpression):
-        if Item['slotId'] in self.rows:
+        key=(Item['doctorId'],Item['slotKey'])
+        if key in self.rows:
             raise ClientError({'Error':{'Code':'ConditionalCheckFailedException','Message':'duplicate'}},'PutItem')
-        self.rows[Item['slotId']]=dict(Item)
+        self.rows[key]=dict(Item)
     def update_item(self,**kwargs):
         raise ClientError({'Error':{'Code':'ConditionalCheckFailedException','Message':'unchanged'}},'UpdateItem')
     def query(self,**kwargs):
-        return {'Items':[{'slotId':k,'status':v['status']} for k,v in self.rows.items()]}
+        return {'Items':[
+            {'doctorId':v['doctorId'],'slotKey':v['slotKey'],
+             'slotId':v['slotId'],'status':v['status']}
+            for v in self.rows.values()
+        ]}
 
 def test_repeated_materialisation_does_not_duplicate_or_reset_bookings():
     table=FakeTable()

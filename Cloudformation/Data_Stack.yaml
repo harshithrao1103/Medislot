@@ -185,7 +185,7 @@ Resources:
 
     Properties:
 
-      TableName: !Sub 'medislot-${Environment}-slots'
+      TableName: !Sub 'medislot-${Environment}-slots-v2'
 
       BillingMode: PAY_PER_REQUEST
 
@@ -196,25 +196,18 @@ Resources:
         PointInTimeRecoveryEnabled: true
 
       AttributeDefinitions:
-        - AttributeName: slotId
-          AttributeType: S
         - AttributeName: doctorId
           AttributeType: S
-        - AttributeName: startTimeUTC
+        - AttributeName: slotKey
           AttributeType: S
 
+      # Query slots directly by doctor and chronological slot key.
+      # slotKey = startTimeUTC + '#' + slotId.
       KeySchema:
-        - AttributeName: slotId
+        - AttributeName: doctorId
           KeyType: HASH
-      GlobalSecondaryIndexes:
-        - IndexName: DoctorStartIndex
-          KeySchema:
-            - AttributeName: doctorId
-              KeyType: HASH
-            - AttributeName: startTimeUTC
-              KeyType: RANGE
-          Projection:
-            ProjectionType: ALL
+        - AttributeName: slotKey
+          KeyType: RANGE
 
 
   # ==========================================================
@@ -786,12 +779,19 @@ Outputs:
       Name: !Sub 'medislot-${Environment}-SAMArtifactsBucketName'
 
 
+  # Legacy export is kept unchanged so the Data Stack can be updated while
+  # existing application stacks still import the original table name.
   SlotInventoryTableName:
-    Description: DynamoDB slot inventory table
-    Value: !Ref SlotInventoryTable
-
+    Description: Legacy DynamoDB slot inventory table name (retained during migration)
+    Value: !Sub 'medislot-${Environment}-slots'
     Export:
       Name: !Sub 'medislot-${Environment}-SlotInventoryTableName'
+
+  SlotInventoryTableV2Name:
+    Description: DynamoDB slot inventory table using doctorId/slotKey primary key
+    Value: !Ref SlotInventoryTable
+    Export:
+      Name: !Sub 'medislot-${Environment}-SlotInventoryTableV2Name'
 
 
   RefreshTokensTableName:
