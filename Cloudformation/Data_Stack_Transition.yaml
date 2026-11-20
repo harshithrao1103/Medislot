@@ -180,8 +180,8 @@ Resources:
           - id: CKV_AWS_119
             comment: Project encryption policy uses AWS-managed encryption rather than customer-managed KMS keys; encryption at rest remains enabled.
 
-    DeletionPolicy: Retain
-    UpdateReplacePolicy: Retain
+    DeletionPolicy: Delete
+    UpdateReplacePolicy: Delete
 
     Properties:
 

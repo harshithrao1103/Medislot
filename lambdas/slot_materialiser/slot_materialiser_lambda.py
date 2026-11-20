@@ -382,14 +382,14 @@ def materialise(
 
         try:
 
-            # Insert only when slotId does not already exist.
+            # Insert only when the composite primary key does not already exist.
             #
             # This conditional write prevents duplicate
             # creation during repeated or concurrent runs.
 
             table.put_item(
                 Item=slot,
-                ConditionExpression='attribute_not_exists(slotId)'
+                ConditionExpression='attribute_not_exists(doctorId)'
             )
 
             created += 1

@@ -1,78 +1,90 @@
-# MediSlot — final single Slots table
+# MediSlot — clean single Slots table deployment
 
-## Target architecture
+## Final architecture
 
-The final deployment has exactly one Slots table:
+The steady-state deployment contains exactly one Slots table:
 
-- Physical table name: `medislot-${Environment}-slots`
+- Physical name: `medislot-${Environment}-slots`
 - Partition key: `doctorId` (String)
-- Sort key: `slotKey` (String), formatted as `startTimeUTC#slotId`
-- `slotId` and `startTimeUTC` remain normal attributes.
-- No `DoctorStartIndex` GSI.
-- All Lambdas import `medislot-${Environment}-SlotInventoryTableName`.
-- IAM policies grant access to `medislot-${Environment}-slots`.
+- Sort key: `slotKey` (String)
+- `slotKey` format: `startTimeUTC#slotId`
+- `slotId` and `startTimeUTC` remain ordinary item attributes.
+- No Slots-table GSI is created.
+- Doctor API, Patient Domain and Slot Materialiser use the `SLOTS_TABLE` environment variable sourced from the canonical `SlotInventoryTableName` CloudFormation export.
+- IAM access is scoped to `medislot-${Environment}-slots`.
 
-The final `Cloudformation/Data_Stack.yaml` is the steady-state template.
-`Data_Stack_Transition.yaml` is a one-time compatibility template required because
-the currently deployed Application Stack imports the old `SlotInventoryTableV2Name`
-CloudFormation export.
+## Data-loss decision
 
-## Important: current environment has two physical tables
+This deployment intentionally does not migrate or preserve existing DynamoDB records. The project owner has confirmed that existing Slots records and other DynamoDB data are disposable. The Slots table is recreated with the required composite key.
 
-The supplied deployment screenshot showed both:
-- `medislot-dev-slots` (legacy key schema)
-- `medislot-dev-slots-v2` (new doctorId/slotKey schema)
+## Important CloudFormation dependency
 
-DynamoDB does not allow an existing table's primary key to be changed in place.
-Do not delete either table until you have checked whether it contains records and
-taken any required backup. Do not run the final template directly against the
-current stack without following the sequence below.
+The currently deployed Application Stack may still import the old
+`SlotInventoryTableV2Name` export, even though this ZIP's Application Stack
+uses the canonical `SlotInventoryTableName` export. CloudFormation does not
+allow an exported value to change or be removed while another stack imports it.
 
-## One-time deployment sequence (dev example)
+Do not manually delete both Slots tables before following the sequence below.
+The old `medislot-${Environment}-slots` table is the legacy, separately-created
+table and must be deleted to free its physical name. The `slots-v2` table is
+currently managed by the Data Stack and should be removed by CloudFormation
+when the resource is replaced.
 
-1. Put MediSlot into a maintenance window / stop patient booking traffic.
-2. Inspect both tables and take on-demand backups or exports if their data may
-   be needed. Check Lambda environment variables and CloudFormation stack state.
-3. If `medislot-dev-slots-v2` contains records that must be retained, migrate
-   them to the replacement table after it is created. For every item, ensure
-   `slotKey = startTimeUTC + '#' + slotId`; write using `(doctorId, slotKey)`.
-   Do not discard booking-related attributes. The MySQL `appointments.slot_id`
-   values continue to refer to the unchanged `slotId` attribute.
-4. Delete the legacy physical table `medislot-dev-slots` only after its backup
-   and after confirming it is the old-schema table. This name must be free for
-   CloudFormation to create the replacement table. Do not delete `slots-v2`.
-5. Deploy `Cloudformation/Data_Stack_Transition.yaml` to the existing
-   `medislot-dev-data` stack. The stack-managed `slots-v2` resource is replaced
-   by a new `medislot-dev-slots` table with the desired key schema. Its
-   `UpdateReplacePolicy: Retain` keeps the old `slots-v2` table temporarily.
-   The transition template exports both the canonical name and a temporary
-   compatibility alias, both pointing to the single new `slots` table.
-6. If needed, migrate the records preserved from `slots-v2` into the new
-   `medislot-dev-slots` table. Verify counts and sample items before continuing.
-7. Deploy `Cloudformation/Security_IAM_Stack.yaml` and then
-   `Cloudformation/Application_Stack.yaml`. The application now imports the
-   canonical `SlotInventoryTableName` export. The transition alias remains only
-   so CloudFormation can safely update the existing cross-stack dependency.
-8. Test doctor availability, patient availability, slot materialisation,
-   reactivation/deactivation, booking, cancellation, and waitlist behavior.
-9. Once the application is confirmed to use `medislot-dev-slots`, delete the
-   retained `medislot-dev-slots-v2` table only if its data is no longer needed
-   and backups are verified.
-10. Deploy the final `Cloudformation/Data_Stack.yaml`. This removes the
-    temporary `SlotInventoryTableV2Name` export. The final architecture now
-    has one Slots table and no V2 export.
+## Deployment sequence (dev example)
 
-## If both tables are empty
+1. Stop patient booking traffic / put the application into a maintenance window.
+2. Deploy `Cloudformation/Application_Stack.yaml` to the existing Application
+   Stack first. This changes all three Lambda `SLOTS_TABLE` references from the
+   old V2 export to the canonical `SlotInventoryTableName` export.
+3. Verify the old export has no importers:
 
-If you have verified that both tables contain zero items and no data needs
-preserving, steps 2–3 and 6 can be reduced to backup/empty checks. Still follow
-the CloudFormation transition sequence; do not manually delete the stack-managed
-`slots-v2` table while CloudFormation believes it owns it.
+   ```powershell
+   aws cloudformation list-imports `
+     --export-name medislot-dev-SlotInventoryTableV2Name `
+     --region us-east-1
+   ```
 
-## Rollback and safety
+   The result must show no importing stacks. If it still lists the Application
+   Stack, stop and inspect the deployed Application Stack before proceeding.
+4. Delete the legacy physical table `medislot-dev-slots` (the old `slotId`
+   partition-key table) so the required physical name is free. Do not delete
+   `medislot-dev-slots-v2` manually; it is managed by CloudFormation.
+5. Deploy `Cloudformation/Data_Stack_Transition.yaml` to the existing Data
+   Stack using the same parameter values as its current deployment. This
+   replaces the stack-managed `slots-v2` resource with the new physical table
+   `medislot-dev-slots`, using `doctorId` + `slotKey`. The update-replacement
+   policy is `Delete`, so the old stack-managed `slots-v2` table is removed.
+   The transition template temporarily keeps the old V2 export name as a
+   compatibility alias to the new table; no stack should import it now.
+6. Verify the Data Stack is `UPDATE_COMPLETE`, and verify the physical table:
 
-- Keep backups until all end-to-end checks pass.
-- Do not delete the retained `slots-v2` table until the new table and all Lambda
-  operations are verified.
-- If a step fails, stop and inspect CloudFormation stack events before retrying.
+   ```powershell
+   aws dynamodb describe-table `
+     --table-name medislot-dev-slots `
+     --region us-east-1 `
+     --query "Table.{Status:TableStatus,Keys:KeySchema,Indexes:GlobalSecondaryIndexes}"
+   ```
+
+   Expected key schema: `doctorId` HASH and `slotKey` RANGE. Expected GSI list:
+   empty / absent.
+7. Deploy the final `Cloudformation/Data_Stack.yaml` to the same Data Stack.
+   This removes the temporary `SlotInventoryTableV2Name` export. The
+   Application Stack already imports only the canonical export.
+8. Verify the V2 export no longer exists and the canonical export resolves to
+   `medislot-dev-slots`. Then deploy/publish the Lambda packages and test slot
+   materialisation, doctor availability, patient availability, booking,
+   cancellation, and waitlist behavior.
+9. Resume traffic only after all checks pass.
+
+## Important notes
+
+- Do not manually delete `medislot-dev-slots-v2`; CloudFormation owns it and
+  replaces/deletes it in step 5.
+- Other DynamoDB tables are independent of this Slots-table key change. Clear
+  their data only if intentionally required; this deployment does not require
+  deleting those tables.
+- The Data Stack transition/final templates preserve the existing other data
+  resources and their settings.
 - No NAT Gateway is required or introduced by this change.
+- If any stack update fails, stop and inspect CloudFormation stack events
+  before retrying. Do not continue to the next step after a failed update.
