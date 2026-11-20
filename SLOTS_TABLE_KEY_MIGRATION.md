@@ -149,3 +149,53 @@ Expected result: `[]`.
   `medislot-dev-slots` table may be deleted for this migration.
 - Do not resume traffic until the final Application Stack deployment and
   slot/booking smoke tests pass.
+
+## Corrected deployment order (2026-11-20)
+
+The deployment workflow now creates the canonical DynamoDB table before deploying
+or updating any Lambda that queries it:
+
+1. CI validation and tests
+2. Network Stack
+3. Security/IAM Stack (temporary compatibility access enabled)
+4. Data Stack using `Data_Stack_Transition.yaml` (creates the single physical
+   `medislot-${Environment}-slots` table and publishes both temporary and
+   canonical exports)
+5. Transition Application Stack (all slot Lambdas use the scalar environment
+   variable `SLOTS_TABLE=medislot-${Environment}-slots`)
+6. Final Application Stack (continues using the canonical table export name)
+7. Final Data Stack (removes the temporary V2 compatibility export)
+8. Security/IAM Stack cleanup (disables temporary legacy access)
+
+The V2 export is only a temporary CloudFormation export alias; it is not a
+second DynamoDB table. Both application templates now target the one physical
+canonical table. The application templates use a scalar `!Sub` expression for
+`SLOTS_TABLE`, not an intrinsic-function mapping nested as a Lambda environment
+variable value.
+
+### CloudFormation execution role permission prerequisite
+
+The CloudFormation execution role must be allowed to pass the Lambda execution
+roles to Lambda. The observed deployment failure specifically named
+`medislot-dev-slot-materialiser-role`. Before rerunning the workflow, attach the
+scoped policy in `Cloudformation/CloudFormationExecutionRolePassRolePolicy.json`
+to the IAM role `medislot_cloudformation_execution`:
+
+```powershell
+aws iam put-role-policy `
+  --role-name medislot_cloudformation_execution `
+  --policy-name MediSlotPassLambdaExecutionRoles `
+  --policy-document file://Cloudformation/CloudFormationExecutionRolePassRolePolicy.json
+```
+
+This command must be run by an administrator or an identity allowed to manage
+inline policies on that execution role. It does not grant the GitHub OIDC role
+permission to pass arbitrary roles.
+
+### Dashboard EC2 instance type
+
+Both application templates use `t2.micro` instead of `t3.micro`, in response to
+the account's reported Free Tier eligibility rejection for `t3.micro`. Confirm
+`t2.micro` is eligible for the account and available for the selected AMI in
+`us-east-1` before deployment; Free Tier eligibility is account-specific and
+cannot be guaranteed by the template.

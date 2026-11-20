@@ -439,8 +439,9 @@ jobs:
     name: Deploy Data Stack
     runs-on: ubuntu-latest
 
+    # Create the canonical Slots table before any application Lambda is deployed.
     needs:
-      - deploy-application
+      - deploy-security-iam
 
     steps:
 
@@ -635,8 +636,9 @@ jobs:
     name: Deploy Application Stack
     runs-on: ubuntu-latest
 
+    # The transition Data Stack creates medislot-${Environment}-slots first.
     needs:
-      - deploy-security-iam
+      - deploy-data
 
     steps:
 
@@ -989,7 +991,7 @@ jobs:
     runs-on: ubuntu-latest
 
     needs:
-      - deploy-data
+      - deploy-application
 
     steps:
       - name: Checkout Repository

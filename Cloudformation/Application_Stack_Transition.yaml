@@ -803,7 +803,7 @@ Resources:
         Variables:
           PHOTO_BUCKET:
             Fn::ImportValue: !Sub medislot-${Environment}-ProfilePhotosBucketName
-          SLOTS_TABLE: !Sub 'medislot-${Environment}-slots-v2'
+          SLOTS_TABLE: !Sub 'medislot-${Environment}-slots'
           SLOT_MATERIALISER_FUNCTION: !Sub medislot-${Environment}-slot-materialiser
           DB_HOST:
             Fn::ImportValue: !Sub medislot-${Environment}-DBEndpoint
@@ -845,7 +845,7 @@ Resources:
           - Fn::ImportValue: !Sub medislot-${Environment}-PrivateSubnetBId
       Environment:
         Variables:
-          SLOTS_TABLE: !Sub 'medislot-${Environment}-slots-v2'
+          SLOTS_TABLE: !Sub 'medislot-${Environment}-slots'
           BOOKING_WINDOW_PARAM: !Ref BookingWindowDaysParameter
           DB_HOST:
             Fn::ImportValue: !Sub medislot-${Environment}-DBEndpoint
@@ -1193,7 +1193,7 @@ Resources:
             comment: Development-only public EC2 dashboard with restricted source CIDR; production requires private EC2 and HTTPS access.
     Properties:
       ImageId: !Ref DoctorDashboardAmi
-      InstanceType: t3.micro
+      InstanceType: t2.micro
       IamInstanceProfile:
         Fn::ImportValue: !Sub medislot-${Environment}-DoctorDashboardInstanceProfileName
       NetworkInterfaces:
@@ -1299,7 +1299,7 @@ Resources:
           - Fn::ImportValue: !Sub medislot-${Environment}-PrivateSubnetBId
       Environment:
         Variables:
-          SLOTS_TABLE: !Sub 'medislot-${Environment}-slots-v2'
+          SLOTS_TABLE: !Sub 'medislot-${Environment}-slots'
           DB_HOST:
             Fn::ImportValue: !Sub medislot-${Environment}-DBEndpoint
           DB_PORT:
