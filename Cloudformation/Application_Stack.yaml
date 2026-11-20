@@ -804,7 +804,7 @@ Resources:
           PHOTO_BUCKET:
             Fn::ImportValue: !Sub medislot-${Environment}-ProfilePhotosBucketName
           SLOTS_TABLE:
-            SLOTS_TABLE: medislot-dev-slots-v2
+            Fn::ImportValue: !Sub 'medislot-${Environment}-SlotInventoryTableName'
           SLOT_MATERIALISER_FUNCTION: !Sub medislot-${Environment}-slot-materialiser
           DB_HOST:
             Fn::ImportValue: !Sub medislot-${Environment}-DBEndpoint
@@ -847,7 +847,7 @@ Resources:
       Environment:
         Variables:
           SLOTS_TABLE:
-            SLOTS_TABLE: medislot-dev-slots-v2
+            Fn::ImportValue: !Sub 'medislot-${Environment}-SlotInventoryTableName'
           BOOKING_WINDOW_PARAM: !Ref BookingWindowDaysParameter
           DB_HOST:
             Fn::ImportValue: !Sub medislot-${Environment}-DBEndpoint
@@ -1302,7 +1302,7 @@ Resources:
       Environment:
         Variables:
           SLOTS_TABLE:
-            SLOTS_TABLE: medislot-dev-slots-v2
+            Fn::ImportValue: !Sub 'medislot-${Environment}-SlotInventoryTableName'
           DB_HOST:
             Fn::ImportValue: !Sub medislot-${Environment}-DBEndpoint
           DB_PORT:

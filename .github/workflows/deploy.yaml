@@ -788,7 +788,7 @@ jobs:
 
           TEMPLATE_KEY="cloudformation/application/${GITHUB_SHA}.yaml"
 
-          aws s3 cp Cloudformation/Application_Stack.yaml \
+          aws s3 cp Cloudformation/Application_Stack_Transition.yaml \
             "s3://${ARTIFACT_BUCKET}/${TEMPLATE_KEY}" \
             --region "$AWS_REGION"
 
@@ -806,7 +806,7 @@ jobs:
           set -euo pipefail
 
           aws cloudformation deploy \
-            --template-file Cloudformation/Application_Stack.yaml \
+            --template-file Cloudformation/Application_Stack_Transition.yaml \
             --s3-bucket "$ARTIFACT_BUCKET" \
             --s3-prefix "cloudformation/application" \
             --stack-name "$STACK_NAME" \
@@ -959,3 +959,93 @@ jobs:
 
           MEDISLOT_API_BASE_URL="$API_BASE" python tests/smoke_auth.py
           MEDISLOT_API_BASE_URL="$API_BASE" python tests/smoke_patient_domain.py
+
+  # =====================================================
+  # JOB 5: SWITCH APPLICATION TO THE FINAL CANONICAL SLOTS EXPORT
+  # Runs only after Data Stack has created medislot-${Environment}-slots.
+  # =====================================================
+
+  deploy-application-final:
+    name: Finalize Application Stack
+    runs-on: ubuntu-latest
+
+    needs:
+      - deploy-data
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Load Configuration
+        shell: bash
+        run: |
+          set -euo pipefail
+          CONFIG="Cloudformation/parameters.json"
+          jq -e . "$CONFIG" > /dev/null
+          PROJECT=$(jq -er '.project' "$CONFIG")
+          DEPLOY_ENV=$(jq -er '.environment' "$CONFIG")
+          AWS_REGION=$(jq -er '.region' "$CONFIG")
+          echo "PROJECT=$PROJECT" >> "$GITHUB_ENV"
+          echo "DEPLOY_ENV=$DEPLOY_ENV" >> "$GITHUB_ENV"
+          echo "AWS_REGION=$AWS_REGION" >> "$GITHUB_ENV"
+          echo "STACK_NAME=${PROJECT}-${DEPLOY_ENV}-application" >> "$GITHUB_ENV"
+
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Resolve CloudFormation Deployment Resources
+        shell: bash
+        run: |
+          set -euo pipefail
+          ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
+          PARTITION=$(aws sts get-caller-identity --query Arn --output text | cut -d: -f2)
+          echo "CFN_EXECUTION_ROLE_ARN=arn:${PARTITION}:iam::${ACCOUNT_ID}:role/medislot_cloudformation_execution" >> "$GITHUB_ENV"
+          ARTIFACT_BUCKET=$(aws cloudformation list-exports \
+            --query "Exports[?Name=='${PROJECT}-${DEPLOY_ENV}-SAMArtifactsBucketName'].Value | [0]" \
+            --output text \
+            --region "$AWS_REGION")
+          if [[ -z "$ARTIFACT_BUCKET" || "$ARTIFACT_BUCKET" == "None" ]]; then
+            echo "::error::SAM artifacts bucket export not found"
+            exit 1
+          fi
+          echo "ARTIFACT_BUCKET=$ARTIFACT_BUCKET" >> "$GITHUB_ENV"
+
+      - name: Verify Final Slots Table and Canonical Export
+        shell: bash
+        run: |
+          set -euo pipefail
+          TABLE_NAME="medislot-${DEPLOY_ENV}-slots"
+          aws dynamodb describe-table \
+            --table-name "$TABLE_NAME" \
+            --region "$AWS_REGION" \
+            --query "Table.{Status:TableStatus,Keys:KeySchema,GSIs:GlobalSecondaryIndexes}" \
+            --output json
+          EXPORT_VALUE=$(aws cloudformation list-exports \
+            --query "Exports[?Name=='${PROJECT}-${DEPLOY_ENV}-SlotInventoryTableName'].Value | [0]" \
+            --output text \
+            --region "$AWS_REGION")
+          if [[ "$EXPORT_VALUE" != "$TABLE_NAME" ]]; then
+            echo "::error::Canonical Slots export does not point to ${TABLE_NAME}; found ${EXPORT_VALUE}"
+            exit 1
+          fi
+
+      - name: Deploy Final Application Stack
+        shell: bash
+        run: |
+          set -euo pipefail
+          aws cloudformation deploy \
+            --template-file Cloudformation/Application_Stack.yaml \
+            --s3-bucket "$ARTIFACT_BUCKET" \
+            --s3-prefix "cloudformation/application-final" \
+            --stack-name "$STACK_NAME" \
+            --parameter-overrides \
+              Environment="$DEPLOY_ENV" \
+              ArtifactBucketName="$ARTIFACT_BUCKET" \
+              CodeVersion="$GITHUB_SHA" \
+            --role-arn "$CFN_EXECUTION_ROLE_ARN" \
+            --region "$AWS_REGION" \
+            --no-fail-on-empty-changeset
+
