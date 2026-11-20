@@ -439,7 +439,7 @@ jobs:
     runs-on: ubuntu-latest
 
     needs:
-      - deploy-security-iam
+      - deploy-application
 
     steps:
 
@@ -617,7 +617,7 @@ jobs:
     runs-on: ubuntu-latest
 
     needs:
-      - deploy-data
+      - deploy-security-iam
 
     steps:
 
