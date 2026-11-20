@@ -185,7 +185,7 @@ Resources:
 
     Properties:
 
-      TableName: !Sub 'medislot-${Environment}-slots-v2'
+      TableName: !Sub 'medislot-${Environment}-slots'
 
       BillingMode: PAY_PER_REQUEST
 
@@ -779,19 +779,11 @@ Outputs:
       Name: !Sub 'medislot-${Environment}-SAMArtifactsBucketName'
 
 
-  # Legacy export is kept unchanged so the Data Stack can be updated while
-  # existing application stacks still import the original table name.
   SlotInventoryTableName:
-    Description: Legacy DynamoDB slot inventory table name (retained during migration)
-    Value: !Sub 'medislot-${Environment}-slots'
-    Export:
-      Name: !Sub 'medislot-${Environment}-SlotInventoryTableName'
-
-  SlotInventoryTableV2Name:
     Description: DynamoDB slot inventory table using doctorId/slotKey primary key
     Value: !Ref SlotInventoryTable
     Export:
-      Name: !Sub 'medislot-${Environment}-SlotInventoryTableV2Name'
+      Name: !Sub 'medislot-${Environment}-SlotInventoryTableName'
 
 
   RefreshTokensTableName:
