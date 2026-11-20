@@ -412,6 +412,7 @@ jobs:
               Environment="$DEPLOY_ENV" \
               VpcCIDR="$VPC_CIDR" \
               DashboardIngressCidr="$DASHBOARD_INGRESS_CIDR" \
+              EnableLegacySlotsAccess="true" \
             --capabilities CAPABILITY_NAMED_IAM \
             --role-arn "$CFN_EXECUTION_ROLE_ARN" \
             --region "$AWS_REGION" \
@@ -556,12 +557,30 @@ jobs:
           set -euo pipefail
 
           aws cloudformation validate-template \
-            --template-body file://Cloudformation/Data_Stack.yaml \
+            --template-body file://Cloudformation/Data_Stack_Transition.yaml \
             --region "$AWS_REGION"
 
       # =====================================================
       # 7. DEPLOY DATA STACK
       # =====================================================
+
+      - name: Check existing Slots table schema before migration
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          TABLE_NAME="medislot-${DEPLOY_ENV}-slots"
+          if aws dynamodb describe-table --table-name "$TABLE_NAME" --region "$AWS_REGION" > /tmp/slots-table.json 2>/dev/null; then
+            ACTUAL_KEYS=$(jq -c '[.Table.KeySchema[] | {AttributeName,KeyType}] | sort_by(.KeyType)' /tmp/slots-table.json)
+            EXPECTED_KEYS='[{"AttributeName":"doctorId","KeyType":"HASH"},{"AttributeName":"slotKey","KeyType":"RANGE"}]'
+            if [[ "$ACTUAL_KEYS" != "$EXPECTED_KEYS" ]]; then
+              echo "::error::The existing ${TABLE_NAME} table has an incompatible primary key: ${ACTUAL_KEYS}"
+              echo "::error::DynamoDB primary keys cannot be changed in place. After the transition application is deployed, back up if needed and delete the old ${TABLE_NAME} table, then rerun this workflow."
+              exit 1
+            fi
+          else
+            echo "Canonical Slots table does not exist yet; CloudFormation will create it."
+          fi
 
       - name: Deploy Data Stack
         shell: bash
@@ -579,7 +598,7 @@ jobs:
           WAITLIST_MINUTES=$(jq -er '.data.WaitlistHoldMinutes' "$CONFIG")
 
           aws cloudformation deploy \
-            --template-file Cloudformation/Data_Stack.yaml \
+            --template-file Cloudformation/Data_Stack_Transition.yaml \
             --stack-name "$STACK_NAME" \
             --parameter-overrides \
               Environment="$DEPLOY_ENV" \
@@ -1018,11 +1037,21 @@ jobs:
         run: |
           set -euo pipefail
           TABLE_NAME="medislot-${DEPLOY_ENV}-slots"
-          aws dynamodb describe-table \
+          TABLE_INFO=$(aws dynamodb describe-table \
             --table-name "$TABLE_NAME" \
             --region "$AWS_REGION" \
             --query "Table.{Status:TableStatus,Keys:KeySchema,GSIs:GlobalSecondaryIndexes}" \
-            --output json
+            --output json)
+          echo "$TABLE_INFO" | jq .
+          echo "$TABLE_INFO" | jq -e '
+            .Status == "ACTIVE" and
+            ([.Keys[] | select(.AttributeName == "doctorId" and .KeyType == "HASH")] | length) == 1 and
+            ([.Keys[] | select(.AttributeName == "slotKey" and .KeyType == "RANGE")] | length) == 1 and
+            ((.GSIs // []) | length) == 0
+          ' > /dev/null || {
+            echo "::error::Slots table must be ACTIVE with doctorId HASH, slotKey RANGE, and no GSIs"
+            exit 1
+          }
           EXPORT_VALUE=$(aws cloudformation list-exports \
             --query "Exports[?Name=='${PROJECT}-${DEPLOY_ENV}-SlotInventoryTableName'].Value | [0]" \
             --output text \
@@ -1048,4 +1077,63 @@ jobs:
             --role-arn "$CFN_EXECUTION_ROLE_ARN" \
             --region "$AWS_REGION" \
             --no-fail-on-empty-changeset
+
+      # =====================================================
+      # 12. REMOVE THE TEMPORARY DATA EXPORT AND IAM ACCESS
+      # This runs only after the final application template is deployed.
+      # =====================================================
+
+      - name: Finalize Data Stack and remove legacy slots access
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          CONFIG="Cloudformation/parameters.json"
+          DB_CLASS=$(jq -er '.data.DBInstanceClass' "$CONFIG")
+          DB_STORAGE=$(jq -er '.data.DBAllocatedStorage' "$CONFIG")
+          DB_BACKUP_DAYS=$(jq -er '.data.DBBackupRetentionDays' "$CONFIG")
+          ACCESS_MINUTES=$(jq -er '.data.JWTAccessTokenMinutes' "$CONFIG")
+          REFRESH_DAYS=$(jq -er '.data.RefreshTokenDays' "$CONFIG")
+          BCRYPT_FACTOR=$(jq -er '.data.BcryptWorkFactor' "$CONFIG")
+          WAITLIST_MINUTES=$(jq -er '.data.WaitlistHoldMinutes' "$CONFIG")
+          VPC_CIDR=$(jq -er '.network.VpcCIDR' "$CONFIG")
+          DASHBOARD_INGRESS_CIDR="${{ vars.DASHBOARD_INGRESS_CIDR }}"
+
+          if [[ -z "$DASHBOARD_INGRESS_CIDR" ]]; then
+            echo "::error::DASHBOARD_INGRESS_CIDR repository variable is required"
+            exit 1
+          fi
+
+          echo "Deploying final Data Stack (removes temporary compatibility export)..."
+          aws cloudformation deploy \
+            --template-file Cloudformation/Data_Stack.yaml \
+            --stack-name "${PROJECT}-${DEPLOY_ENV}-data" \
+            --parameter-overrides \
+              Environment="$DEPLOY_ENV" \
+              DBInstanceClass="$DB_CLASS" \
+              DBAllocatedStorage="$DB_STORAGE" \
+              DBBackupRetentionDays="$DB_BACKUP_DAYS" \
+              JWTAccessTokenMinutes="$ACCESS_MINUTES" \
+              RefreshTokenDays="$REFRESH_DAYS" \
+              BcryptWorkFactor="$BCRYPT_FACTOR" \
+              WaitlistHoldMinutes="$WAITLIST_MINUTES" \
+            --role-arn "$CFN_EXECUTION_ROLE_ARN" \
+            --region "$AWS_REGION" \
+            --no-fail-on-empty-changeset
+
+          echo "Removing temporary slots-v2 IAM permissions..."
+          aws cloudformation deploy \
+            --template-file Cloudformation/Security_IAM_Stack.yaml \
+            --stack-name "${PROJECT}-${DEPLOY_ENV}-security-iam" \
+            --parameter-overrides \
+              Environment="$DEPLOY_ENV" \
+              VpcCIDR="$VPC_CIDR" \
+              DashboardIngressCidr="$DASHBOARD_INGRESS_CIDR" \
+              EnableLegacySlotsAccess="false" \
+            --capabilities CAPABILITY_NAMED_IAM \
+            --role-arn "$CFN_EXECUTION_ROLE_ARN" \
+            --region "$AWS_REGION" \
+            --no-fail-on-empty-changeset
+
+          echo "Final Data Stack and IAM cleanup completed."
 

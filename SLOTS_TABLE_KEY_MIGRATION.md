@@ -38,11 +38,16 @@ to the canonical `SlotInventoryTableName` export.
   with the transition template after the migration is complete.
 
 The GitHub Actions workflow performs this sequence:
-1. Deploy Network and Security/IAM stacks.
-2. Deploy the transition Application Stack.
-3. Deploy the final Data Stack.
-4. Verify the final table and canonical export.
-5. Deploy the final Application Stack.
+1. Deploy Network and Security/IAM stacks, temporarily granting the two
+   scheduling Lambdas access to both the canonical and legacy table names.
+2. Deploy the transition Application Stack, which drops the old V2 export
+   import and temporarily points the scheduling Lambdas at `slots-v2`.
+3. Deploy `Data_Stack_Transition.yaml`, creating the canonical table and
+   retaining a temporary V2 compatibility export.
+4. Verify the canonical table schema and export, then deploy the final
+   `Application_Stack.yaml` so all three Lambdas use the canonical export.
+5. Deploy `Data_Stack.yaml` to remove the temporary V2 export.
+6. Redeploy the Security/IAM stack with legacy access disabled.
 
 ## Required pre-deployment action
 
@@ -91,15 +96,18 @@ inspect the live stack resources and events first.
 2. Confirm the old legacy `medislot-dev-slots` table is deleted (or absent).
 3. Push this ZIP's project contents to the repository and run the GitHub
    Actions deployment workflow.
-4. The workflow first deploys `Application_Stack_Transition.yaml`, which
-   removes the Application Stack's import of `SlotInventoryTableV2Name`.
-5. The workflow deploys `Data_Stack.yaml`, which replaces the managed
-   `slots-v2` table with `slots`, uses `doctorId` + `slotKey`, and removes
-   the temporary V2 export.
-6. The final workflow job verifies the table and canonical export, then
-   deploys `Application_Stack.yaml` so all three Lambdas use the canonical
-   export.
-7. Confirm the workflow finishes with all jobs successful.
+4. The workflow deploys `Application_Stack_Transition.yaml`, removing the
+   Application Stack's import of `SlotInventoryTableV2Name`.
+5. The workflow checks the existing canonical table schema. If the old
+   `slotId` HASH table is still present, it stops with an explicit message;
+   delete only that confirmed legacy table and rerun the workflow.
+6. The workflow deploys `Data_Stack_Transition.yaml`, which creates the
+   canonical `slots` table with `doctorId` + `slotKey` and temporarily keeps
+   the V2 compatibility export.
+7. It verifies the table/export, deploys `Application_Stack.yaml`, then
+   deploys `Data_Stack.yaml` to remove the compatibility export and disables
+   the temporary `slots-v2` IAM policies.
+8. Confirm the workflow finishes with all jobs successful.
 
 Expected final table verification:
 
@@ -136,5 +144,8 @@ Expected result: `[]`.
 - Do not manually delete `slots-v2`; CloudFormation owns it.
 - Do not deploy `Application_Stack.yaml` before the Data Stack has created the
   final table and canonical export.
+- If the workflow stops at the Slots schema preflight, inspect the table and
+  stack resources before deleting anything. Only the confirmed legacy
+  `medislot-dev-slots` table may be deleted for this migration.
 - Do not resume traffic until the final Application Stack deployment and
   slot/booking smoke tests pass.
