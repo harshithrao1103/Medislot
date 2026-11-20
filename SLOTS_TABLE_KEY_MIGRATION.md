@@ -194,8 +194,9 @@ permission to pass arbitrary roles.
 
 ### Dashboard EC2 instance type
 
-Both application templates use `t2.micro` instead of `t3.micro`, in response to
-the account's reported Free Tier eligibility rejection for `t3.micro`. Confirm
-`t2.micro` is eligible for the account and available for the selected AMI in
-`us-east-1` before deployment; Free Tier eligibility is account-specific and
-cannot be guaranteed by the template.
+Both application templates retain `t3.micro`, matching the existing running
+Doctor Dashboard instance (`i-009860ea10dbc336e`). Do not change the instance
+type during this deployment. The account reported a Free Plan restriction when
+CloudFormation attempted to modify the instance; retaining the current type
+avoids an unnecessary `t3.micro` to `t2.micro` modification. Free Tier/Free Plan
+eligibility is account-specific and cannot be guaranteed by the template.
