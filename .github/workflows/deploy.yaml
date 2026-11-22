@@ -412,7 +412,6 @@ jobs:
               Environment="$DEPLOY_ENV" \
               VpcCIDR="$VPC_CIDR" \
               DashboardIngressCidr="$DASHBOARD_INGRESS_CIDR" \
-              EnableLegacySlotsAccess="true" \
             --capabilities CAPABILITY_NAMED_IAM \
             --role-arn "$CFN_EXECUTION_ROLE_ARN" \
             --region "$AWS_REGION" \
@@ -558,14 +557,14 @@ jobs:
           set -euo pipefail
 
           aws cloudformation validate-template \
-            --template-body file://Cloudformation/Data_Stack_Transition.yaml \
+            --template-body file://Cloudformation/Data_Stack.yaml \
             --region "$AWS_REGION"
 
       # =====================================================
       # 7. DEPLOY DATA STACK
       # =====================================================
 
-      - name: Check existing Slots table schema before migration
+      - name: Check existing canonical Slots table schema
         shell: bash
         run: |
           set -euo pipefail
@@ -576,7 +575,7 @@ jobs:
             EXPECTED_KEYS='[{"AttributeName":"doctorId","KeyType":"HASH"},{"AttributeName":"slotKey","KeyType":"RANGE"}]'
             if [[ "$ACTUAL_KEYS" != "$EXPECTED_KEYS" ]]; then
               echo "::error::The existing ${TABLE_NAME} table has an incompatible primary key: ${ACTUAL_KEYS}"
-              echo "::error::DynamoDB primary keys cannot be changed in place. After the transition application is deployed, back up if needed and delete the old ${TABLE_NAME} table, then rerun this workflow."
+              echo "::error::DynamoDB primary keys cannot be changed in place; review the table before deployment."
               exit 1
             fi
           else
@@ -599,7 +598,7 @@ jobs:
           WAITLIST_MINUTES=$(jq -er '.data.WaitlistHoldMinutes' "$CONFIG")
 
           aws cloudformation deploy \
-            --template-file Cloudformation/Data_Stack_Transition.yaml \
+            --template-file Cloudformation/Data_Stack.yaml \
             --stack-name "$STACK_NAME" \
             --parameter-overrides \
               Environment="$DEPLOY_ENV" \
@@ -636,7 +635,7 @@ jobs:
     name: Deploy Application Stack
     runs-on: ubuntu-latest
 
-    # The transition Data Stack creates medislot-${Environment}-slots first.
+    # The Data Stack creates or updates the canonical medislot-${Environment}-slots table.
     needs:
       - deploy-data
 
@@ -809,7 +808,7 @@ jobs:
 
           TEMPLATE_KEY="cloudformation/application/${GITHUB_SHA}.yaml"
 
-          aws s3 cp Cloudformation/Application_Stack_Transition.yaml \
+          aws s3 cp Cloudformation/Application_Stack.yaml \
             "s3://${ARTIFACT_BUCKET}/${TEMPLATE_KEY}" \
             --region "$AWS_REGION"
 
@@ -827,7 +826,7 @@ jobs:
           set -euo pipefail
 
           aws cloudformation deploy \
-            --template-file Cloudformation/Application_Stack_Transition.yaml \
+            --template-file Cloudformation/Application_Stack.yaml \
             --s3-bucket "$ARTIFACT_BUCKET" \
             --s3-prefix "cloudformation/application" \
             --stack-name "$STACK_NAME" \
@@ -981,51 +980,7 @@ jobs:
           MEDISLOT_API_BASE_URL="$API_BASE" python tests/smoke_auth.py
           MEDISLOT_API_BASE_URL="$API_BASE" python tests/smoke_patient_domain.py
 
-  # =====================================================
-  # JOB 5: FINALIZE DATA STACK AND LEGACY IAM ACCESS
-  # Runs after the application and canonical Slots table have been verified.
-  # =====================================================
-
-  deploy-application-final:
-    name: Finalize Data Stack and IAM
-    runs-on: ubuntu-latest
-
-    needs:
-      - deploy-application
-
-    steps:
-      - name: Checkout Repository
-        uses: actions/checkout@v4
-
-      - name: Load Configuration
-        shell: bash
-        run: |
-          set -euo pipefail
-          CONFIG="Cloudformation/parameters.json"
-          jq -e . "$CONFIG" > /dev/null
-          PROJECT=$(jq -er '.project' "$CONFIG")
-          DEPLOY_ENV=$(jq -er '.environment' "$CONFIG")
-          AWS_REGION=$(jq -er '.region' "$CONFIG")
-          echo "PROJECT=$PROJECT" >> "$GITHUB_ENV"
-          echo "DEPLOY_ENV=$DEPLOY_ENV" >> "$GITHUB_ENV"
-          echo "AWS_REGION=$AWS_REGION" >> "$GITHUB_ENV"
-          echo "STACK_NAME=${PROJECT}-${DEPLOY_ENV}-application" >> "$GITHUB_ENV"
-
-      - name: Configure AWS Credentials
-        uses: aws-actions/configure-aws-credentials@v4
-        with:
-          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
-          aws-region: ${{ env.AWS_REGION }}
-
-      - name: Resolve CloudFormation Deployment Resources
-        shell: bash
-        run: |
-          set -euo pipefail
-          ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
-          PARTITION=$(aws sts get-caller-identity --query Arn --output text | cut -d: -f2)
-          echo "CFN_EXECUTION_ROLE_ARN=arn:${PARTITION}:iam::${ACCOUNT_ID}:role/medislot_cloudformation_execution" >> "$GITHUB_ENV"
-
-      - name: Verify Final Slots Table and Canonical Export
+      - name: Verify Canonical Slots Table and Export
         shell: bash
         run: |
           set -euo pipefail
@@ -1053,63 +1008,3 @@ jobs:
             echo "::error::Canonical Slots export does not point to ${TABLE_NAME}; found ${EXPORT_VALUE}"
             exit 1
           fi
-
-      # =====================================================
-      # REMOVE THE TEMPORARY DATA EXPORT AND LEGACY IAM ACCESS
-      # This runs after the canonical Slots table and export are verified.
-      # =====================================================
-
-      - name: Finalize Data Stack and remove legacy slots access
-        shell: bash
-        run: |
-          set -euo pipefail
-
-          CONFIG="Cloudformation/parameters.json"
-          DB_CLASS=$(jq -er '.data.DBInstanceClass' "$CONFIG")
-          DB_STORAGE=$(jq -er '.data.DBAllocatedStorage' "$CONFIG")
-          DB_BACKUP_DAYS=$(jq -er '.data.DBBackupRetentionDays' "$CONFIG")
-          ACCESS_MINUTES=$(jq -er '.data.JWTAccessTokenMinutes' "$CONFIG")
-          REFRESH_DAYS=$(jq -er '.data.RefreshTokenDays' "$CONFIG")
-          BCRYPT_FACTOR=$(jq -er '.data.BcryptWorkFactor' "$CONFIG")
-          WAITLIST_MINUTES=$(jq -er '.data.WaitlistHoldMinutes' "$CONFIG")
-          VPC_CIDR=$(jq -er '.network.VpcCIDR' "$CONFIG")
-          DASHBOARD_INGRESS_CIDR="${{ vars.DASHBOARD_INGRESS_CIDR }}"
-
-          if [[ -z "$DASHBOARD_INGRESS_CIDR" ]]; then
-            echo "::error::DASHBOARD_INGRESS_CIDR repository variable is required"
-            exit 1
-          fi
-
-          echo "Deploying final Data Stack (removes temporary compatibility export)..."
-          aws cloudformation deploy \
-            --template-file Cloudformation/Data_Stack.yaml \
-            --stack-name "${PROJECT}-${DEPLOY_ENV}-data" \
-            --parameter-overrides \
-              Environment="$DEPLOY_ENV" \
-              DBInstanceClass="$DB_CLASS" \
-              DBAllocatedStorage="$DB_STORAGE" \
-              DBBackupRetentionDays="$DB_BACKUP_DAYS" \
-              JWTAccessTokenMinutes="$ACCESS_MINUTES" \
-              RefreshTokenDays="$REFRESH_DAYS" \
-              BcryptWorkFactor="$BCRYPT_FACTOR" \
-              WaitlistHoldMinutes="$WAITLIST_MINUTES" \
-            --role-arn "$CFN_EXECUTION_ROLE_ARN" \
-            --region "$AWS_REGION" \
-            --no-fail-on-empty-changeset
-
-          echo "Removing temporary slots-v2 IAM permissions..."
-          aws cloudformation deploy \
-            --template-file Cloudformation/Security_IAM_Stack.yaml \
-            --stack-name "${PROJECT}-${DEPLOY_ENV}-security-iam" \
-            --parameter-overrides \
-              Environment="$DEPLOY_ENV" \
-              VpcCIDR="$VPC_CIDR" \
-              DashboardIngressCidr="$DASHBOARD_INGRESS_CIDR" \
-              EnableLegacySlotsAccess="false" \
-            --capabilities CAPABILITY_NAMED_IAM \
-            --role-arn "$CFN_EXECUTION_ROLE_ARN" \
-            --region "$AWS_REGION" \
-            --no-fail-on-empty-changeset
-
-          echo "Final Data Stack and IAM cleanup completed."
-

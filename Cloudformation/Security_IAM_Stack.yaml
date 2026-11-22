@@ -26,15 +26,6 @@ Parameters:
     Type: String
     Description: Public IPv4 CIDR allowed to access the doctor dashboard
 
-  EnableLegacySlotsAccess:
-    Type: String
-    Default: 'false'
-    AllowedValues: ['true', 'false']
-    Description: Temporarily allow the transition application to query the legacy slots-v2 table
-
-Conditions:
-  EnableLegacySlotsAccessCondition: !Equals [!Ref EnableLegacySlotsAccess, 'true']
-
 # =====================================================
 # RESOURCES
 # =====================================================
@@ -1042,52 +1033,6 @@ Resources:
 # =====================================================
 
 
-  # Temporary migration-only access. The final IAM deployment sets
-  # EnableLegacySlotsAccess=false after the application uses the canonical table.
-  PatientDomainLegacySlotsPolicy:
-    Type: AWS::IAM::Policy
-    Condition: EnableLegacySlotsAccessCondition
-    Properties:
-      PolicyName: !Sub medislot-${Environment}-patient-domain-legacy-slots
-      Roles:
-        - !Ref PatientDomainLambdaRole
-      PolicyDocument:
-        Version: '2012-10-17'
-        Statement:
-          - Sid: QueryLegacySlotsDuringMigration
-            Effect: Allow
-            Action: [dynamodb:Query]
-            Resource: !Sub arn:${AWS::Partition}:dynamodb:${AWS::Region}:${AWS::AccountId}:table/medislot-${Environment}-slots-v2
-
-  DoctorApiLegacySlotsPolicy:
-    Type: AWS::IAM::Policy
-    Condition: EnableLegacySlotsAccessCondition
-    Properties:
-      PolicyName: !Sub medislot-${Environment}-doctor-api-legacy-slots
-      Roles:
-        - !Ref DoctorApiLambdaRole
-      PolicyDocument:
-        Version: '2012-10-17'
-        Statement:
-          - Sid: QueryLegacySlotsDuringMigration
-            Effect: Allow
-            Action: [dynamodb:Query, dynamodb:GetItem]
-            Resource: !Sub arn:${AWS::Partition}:dynamodb:${AWS::Region}:${AWS::AccountId}:table/medislot-${Environment}-slots-v2
-
-  SlotMaterialiserLegacySlotsPolicy:
-    Type: AWS::IAM::Policy
-    Condition: EnableLegacySlotsAccessCondition
-    Properties:
-      PolicyName: !Sub medislot-${Environment}-slot-materialiser-legacy-slots
-      Roles:
-        - !Ref SlotMaterialiserRole
-      PolicyDocument:
-        Version: '2012-10-17'
-        Statement:
-          - Sid: UpdateLegacySlotsDuringMigration
-            Effect: Allow
-            Action: [dynamodb:PutItem, dynamodb:UpdateItem, dynamodb:Query]
-            Resource: !Sub arn:${AWS::Partition}:dynamodb:${AWS::Region}:${AWS::AccountId}:table/medislot-${Environment}-slots-v2
 
 Outputs:
 
