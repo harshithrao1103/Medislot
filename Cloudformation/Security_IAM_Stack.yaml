@@ -933,11 +933,11 @@ Resources:
                     kms:ViaService: !Sub secretsmanager.${AWS::Region}.amazonaws.com
               - Sid: SlotInventory
                 Effect: Allow
-                Action: [dynamodb:GetItem, dynamodb:Query, dynamodb:UpdateItem, dynamodb:TransactWriteItems]
+                Action: [dynamodb:GetItem, dynamodb:Query, dynamodb:UpdateItem]
                 Resource: !Sub arn:${AWS::Partition}:dynamodb:${AWS::Region}:${AWS::AccountId}:table/medislot-${Environment}-slots
               - Sid: IdempotencyStore
                 Effect: Allow
-                Action: [dynamodb:GetItem, dynamodb:PutItem, dynamodb:UpdateItem, dynamodb:TransactWriteItems]
+                Action: [dynamodb:GetItem, dynamodb:PutItem, dynamodb:UpdateItem]
                 Resource: !Sub arn:${AWS::Partition}:dynamodb:${AWS::Region}:${AWS::AccountId}:table/medislot-${Environment}-idempotency
               - Sid: RefundPolicy
                 Effect: Allow
