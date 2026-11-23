@@ -881,6 +881,21 @@ Resources:
           Fn::ImportValue: !Sub medislot-${Environment}-MaterialiserSchedulerRoleArn
         Input: '{}'
 
+  # Poll the transactional outbox; this invokes the same Appointment API Lambda.
+  AppointmentOutboxSchedule:
+    Type: AWS::Scheduler::Schedule
+    Properties:
+      Name: !Sub medislot-${Environment}-appointment-outbox-dispatch
+      ScheduleExpression: rate(1 minute)
+      FlexibleTimeWindow:
+        Mode: 'OFF'
+      State: ENABLED
+      Target:
+        Arn: !GetAtt AppointmentApiLambda.Arn
+        RoleArn:
+          Fn::ImportValue: !Sub medislot-${Environment}-AppointmentOutboxSchedulerRoleArn
+        Input: '{"operation":"dispatch_outbox","limit":25}'
+
   # --- DoctorDomainRoot: Defines the /doctors API path ---
   DoctorDomainRoot:
     Type: AWS::ApiGateway::Resource
@@ -1259,6 +1274,49 @@ Resources:
         - Key: Project
           Value: MediSlot
 
+  # Milestone 5 appointment domain API and outbox dispatcher.
+  AppointmentApiLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub /aws/lambda/medislot-${Environment}-appointment-api
+      RetentionInDays: 14
+
+  AppointmentApiLambda:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Sub medislot-${Environment}-appointment-api
+      Runtime: python3.12
+      Handler: appointment_api_lambda.lambda_handler
+      Role:
+        Fn::ImportValue: !Sub medislot-${Environment}-AppointmentApiLambdaRoleArn
+      Code:
+        S3Bucket: !Ref ArtifactBucketName
+        S3Key: !Sub lambda/appointment_api/${CodeVersion}.zip
+      Timeout: 30
+      MemorySize: 256
+      VpcConfig:
+        SecurityGroupIds:
+          - Fn::ImportValue: !Sub medislot-${Environment}-LambdaSecurityGroupId
+        SubnetIds:
+          - Fn::ImportValue: !Sub medislot-${Environment}-PrivateSubnetAId
+          - Fn::ImportValue: !Sub medislot-${Environment}-PrivateSubnetBId
+      Environment:
+        Variables:
+          SLOTS_TABLE: !Sub medislot-${Environment}-slots
+          IDEMPOTENCY_TABLE: !Sub medislot-${Environment}-idempotency
+          REFUND_POLICY_PARAM: !Sub /medislot/${Environment}/appointments/refund-policy
+          EVENT_BUS_NAME: !Sub medislot-${Environment}-appointments
+          ENVIRONMENT: !Ref Environment
+          DB_HOST:
+            Fn::ImportValue: !Sub medislot-${Environment}-DBEndpoint
+          DB_PORT:
+            Fn::ImportValue: !Sub medislot-${Environment}-DBPort
+          DB_NAME:
+            Fn::ImportValue: !Sub medislot-${Environment}-DBName
+          DB_SECRET_ARN:
+            Fn::ImportValue: !Sub medislot-${Environment}-DBMasterSecretArn
+          AUTH_SSM_PREFIX: !Sub /medislot/${Environment}/auth
+
   # Milestone 4 patient and public discovery Lambda.
   # --- PatientDomainLogGroup: Stores logs produced by the patient-domain Lambda ---
   PatientDomainLogGroup:
@@ -1428,6 +1486,160 @@ Resources:
         Type: AWS_PROXY
         IntegrationHttpMethod: POST
         Uri: !Sub arn:${AWS::Partition}:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${PatientDomainLambda.Arn}/invocations
+  # Milestone 5 API resources.
+  AppointmentsResource:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      RestApiId: !Ref AuthRestApi
+      ParentId: !GetAtt AuthRestApi.RootResourceId
+      PathPart: appointments
+  AppointmentIdResource:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      RestApiId: !Ref AuthRestApi
+      ParentId: !Ref AppointmentsResource
+      PathPart: '{appointmentId}'
+  PatientRefundsResource:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      RestApiId: !Ref AuthRestApi
+      ParentId: !Ref PatientMeResource
+      PathPart: refunds
+  DoctorMySlotsResource:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      RestApiId: !Ref AuthRestApi
+      ParentId: !Ref DoctorMe
+      PathPart: slots
+  DoctorMySlotIdResource:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      RestApiId: !Ref AuthRestApi
+      ParentId: !Ref DoctorMySlotsResource
+      PathPart: '{slotId}'
+  DoctorAppointmentsResource:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      RestApiId: !Ref AuthRestApi
+      ParentId: !Ref DoctorMe
+      PathPart: appointments
+  DoctorAppointmentIdResource:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      RestApiId: !Ref AuthRestApi
+      ParentId: !Ref DoctorAppointmentsResource
+      PathPart: '{appointmentId}'
+  DoctorAppointmentOutcomeResource:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      RestApiId: !Ref AuthRestApi
+      ParentId: !Ref DoctorAppointmentIdResource
+      PathPart: outcome
+
+  AppointmentsPost:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref AuthRestApi
+      ResourceId: !Ref AppointmentsResource
+      HttpMethod: POST
+      AuthorizationType: CUSTOM
+      AuthorizerId: !Ref JwtAuthorizer
+      Integration:
+        Type: AWS_PROXY
+        IntegrationHttpMethod: POST
+        Uri: !Sub arn:${AWS::Partition}:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${AppointmentApiLambda.Arn}/invocations
+  AppointmentsGet:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref AuthRestApi
+      ResourceId: !Ref AppointmentsResource
+      HttpMethod: GET
+      AuthorizationType: CUSTOM
+      AuthorizerId: !Ref JwtAuthorizer
+      Integration:
+        Type: AWS_PROXY
+        IntegrationHttpMethod: POST
+        Uri: !Sub arn:${AWS::Partition}:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${AppointmentApiLambda.Arn}/invocations
+  AppointmentDetailGet:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref AuthRestApi
+      ResourceId: !Ref AppointmentIdResource
+      HttpMethod: GET
+      AuthorizationType: CUSTOM
+      AuthorizerId: !Ref JwtAuthorizer
+      Integration:
+        Type: AWS_PROXY
+        IntegrationHttpMethod: POST
+        Uri: !Sub arn:${AWS::Partition}:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${AppointmentApiLambda.Arn}/invocations
+  AppointmentCancelDelete:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref AuthRestApi
+      ResourceId: !Ref AppointmentIdResource
+      HttpMethod: DELETE
+      AuthorizationType: CUSTOM
+      AuthorizerId: !Ref JwtAuthorizer
+      Integration:
+        Type: AWS_PROXY
+        IntegrationHttpMethod: POST
+        Uri: !Sub arn:${AWS::Partition}:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${AppointmentApiLambda.Arn}/invocations
+  PatientRefundsGet:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref AuthRestApi
+      ResourceId: !Ref PatientRefundsResource
+      HttpMethod: GET
+      AuthorizationType: CUSTOM
+      AuthorizerId: !Ref JwtAuthorizer
+      Integration:
+        Type: AWS_PROXY
+        IntegrationHttpMethod: POST
+        Uri: !Sub arn:${AWS::Partition}:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${AppointmentApiLambda.Arn}/invocations
+  DoctorSlotCancelDelete:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref AuthRestApi
+      ResourceId: !Ref DoctorMySlotIdResource
+      HttpMethod: DELETE
+      AuthorizationType: CUSTOM
+      AuthorizerId: !Ref JwtAuthorizer
+      Integration:
+        Type: AWS_PROXY
+        IntegrationHttpMethod: POST
+        Uri: !Sub arn:${AWS::Partition}:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${AppointmentApiLambda.Arn}/invocations
+  DoctorAppointmentsGet:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref AuthRestApi
+      ResourceId: !Ref DoctorAppointmentsResource
+      HttpMethod: GET
+      AuthorizationType: CUSTOM
+      AuthorizerId: !Ref JwtAuthorizer
+      Integration:
+        Type: AWS_PROXY
+        IntegrationHttpMethod: POST
+        Uri: !Sub arn:${AWS::Partition}:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${AppointmentApiLambda.Arn}/invocations
+  DoctorAppointmentOutcomePost:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref AuthRestApi
+      ResourceId: !Ref DoctorAppointmentOutcomeResource
+      HttpMethod: POST
+      AuthorizationType: CUSTOM
+      AuthorizerId: !Ref JwtAuthorizer
+      Integration:
+        Type: AWS_PROXY
+        IntegrationHttpMethod: POST
+        Uri: !Sub arn:${AWS::Partition}:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${AppointmentApiLambda.Arn}/invocations
+  AppointmentApiInvokePermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      Action: lambda:InvokeFunction
+      FunctionName: !Ref AppointmentApiLambda
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub arn:${AWS::Partition}:execute-api:${AWS::Region}:${AWS::AccountId}:${AuthRestApi}/*/*/*
+
   # --- PatientDomainInvokePermission: Allows API Gateway to invoke the patient-domain Lambda ---
   PatientDomainInvokePermission:
     Type: AWS::Lambda::Permission
@@ -1482,6 +1694,14 @@ Resources:
       - DoctorDiscoveryGet
       - PublicDoctorGet
       - PublicDoctorSlotsGet
+      - AppointmentsPost
+      - AppointmentsGet
+      - AppointmentDetailGet
+      - AppointmentCancelDelete
+      - PatientRefundsGet
+      - DoctorSlotCancelDelete
+      - DoctorAppointmentsGet
+      - DoctorAppointmentOutcomePost
     Properties:
       RestApiId: !Ref AuthRestApi
       Description: !Sub Doctor domain API deployment with photo GET ${CodeVersion}

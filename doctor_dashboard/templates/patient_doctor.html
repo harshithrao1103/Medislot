@@ -114,21 +114,42 @@
     const button = card.querySelector('[data-book-slot]');
     if (!button) return;
 
-    button.addEventListener('click', () => {
+    button.addEventListener('click', async () => {
+      if (button.disabled) return;
       cards.forEach((item) => {
         item.classList.remove('is-selected');
         const action = item.querySelector('[data-book-slot]');
-        if (action) {
+        if (action && action !== button) {
           action.classList.remove('is-chosen');
           action.setAttribute('aria-pressed', 'false');
           action.innerHTML = 'Book appointment <span aria-hidden="true">→</span>';
         }
       });
-
       card.classList.add('is-selected');
       button.classList.add('is-chosen');
       button.setAttribute('aria-pressed', 'true');
-      button.innerHTML = 'Selected <span aria-hidden="true">✓</span>';
+      button.disabled = true;
+      button.textContent = 'Booking…';
+      const idempotencyKey = card.dataset.idempotencyKey || ((window.crypto && crypto.randomUUID) ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(16).slice(2)}`);
+      card.dataset.idempotencyKey = idempotencyKey;
+      try {
+        const response = await fetch('/patient/appointments/book', {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({doctorId: {{ doctor.user_id|tojson }}, slotId: card.dataset.slotId, idempotencyKey})
+        });
+        const result = await response.json();
+        if (!response.ok) throw new Error(result.error || `Booking failed (${response.status})`);
+        delete card.dataset.idempotencyKey;
+        button.textContent = 'Appointment booked ✓';
+        button.setAttribute('aria-pressed', 'true');
+        const state = card.querySelector('.time-slot-state');
+        if (state) state.textContent = '✓ Booked';
+      } catch (error) {
+        button.disabled = false;
+        button.textContent = error.message || 'Booking failed — try again';
+        button.setAttribute('aria-pressed', 'false');
+      }
     });
   });
 })();

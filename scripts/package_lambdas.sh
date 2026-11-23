@@ -13,7 +13,9 @@ for lambda_dir in lambdas/*/; do
   mkdir -p "$target"
   find "$lambda_dir" -maxdepth 1 -type f \( -name "*.py" -o -name "requirements.txt" \) -exec cp {} "$target/" \;
   if [ "$lambda_name" != "db_init" ]; then
-    cp lambdas/_shared/auth_common.py "$target/auth_common.py"
+    if [ "$lambda_name" != "appointment_api" ]; then
+      cp lambdas/_shared/auth_common.py "$target/auth_common.py"
+    fi
     if [ "$lambda_name" = "doctor_api" ]; then
       cp lambdas/_shared/doctor_common.py "$target/doctor_common.py"
     fi

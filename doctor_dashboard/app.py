@@ -9,7 +9,7 @@ from urllib.parse import urlencode
 import requests
 import boto3
 from botocore.exceptions import BotoCoreError, ClientError
-from flask import Flask, render_template, request, redirect, session, url_for, flash, Response
+from flask import Flask, render_template, request, redirect, session, url_for, flash, Response, jsonify
 from flask_session import Session
 
 # --------------------------------------------------------------------
@@ -702,6 +702,30 @@ def patient_profile():
         flash(api_error(r))
         return redirect(url_for('patient_search'))
     return render_template('patient_profile.html',data=r.json())
+
+
+@app.route('/patient/appointments/book', methods=['POST'])
+@patient_protected
+def patient_book_appointment():
+    """Forward a patient booking request and its idempotency key to the Appointment API."""
+    payload = request.get_json(silent=True) or {}
+    doctor_id = payload.get('doctorId')
+    slot_id = payload.get('slotId')
+    key = payload.get('idempotencyKey')
+    if not str(doctor_id or '').isdigit() or int(doctor_id) < 1 or not isinstance(slot_id, str) or not slot_id.strip():
+        return jsonify({'error': 'Invalid booking details'}), 400
+    if not isinstance(key, str) or not 8 <= len(key) <= 128:
+        return jsonify({'error': 'Invalid idempotency key'}), 400
+    try:
+        upstream = api('POST', '/appointments', json={'doctorId': int(doctor_id), 'slotId': slot_id}, headers={'Idempotency-Key': key})
+        try:
+            body = upstream.json()
+        except ValueError:
+            body = {'error': 'Appointment service returned an invalid response'}
+        return jsonify(body), upstream.status_code
+    except requests.RequestException:
+        app.logger.exception('Appointment booking API request failed')
+        return jsonify({'error': 'Appointment service unavailable'}), 502
 
 
 # ============================================================

@@ -1,4 +1,4 @@
--- MediSlot finalized RDS MySQL schema (8 tables).
+-- MediSlot finalized RDS MySQL schema (Milestone 5 adds transactional event outbox).
 -- Safe for a fresh database; CREATE IF NOT EXISTS does NOT migrate old tables.
 -- Existing deployments require a reviewed backup + migration before running db_init.
 CREATE TABLE IF NOT EXISTS users (
@@ -107,13 +107,19 @@ CREATE TABLE IF NOT EXISTS appointments (
   status ENUM('CONFIRMED','COMPLETED','CANCELLED_BY_PATIENT','CANCELLED_BY_DOCTOR','NO_SHOW') NOT NULL DEFAULT 'CONFIRMED',
   fee DECIMAL(10,2) NOT NULL,
   reschedule_count TINYINT UNSIGNED NOT NULL DEFAULT 0,
+  idempotency_key VARCHAR(160) NULL,
+  cancelled_at DATETIME NULL,
+  cancellation_actor ENUM('PATIENT','DOCTOR','SYSTEM') NULL,
   created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  active_booking_guard TINYINT GENERATED ALWAYS AS (CASE WHEN status='CONFIRMED' THEN 1 ELSE NULL END) STORED,
   CONSTRAINT fk_appointment_patient FOREIGN KEY (patient_id) REFERENCES patients(user_id),
   CONSTRAINT fk_appointment_doctor FOREIGN KEY (doctor_id) REFERENCES doctors(user_id),
   CONSTRAINT chk_appointment_fee CHECK (fee >= 0),
   CONSTRAINT chk_reschedule_count CHECK (reschedule_count <= 2),
   INDEX idx_appointment_patient_doctor_upcoming (patient_id,doctor_id,status,start_time_utc),
-  INDEX idx_appointment_slot (slot_id)
+  INDEX idx_appointment_slot (slot_id),
+  UNIQUE KEY uq_appointment_idempotency (idempotency_key),
+  UNIQUE KEY uq_active_patient_slot (patient_id,slot_id,active_booking_guard)
 ) ENGINE=InnoDB;
 
 CREATE TABLE IF NOT EXISTS refund_ledger (
@@ -127,7 +133,21 @@ CREATE TABLE IF NOT EXISTS refund_ledger (
   CONSTRAINT fk_refund_appointment FOREIGN KEY (appointment_id) REFERENCES appointments(appointment_id),
   CONSTRAINT chk_refund_percentage CHECK (refund_percentage BETWEEN 0 AND 100),
   CONSTRAINT chk_refund_amount CHECK (refund_amount >= 0 AND deduction_amount >= 0),
-  INDEX idx_refund_appointment (appointment_id)
+  UNIQUE KEY uq_refund_appointment (appointment_id)
+) ENGINE=InnoDB;
+
+CREATE TABLE IF NOT EXISTS event_outbox (
+  event_id VARCHAR(64) PRIMARY KEY,
+  aggregate_type VARCHAR(50) NOT NULL,
+  aggregate_id VARCHAR(100) NOT NULL,
+  event_type VARCHAR(100) NOT NULL,
+  payload JSON NOT NULL,
+  status ENUM('PENDING','PUBLISHED') NOT NULL DEFAULT 'PENDING',
+  attempt_count INT UNSIGNED NOT NULL DEFAULT 0,
+  last_error VARCHAR(1000) NULL,
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  published_at DATETIME NULL,
+  INDEX idx_outbox_pending (status,created_at)
 ) ENGINE=InnoDB;
 
 -- Milestone 4 discovery indexes; idempotent on fresh installs. Existing databases need migration.

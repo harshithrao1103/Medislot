@@ -166,6 +166,25 @@ Resources:
         - Key: Environment
           Value: !Ref Environment
 
+  # Private EventBridge endpoint: the VPC has no NAT Gateway.
+  EventsInterfaceEndpoint:
+    Type: AWS::EC2::VPCEndpoint
+    Properties:
+      VpcId:
+        Fn::ImportValue: !Sub medislot-${Environment}-VpcId
+      ServiceName: !Sub com.amazonaws.${AWS::Region}.events
+      VpcEndpointType: Interface
+      PrivateDnsEnabled: true
+      SubnetIds:
+        - Fn::ImportValue: !Sub medislot-${Environment}-PrivateSubnetAId
+        - Fn::ImportValue: !Sub medislot-${Environment}-PrivateSubnetBId
+      SecurityGroupIds: [!Ref SSMEndpointSecurityGroup]
+      Tags:
+        - Key: Name
+          Value: !Sub medislot-${Environment}-events-endpoint
+        - Key: Project
+          Value: MediSlot
+
   # =====================================================
   # 5. DATABASE INITIALIZATION LAMBDA ROLE
   # =====================================================
@@ -884,6 +903,79 @@ Resources:
                 Resource: '*'
 
   # =====================================================
+  # MILESTONE 5 - APPOINTMENT API LAMBDA ROLE
+  # =====================================================
+  AppointmentApiLambdaRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub medislot-${Environment}-appointment-api-role
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal: { Service: lambda.amazonaws.com }
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: AppointmentApiPolicy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Sid: DatabaseSecret
+                Effect: Allow
+                Action: [secretsmanager:GetSecretValue]
+                Resource: !Sub arn:${AWS::Partition}:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:rds!db-*
+              - Sid: DatabaseSecretDecrypt
+                Effect: Allow
+                Action: [kms:Decrypt]
+                Resource: !Sub arn:${AWS::Partition}:kms:${AWS::Region}:${AWS::AccountId}:key/c73acad8-2834-4e89-96fe-e49523415470
+                Condition:
+                  StringEquals:
+                    kms:ViaService: !Sub secretsmanager.${AWS::Region}.amazonaws.com
+              - Sid: SlotInventory
+                Effect: Allow
+                Action: [dynamodb:GetItem, dynamodb:Query, dynamodb:UpdateItem, dynamodb:TransactWriteItems]
+                Resource: !Sub arn:${AWS::Partition}:dynamodb:${AWS::Region}:${AWS::AccountId}:table/medislot-${Environment}-slots
+              - Sid: IdempotencyStore
+                Effect: Allow
+                Action: [dynamodb:GetItem, dynamodb:PutItem, dynamodb:UpdateItem, dynamodb:TransactWriteItems]
+                Resource: !Sub arn:${AWS::Partition}:dynamodb:${AWS::Region}:${AWS::AccountId}:table/medislot-${Environment}-idempotency
+              - Sid: RefundPolicy
+                Effect: Allow
+                Action: [ssm:GetParameter]
+                Resource: !Sub arn:${AWS::Partition}:ssm:${AWS::Region}:${AWS::AccountId}:parameter/medislot/${Environment}/appointments/refund-policy
+              - Sid: PublishAppointmentEvents
+                Effect: Allow
+                Action: [events:PutEvents]
+                Resource: !Sub arn:${AWS::Partition}:events:${AWS::Region}:${AWS::AccountId}:event-bus/medislot-${Environment}-appointments
+              - Sid: LambdaLogs
+                Effect: Allow
+                Action: [logs:CreateLogStream, logs:PutLogEvents]
+                Resource: !Sub arn:${AWS::Partition}:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/medislot-${Environment}-appointment-api:*
+              - Sid: LambdaVpcEni
+                Effect: Allow
+                Action: [ec2:CreateNetworkInterface, ec2:DescribeNetworkInterfaces, ec2:DeleteNetworkInterface, ec2:AssignPrivateIpAddresses, ec2:UnassignPrivateIpAddresses]
+                Resource: '*'
+
+  AppointmentOutboxSchedulerRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub medislot-${Environment}-appointment-outbox-scheduler-role
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal: { Service: scheduler.amazonaws.com }
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: InvokeAppointmentApi
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action: [lambda:InvokeFunction]
+                Resource: !Sub arn:${AWS::Partition}:lambda:${AWS::Region}:${AWS::AccountId}:function:medislot-${Environment}-appointment-api
+
+  # =====================================================
   # 16. EVENTBRIDGE SCHEDULER ROLE – PERMIT SCHEDULED LAMBDA INVOCATION
   # =====================================================
   MaterialiserSchedulerRole:
@@ -1125,6 +1217,14 @@ Outputs:
     Value: !GetAtt SlotMaterialiserRole.Arn
     Export:
       Name: !Sub medislot-${Environment}-SlotMaterialiserRoleArn
+  AppointmentApiLambdaRoleArn:
+    Value: !GetAtt AppointmentApiLambdaRole.Arn
+    Export:
+      Name: !Sub medislot-${Environment}-AppointmentApiLambdaRoleArn
+  AppointmentOutboxSchedulerRoleArn:
+    Value: !GetAtt AppointmentOutboxSchedulerRole.Arn
+    Export:
+      Name: !Sub medislot-${Environment}-AppointmentOutboxSchedulerRoleArn
   MaterialiserSchedulerRoleArn:
     Value: !GetAtt MaterialiserSchedulerRole.Arn
     Export:

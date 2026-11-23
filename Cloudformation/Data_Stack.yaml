@@ -250,6 +250,14 @@ Resources:
 
 
   # ==========================================================
+  # MILESTONE 5 - DOMAIN EVENT BUS (NO EMAIL CONSUMERS IN THIS MILESTONE)
+  # ==========================================================
+  AppointmentEventBus:
+    Type: AWS::Events::EventBus
+    Properties:
+      Name: !Sub medislot-${Environment}-appointments
+
+  # ==========================================================
   # 4. DYNAMODB - REFRESH TOKENS: STORE REFRESH-TOKEN RECORDS BY TOKEN HASH
   # ==========================================================
 
@@ -716,6 +724,15 @@ Resources:
 
       Value: !Sub '${WaitlistHoldMinutes}'
 
+  # Milestone 5 refund policy. Exact boundary semantics are implemented and tested in the Appointment API.
+  AppointmentRefundPolicyParameter:
+    Type: AWS::SSM::Parameter
+    Properties:
+      Name: !Sub /medislot/${Environment}/appointments/refund-policy
+      Type: String
+      Value: '{"tiers":[{"name":"MORE_THAN_48_HOURS","minHours":48,"minInclusive":false,"refundPercentage":100},{"name":"24_TO_48_HOURS","minHours":24,"minInclusive":true,"maxHours":48,"maxInclusive":true,"refundPercentage":75},{"name":"6_TO_24_HOURS","minHours":6,"minInclusive":true,"maxHours":24,"maxInclusive":false,"refundPercentage":50},{"name":"LESS_THAN_6_HOURS","maxHours":6,"maxInclusive":false,"refundPercentage":0},{"name":"NO_SHOW","refundPercentage":0}]}'
+      Description: Milestone 5 patient cancellation refund percentages; doctor cancellation is always 100 percent
+
   # Stores the minimum password length consumed by the application.
   PasswordMinLengthParameter:
     Type: AWS::SSM::Parameter
@@ -778,6 +795,18 @@ Outputs:
     Export:
       Name: !Sub 'medislot-${Environment}-SAMArtifactsBucketName'
 
+
+  AppointmentEventBusArn:
+    Description: EventBridge bus for appointment domain events
+    Value: !GetAtt AppointmentEventBus.Arn
+    Export:
+      Name: !Sub 'medislot-${Environment}-AppointmentEventBusArn'
+
+  AppointmentEventBusName:
+    Description: EventBridge bus name for appointment domain events
+    Value: !Ref AppointmentEventBus
+    Export:
+      Name: !Sub 'medislot-${Environment}-AppointmentEventBusName'
 
   SlotInventoryTableName:
     Description: DynamoDB slot inventory table using doctorId/slotKey primary key
