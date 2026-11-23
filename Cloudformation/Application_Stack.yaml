@@ -1288,6 +1288,11 @@ Resources:
 
   AppointmentApiLambda:
     Type: AWS::Lambda::Function
+    Metadata:
+      checkov:
+        skip:
+          - id: CKV_AWS_115
+            comment: Development environment uses shared Lambda concurrency because the AWS account concurrency quota cannot support per-function reservations.
     Properties:
       FunctionName: !Sub medislot-${Environment}-appointment-api
       Runtime: python3.12
