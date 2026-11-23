@@ -1,0 +1,123 @@
+name: Publish MediSlot API Gateway Routes
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirm_deploy:
+        description: "Confirm the API-only CloudFormation update to the live environment"
+        required: true
+        type: boolean
+        default: false
+
+permissions:
+  id-token: write
+  contents: read
+
+concurrency:
+  group: medislot-api-publish
+  cancel-in-progress: false
+
+jobs:
+  publish-api:
+    name: Publish API Gateway deployment only
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Require Explicit Deployment Confirmation
+        if: ${{ inputs.confirm_deploy != true }}
+        run: |
+          echo "::error::No live changes made. Re-run this workflow with confirm_deploy checked."
+          exit 1
+
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Load Configuration
+        shell: bash
+        run: |
+          set -euo pipefail
+          CONFIG="Cloudformation/parameters.json"
+          jq -e . "$CONFIG" > /dev/null
+          PROJECT=$(jq -er '.project' "$CONFIG")
+          DEPLOY_ENV=$(jq -er '.environment' "$CONFIG")
+          AWS_REGION=$(jq -er '.region' "$CONFIG")
+          echo "PROJECT=$PROJECT" >> "$GITHUB_ENV"
+          echo "DEPLOY_ENV=$DEPLOY_ENV" >> "$GITHUB_ENV"
+          echo "AWS_REGION=$AWS_REGION" >> "$GITHUB_ENV"
+          echo "STACK_NAME=${PROJECT}-${DEPLOY_ENV}-application" >> "$GITHUB_ENV"
+
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Resolve Existing Stack Parameters
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          STACK_STATUS=$(aws cloudformation describe-stacks \\
+            --stack-name "$STACK_NAME" \\
+            --query "Stacks[0].StackStatus" \\
+            --output text \\
+            --region "$AWS_REGION")
+
+          case "$STACK_STATUS" in
+            CREATE_COMPLETE|UPDATE_COMPLETE|UPDATE_ROLLBACK_COMPLETE) ;;
+            *)
+              echo "::error::Application stack is not in a safe update state: $STACK_STATUS"
+              exit 1
+              ;;
+          esac
+
+          CURRENT_CODE_VERSION=$(aws cloudformation describe-stacks \\
+            --stack-name "$STACK_NAME" \\
+            --query "Stacks[0].Parameters[?ParameterKey=='CodeVersion'].ParameterValue | [0]" \\
+            --output text \\
+            --region "$AWS_REGION")
+
+          ARTIFACT_BUCKET=$(aws cloudformation list-exports \\
+            --query "Exports[?Name=='${PROJECT}-${DEPLOY_ENV}-SAMArtifactsBucketName'].Value | [0]" \\
+            --output text \\
+            --region "$AWS_REGION")
+
+          if [[ -z "$CURRENT_CODE_VERSION" || "$CURRENT_CODE_VERSION" == "None" ]]; then
+            echo "::error::Could not read the currently deployed CodeVersion"
+            exit 1
+          fi
+          if [[ -z "$ARTIFACT_BUCKET" || "$ARTIFACT_BUCKET" == "None" ]]; then
+            echo "::error::SAM artifacts bucket export not found"
+            exit 1
+          fi
+
+          echo "CURRENT_CODE_VERSION=$CURRENT_CODE_VERSION" >> "$GITHUB_ENV"
+          echo "ARTIFACT_BUCKET=$ARTIFACT_BUCKET" >> "$GITHUB_ENV"
+          ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
+          PARTITION=$(aws sts get-caller-identity --query Arn --output text | cut -d: -f2)
+          echo "CFN_EXECUTION_ROLE_ARN=arn:${PARTITION}:iam::${ACCOUNT_ID}:role/medislot_cloudformation_execution" >> "$GITHUB_ENV"
+
+      - name: Validate Application Template
+        run: |
+          aws cloudformation validate-template \\
+            --template-body file://Cloudformation/Application_Stack.yaml \\
+            --region "$AWS_REGION"
+
+      - name: Publish API Gateway Deployment Snapshot
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          aws cloudformation deploy \\
+            --template-file Cloudformation/Application_Stack.yaml \\
+            --s3-bucket "$ARTIFACT_BUCKET" \\
+            --s3-prefix "cloudformation/api-only" \\
+            --stack-name "$STACK_NAME" \\
+            --parameter-overrides \\
+              Environment="$DEPLOY_ENV" \\
+              ArtifactBucketName="$ARTIFACT_BUCKET" \\
+              CodeVersion="$CURRENT_CODE_VERSION" \\
+              ApiDeploymentVersion="$GITHUB_SHA" \\
+            --role-arn "$CFN_EXECUTION_ROLE_ARN" \\
+            --region "$AWS_REGION" \\
+            --no-fail-on-empty-changeset

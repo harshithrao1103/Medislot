@@ -834,6 +834,7 @@ jobs:
               Environment="$DEPLOY_ENV" \
               ArtifactBucketName="$ARTIFACT_BUCKET" \
               CodeVersion="$GITHUB_SHA" \
+              ApiDeploymentVersion="$GITHUB_SHA" \
             --role-arn "$CFN_EXECUTION_ROLE_ARN" \
             --region "$AWS_REGION" \
             --no-fail-on-empty-changeset

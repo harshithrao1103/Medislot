@@ -124,9 +124,15 @@ app.jinja_env.globals['csrf_token'] = csrf
 def check_csrf():
     """Reject POST form submissions when their CSRF token does not match the session token."""
 
-    # Reject POST requests if the submitted token differs from the session token.
-    if request.method == 'POST' and request.form.get('csrf_token') != csrf():
-        return 'Invalid CSRF token', 403
+    # Accept tokens from traditional HTML forms and JSON fetch requests.
+    # JSON requests send the token in X-CSRF-Token because request.form is empty.
+    if request.method == 'POST':
+        submitted_token = (
+            request.form.get('csrf_token')
+            or request.headers.get('X-CSRF-Token')
+        )
+        if not submitted_token or not secrets.compare_digest(submitted_token, csrf()):
+            return jsonify({'error': 'Invalid CSRF token'}), 403
 
 
 # ====================================================================
@@ -973,6 +979,7 @@ def patient_doctor(doctor_id):
         return render_template(
             'patient_doctor.html',
             doctor=doctor,
+            doctor_id=doctor_id,
             slots=slots,
             start=start,
             end=end

@@ -21,6 +21,11 @@ Parameters:
     Type: String
     Description: Git commit SHA for Lambda packages
 
+  ApiDeploymentVersion:
+    Type: String
+    Default: initial
+    Description: Change this value to publish a fresh API Gateway deployment snapshot
+
 Resources:
 
   # =====================================================
@@ -1719,7 +1724,7 @@ Resources:
       - DoctorAppointmentOutcomePost
     Properties:
       RestApiId: !Ref AuthRestApi
-      Description: !Sub Doctor domain API deployment with photo GET ${CodeVersion}
+      Description: !Sub Doctor domain API deployment ${ApiDeploymentVersion}
 
   # --- AuthApiAccessLogGroup: Stores API Gateway access logs ---
   AuthApiAccessLogGroup:
