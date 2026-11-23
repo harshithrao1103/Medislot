@@ -923,10 +923,35 @@ Resources:
                 Action: [logs:CreateLogStream, logs:PutLogEvents]
                 Resource: !Sub arn:${AWS::Partition}:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/medislot-${Environment}-slot-materialiser:*
               # Allow Lambda to manage the network interfaces required for VPC attachment.
-              - Sid: LambdaVpcEni
+              # Lambda must create ENIs in the application's private subnets and security group.
+              # The service condition prevents this permission from being used by other principals.
+              - Sid: LambdaVpcEniCreate
                 Effect: Allow
-                Action: [ec2:CreateNetworkInterface, ec2:DescribeNetworkInterfaces, ec2:DeleteNetworkInterface, ec2:AssignPrivateIpAddresses, ec2:UnassignPrivateIpAddresses]
+                Action: [ec2:CreateNetworkInterface]
+                Resource:
+                  - !Sub
+                    - arn:${AWS::Partition}:ec2:${AWS::Region}:${AWS::AccountId}:subnet/${SubnetA}
+                    - SubnetA: !ImportValue
+                        Fn::Sub: medislot-${Environment}-PrivateSubnetAId
+                  - !Sub
+                    - arn:${AWS::Partition}:ec2:${AWS::Region}:${AWS::AccountId}:subnet/${SubnetB}
+                    - SubnetB: !ImportValue
+                        Fn::Sub: medislot-${Environment}-PrivateSubnetBId
+                  - !Sub
+                    - arn:${AWS::Partition}:ec2:${AWS::Region}:${AWS::AccountId}:security-group/${LambdaSecurityGroup}
+                    - LambdaSecurityGroup: !ImportValue
+                        Fn::Sub: medislot-${Environment}-LambdaSecurityGroupId
+                Condition:
+                  StringEquals:
+                    ec2:AuthorizedService: lambda.amazonaws.com
+              - Sid: LambdaVpcEniDescribe
+                Effect: Allow
+                Action: [ec2:DescribeNetworkInterfaces]
                 Resource: '*'
+              - Sid: LambdaVpcEniManage
+                Effect: Allow
+                Action: [ec2:DeleteNetworkInterface, ec2:AssignPrivateIpAddresses, ec2:UnassignPrivateIpAddresses]
+                Resource: !Sub arn:${AWS::Partition}:ec2:${AWS::Region}:${AWS::AccountId}:network-interface/*
 
   # =====================================================
   # MILESTONE 5 - APPOINTMENT API LAMBDA ROLE
@@ -938,10 +963,18 @@ Resources:
     Properties:
       QueueName: !Sub medislot-${Environment}-appointment-api-dlq
       MessageRetentionPeriod: 1209600
-      SqsManagedSseEnabled: true
+      KmsMasterKeyId: alias/aws/sqs
 
   AppointmentApiLambdaRole:
     Type: AWS::IAM::Role
+    Metadata:
+      checkov:
+        skip:
+          - id: CKV_AWS_111
+            comment: >-
+              The only remaining wildcard resource is ec2:DescribeNetworkInterfaces, which is a read-only
+              EC2 API action requiring Resource '*'. ENI creation is separately constrained to the two
+              application private subnets, the Lambda security group, and lambda.amazonaws.com.
     Properties:
       RoleName: !Sub medislot-${Environment}-appointment-api-role
       AssumeRolePolicyDocument:

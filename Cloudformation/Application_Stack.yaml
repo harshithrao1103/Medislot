@@ -1287,6 +1287,8 @@ Resources:
       RetentionInDays: 14
       KmsKeyId:
         Fn::ImportValue: !Sub medislot-${Environment}-CloudWatchLogsKmsKeyArn
+      KmsKeyId:
+        Fn::ImportValue: !Sub medislot-${Environment}-CloudWatchLogsKmsKeyArn
 
   AppointmentApiLambda:
     Type: AWS::Lambda::Function
@@ -1301,6 +1303,11 @@ Resources:
         S3Key: !Sub lambda/appointment_api/${CodeVersion}.zip
       Timeout: 30
       MemorySize: 256
+      DeadLetterConfig:
+        TargetArn:
+          Fn::ImportValue: !Sub medislot-${Environment}-AppointmentApiDeadLetterQueueArn
+      KmsKeyArn: !Sub arn:${AWS::Partition}:kms:${AWS::Region}:${AWS::AccountId}:alias/aws/lambda
+      ReservedConcurrentExecutions: 20
       VpcConfig:
         SecurityGroupIds:
           - Fn::ImportValue: !Sub medislot-${Environment}-LambdaSecurityGroupId
