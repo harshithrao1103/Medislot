@@ -1,0 +1,20 @@
+[1mdiff --git a/Cloudformation/Application_Stack.yaml b/Cloudformation/Application_Stack.yaml[m
+[1mindex 047f5ec..b6d0485 100644[m
+[1m--- a/Cloudformation/Application_Stack.yaml[m
+[1m+++ b/Cloudformation/Application_Stack.yaml[m
+[36m@@ -793,7 +793,6 @@[m [mResources:[m
+         S3Key: !Sub lambda/doctor_api/${CodeVersion}.zip[m
+       Timeout: 30[m
+       MemorySize: 256[m
+[31m-      ReservedConcurrentExecutions: 20[m
+       DeadLetterConfig:[m
+         TargetArn:[m
+           Fn::ImportValue: !Sub medislot-${Environment}-AppointmentApiDeadLetterQueueArn[m
+[36m@@ -1305,7 +1304,6 @@[m [mResources:[m
+       DeadLetterConfig:[m
+         TargetArn:[m
+           Fn::ImportValue: !Sub medislot-${Environment}-AppointmentApiDeadLetterQueueArn[m
+[31m-      ReservedConcurrentExecutions: 20[m
+       VpcConfig:[m
+         SecurityGroupIds:[m
+           - Fn::ImportValue: !Sub medislot-${Environment}-LambdaSecurityGroupId[m

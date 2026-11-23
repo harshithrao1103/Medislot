@@ -1,0 +1,15 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "UseExistingMediSlotLambdaEnvironmentKey",
+      "Effect": "Allow",
+      "Action": [
+        "kms:CreateGrant",
+        "kms:DescribeKey",
+        "kms:Encrypt"
+      ],
+      "Resource": "arn:aws:kms:us-east-1:598886663370:key/388f4d1c-42b0-4ad3-a360-d1e03abe6fa2"
+    }
+  ]
+}
