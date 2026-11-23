@@ -657,6 +657,13 @@ Resources:
                 Effect: Allow
                 Action: [ec2:DeleteNetworkInterface, ec2:AssignPrivateIpAddresses, ec2:UnassignPrivateIpAddresses]
                 Resource: !Sub arn:${AWS::Partition}:ec2:${AWS::Region}:${AWS::AccountId}:network-interface/*
+                # Allow Doctor API Lambda to send failed asynchronous invocations to its DLQ.
+              - Sid: SendFailedInvocationsToDLQ
+                Effect: Allow
+                Action:
+                  - sqs:SendMessage
+                Resource:
+                  - !Sub arn:${AWS::Partition}:sqs:${AWS::Region}:${AWS::AccountId}:medislot-${Environment}-appointment-api-dlq
   SlotMaterialiserRole:
     Type: AWS::IAM::Role
     Metadata:
