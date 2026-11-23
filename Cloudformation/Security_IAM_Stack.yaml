@@ -1,15 +1,8 @@
 AWSTemplateFormatVersion: '2010-09-09'
-
 Description: >
   MediSlot Security Infrastructure -
   Security Groups, SSM Endpoint and Lambda IAM Roles.
-
-# =====================================================
-# PARAMETERS
-# =====================================================
-
 Parameters:
-
   Environment:
     Type: String
     AllowedValues:
@@ -17,47 +10,31 @@ Parameters:
       - staging
       - prod
     Description: Deployment environment
-
   VpcCIDR:
     Type: String
     Description: CIDR block of the existing MediSlot VPC
-
   DashboardIngressCidr:
     Type: String
     Description: Public IPv4 CIDR allowed to access the doctor dashboard
-
-# =====================================================
-# RESOURCES
-# =====================================================
-
 Resources:
-
-  # =====================================================
-  # 1. LAMBDA SECURITY GROUP
-  # =====================================================
-
   LambdaSecurityGroup:
     Type: AWS::EC2::SecurityGroup
     Properties:
       GroupDescription: Network access for MediSlot Lambda functions
-
       VpcId:
         Fn::ImportValue:
           Fn::Sub: medislot-${Environment}-VpcId
-
       SecurityGroupEgress:
         - IpProtocol: tcp
           FromPort: 3306
           ToPort: 3306
           CidrIp: !Ref VpcCIDR
           Description: MySQL connections within MediSlot VPC
-
         - IpProtocol: tcp
           FromPort: 443
           ToPort: 443
           CidrIp: 0.0.0.0/0
           Description: HTTPS to reachable AWS service endpoints
-
       Tags:
         - Key: Name
           Value: !Sub medislot-${Environment}-lambda-sg
@@ -65,29 +42,20 @@ Resources:
           Value: MediSlot
         - Key: Environment
           Value: !Ref Environment
-
-  # =====================================================
-  # 2. RDS MYSQL SECURITY GROUP
-  # =====================================================
-
   RDSSecurityGroup:
     Type: AWS::EC2::SecurityGroup
     Properties:
       GroupDescription: MySQL access from MediSlot Lambda functions
-
       VpcId:
         Fn::ImportValue:
           Fn::Sub: medislot-${Environment}-VpcId
-
       SecurityGroupIngress:
         - IpProtocol: tcp
           FromPort: 3306
           ToPort: 3306
           SourceSecurityGroupId: !Ref LambdaSecurityGroup
           Description: Allow MySQL from Lambda Security Group
-
       SecurityGroupEgress: []
-
       Tags:
         - Key: Name
           Value: !Sub medislot-${Environment}-rds-sg
@@ -95,35 +63,25 @@ Resources:
           Value: MediSlot
         - Key: Environment
           Value: !Ref Environment
-
-  # =====================================================
-  # 3. SSM ENDPOINT SECURITY GROUP
-  # =====================================================
-
   SSMEndpointSecurityGroup:
     Type: AWS::EC2::SecurityGroup
     Properties:
       GroupDescription: HTTPS access to SSM endpoint from Lambda
-
       VpcId:
         Fn::ImportValue:
           Fn::Sub: medislot-${Environment}-VpcId
-
       SecurityGroupIngress:
         - IpProtocol: tcp
           FromPort: 443
           ToPort: 443
           SourceSecurityGroupId: !Ref LambdaSecurityGroup
           Description: HTTPS from MediSlot Lambda
-
         - IpProtocol: tcp
           FromPort: 443
           ToPort: 443
           SourceSecurityGroupId: !Ref DoctorDashboardSecurityGroup
           Description: HTTPS from Doctor Dashboard EC2
-
       SecurityGroupEgress: []
-
       Tags:
         - Key: Name
           Value: !Sub medislot-${Environment}-ssm-endpoint-sg
@@ -131,33 +89,22 @@ Resources:
           Value: MediSlot
         - Key: Environment
           Value: !Ref Environment
-
-  # =====================================================
-  # 4. SSM INTERFACE VPC ENDPOINT
-  # =====================================================
-
   SSMInterfaceEndpoint:
     Type: AWS::EC2::VPCEndpoint
     Properties:
       VpcId:
         Fn::ImportValue:
           Fn::Sub: medislot-${Environment}-VpcId
-
       ServiceName: !Sub com.amazonaws.${AWS::Region}.ssm
-
       VpcEndpointType: Interface
       PrivateDnsEnabled: true
-
       SubnetIds:
         - Fn::ImportValue:
             Fn::Sub: medislot-${Environment}-PrivateSubnetAId
-
         - Fn::ImportValue:
             Fn::Sub: medislot-${Environment}-PrivateSubnetBId
-
       SecurityGroupIds:
         - !Ref SSMEndpointSecurityGroup
-
       Tags:
         - Key: Name
           Value: !Sub medislot-${Environment}-ssm-endpoint
@@ -165,8 +112,6 @@ Resources:
           Value: MediSlot
         - Key: Environment
           Value: !Ref Environment
-
-  # Private EventBridge endpoint: the VPC has no NAT Gateway.
   EventsInterfaceEndpoint:
     Type: AWS::EC2::VPCEndpoint
     Properties:
@@ -184,11 +129,6 @@ Resources:
           Value: !Sub medislot-${Environment}-events-endpoint
         - Key: Project
           Value: MediSlot
-
-  # =====================================================
-  # 5. DATABASE INITIALIZATION LAMBDA ROLE
-  # =====================================================
-
   DBInitLambdaExecutionRole:
     Type: AWS::IAM::Role
     Metadata:
@@ -198,10 +138,7 @@ Resources:
             comment: Lambda ENI management requires EC2 network-interface permissions on wildcard resources; review role scope and AWS condition keys.
     Properties:
       RoleName: !Sub medislot-${Environment}-db-init-lambda-role
-
       Description: Execution role for database initialization Lambda
-
-      # TRUST POLICY – allow the named AWS service to assume this role.
       AssumeRolePolicyDocument:
         Version: '2012-10-17'
         Statement:
@@ -211,22 +148,17 @@ Resources:
                 - lambda.amazonaws.com
             Action:
               - sts:AssumeRole
-
       Policies:
         - PolicyName: DBInitLambdaPolicy
           PolicyDocument:
             Version: '2012-10-17'
             Statement:
-
-              # Allow this Lambda to retrieve the RDS master secret from Secrets Manager.
               - Sid: ReadRDSMasterSecret
                 Effect: Allow
                 Action:
                   - secretsmanager:GetSecretValue
                 Resource:
                   - !Sub arn:${AWS::Partition}:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:rds!db-*
-
-              # Allow KMS decryption of the RDS secret through Secrets Manager.
               - Sid: DecryptRDSSecret
                 Effect: Allow
                 Action:
@@ -236,15 +168,11 @@ Resources:
                 Condition:
                   StringEquals:
                     kms:ViaService: !Sub secretsmanager.${AWS::Region}.amazonaws.com
-
-              # Allow creation of this Lambda function’s CloudWatch log group.
               - Sid: CreateCloudWatchLogGroup
                 Effect: Allow
                 Action:
                   - logs:CreateLogGroup
                 Resource: "*"
-
-              # Allow this Lambda to create log streams and write log events.
               - Sid: WriteCloudWatchLogs
                 Effect: Allow
                 Action:
@@ -252,8 +180,6 @@ Resources:
                   - logs:PutLogEvents
                 Resource:
                   - !Sub arn:${AWS::Partition}:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/medislot-${Environment}-db-init:*
-
-              # Allow Lambda-managed creation and management of VPC network interfaces.
               - Sid: LambdaVPCNetworkAccess
                 Effect: Allow
                 Action:
@@ -263,17 +189,11 @@ Resources:
                   - ec2:AssignPrivateIpAddresses
                   - ec2:UnassignPrivateIpAddresses
                 Resource: "*"
-
       Tags:
         - Key: Project
           Value: MediSlot
         - Key: Environment
           Value: !Ref Environment
-
-  # =====================================================
-  # 6. DOCTOR REGISTRATION LAMBDA ROLE
-  # =====================================================
-
   DoctorRegisterLambdaExecutionRole:
     Type: AWS::IAM::Role
     Metadata:
@@ -283,8 +203,6 @@ Resources:
             comment: VPC Lambda ENI creation requires wildcard EC2 permissions; permissions are limited to network-interface actions.
     Properties:
       RoleName: !Sub medislot-${Environment}-doctor-register-lambda-role
-
-      # TRUST POLICY – allow the named AWS service to assume this role.
       AssumeRolePolicyDocument:
         Version: '2012-10-17'
         Statement:
@@ -292,22 +210,17 @@ Resources:
             Principal:
               Service: lambda.amazonaws.com
             Action: sts:AssumeRole
-
       Policies:
         - PolicyName: DoctorRegisterLambdaPolicy
           PolicyDocument:
             Version: '2012-10-17'
             Statement:
-
-              # Allow this Lambda to retrieve the RDS database credentials.
               - Sid: ReadRDSCredentials
                 Effect: Allow
                 Action:
                   - secretsmanager:GetSecretValue
                 Resource:
                   - !Sub arn:${AWS::Partition}:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:rds!db-*
-
-              # Allow KMS decryption of the RDS secret through Secrets Manager.
               - Sid: DecryptRDSSecret
                 Effect: Allow
                 Action:
@@ -317,8 +230,6 @@ Resources:
                 Condition:
                   StringEquals:
                     kms:ViaService: !Sub secretsmanager.${AWS::Region}.amazonaws.com
-
-              # Read registration-related parameters from Systems Manager Parameter Store.
               - Sid: ReadRegistrationConfiguration
                 Effect: Allow
                 Action:
@@ -326,8 +237,6 @@ Resources:
                   - ssm:GetParameters
                 Resource:
                   - !Sub arn:${AWS::Partition}:ssm:${AWS::Region}:${AWS::AccountId}:parameter/medislot/${Environment}/auth/*
-
-              # Allow this Lambda to create log streams and write log events.
               - Sid: WriteLambdaLogs
                 Effect: Allow
                 Action:
@@ -335,8 +244,6 @@ Resources:
                   - logs:PutLogEvents
                 Resource:
                   - !Sub arn:${AWS::Partition}:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/medislot-${Environment}-doctor-register:*
-
-              # Allow Lambda-managed creation and management of VPC network interfaces.
               - Sid: LambdaVPCNetworkAccess
                 Effect: Allow
                 Action:
@@ -346,17 +253,11 @@ Resources:
                   - ec2:AssignPrivateIpAddresses
                   - ec2:UnassignPrivateIpAddresses
                 Resource: "*"
-
       Tags:
         - Key: Project
           Value: MediSlot
         - Key: Environment
           Value: !Ref Environment
-
-  # =====================================================
-  # 7. PATIENT REGISTRATION LAMBDA ROLE
-  # =====================================================
-
   PatientRegisterLambdaExecutionRole:
     Type: AWS::IAM::Role
     Metadata:
@@ -366,8 +267,6 @@ Resources:
             comment: VPC Lambda ENI creation requires wildcard EC2 permissions; permissions are limited to network-interface actions.
     Properties:
       RoleName: !Sub medislot-${Environment}-patient-register-lambda-role
-
-      # TRUST POLICY – allow the named AWS service to assume this role.
       AssumeRolePolicyDocument:
         Version: '2012-10-17'
         Statement:
@@ -375,22 +274,17 @@ Resources:
             Principal:
               Service: lambda.amazonaws.com
             Action: sts:AssumeRole
-
       Policies:
         - PolicyName: PatientRegisterLambdaPolicy
           PolicyDocument:
             Version: '2012-10-17'
             Statement:
-
-              # Allow this Lambda to retrieve the RDS database credentials.
               - Sid: ReadRDSCredentials
                 Effect: Allow
                 Action:
                   - secretsmanager:GetSecretValue
                 Resource:
                   - !Sub arn:${AWS::Partition}:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:rds!db-*
-
-              # Allow KMS decryption of the RDS secret through Secrets Manager.
               - Sid: DecryptRDSSecret
                 Effect: Allow
                 Action:
@@ -400,8 +294,6 @@ Resources:
                 Condition:
                   StringEquals:
                     kms:ViaService: !Sub secretsmanager.${AWS::Region}.amazonaws.com
-
-              # Read registration-related parameters from Systems Manager Parameter Store.
               - Sid: ReadRegistrationConfiguration
                 Effect: Allow
                 Action:
@@ -409,8 +301,6 @@ Resources:
                   - ssm:GetParameters
                 Resource:
                   - !Sub arn:${AWS::Partition}:ssm:${AWS::Region}:${AWS::AccountId}:parameter/medislot/${Environment}/auth/*
-
-              # Allow this Lambda to create log streams and write log events.
               - Sid: WriteLambdaLogs
                 Effect: Allow
                 Action:
@@ -418,8 +308,6 @@ Resources:
                   - logs:PutLogEvents
                 Resource:
                   - !Sub arn:${AWS::Partition}:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/medislot-${Environment}-patient-register:*
-
-              # Allow Lambda-managed creation and management of VPC network interfaces.
               - Sid: LambdaVPCNetworkAccess
                 Effect: Allow
                 Action:
@@ -429,17 +317,11 @@ Resources:
                   - ec2:AssignPrivateIpAddresses
                   - ec2:UnassignPrivateIpAddresses
                 Resource: "*"
-
       Tags:
         - Key: Project
           Value: MediSlot
         - Key: Environment
           Value: !Ref Environment
-
-  # =====================================================
-  # 8. LOGIN LAMBDA ROLE
-  # =====================================================
-
   LoginLambdaExecutionRole:
     Type: AWS::IAM::Role
     Metadata:
@@ -449,8 +331,6 @@ Resources:
             comment: VPC Lambda ENI creation requires wildcard EC2 permissions; permissions are limited to network-interface actions.
     Properties:
       RoleName: !Sub medislot-${Environment}-login-lambda-role
-
-      # TRUST POLICY – allow the named AWS service to assume this role.
       AssumeRolePolicyDocument:
         Version: '2012-10-17'
         Statement:
@@ -458,22 +338,17 @@ Resources:
             Principal:
               Service: lambda.amazonaws.com
             Action: sts:AssumeRole
-
       Policies:
         - PolicyName: LoginLambdaPolicy
           PolicyDocument:
             Version: '2012-10-17'
             Statement:
-
-              # Allow this Lambda to retrieve the RDS database credentials.
               - Sid: ReadRDSCredentials
                 Effect: Allow
                 Action:
                   - secretsmanager:GetSecretValue
                 Resource:
                   - !Sub arn:${AWS::Partition}:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:rds!db-*
-
-              # Allow KMS decryption of the RDS secret through Secrets Manager.
               - Sid: DecryptRDSSecret
                 Effect: Allow
                 Action:
@@ -483,8 +358,6 @@ Resources:
                 Condition:
                   StringEquals:
                     kms:ViaService: !Sub secretsmanager.${AWS::Region}.amazonaws.com
-
-              # Read JWT/authentication configuration from Systems Manager Parameter Store.
               - Sid: ReadJWTConfiguration
                 Effect: Allow
                 Action:
@@ -492,8 +365,6 @@ Resources:
                   - ssm:GetParameters
                 Resource:
                   - !Sub arn:${AWS::Partition}:ssm:${AWS::Region}:${AWS::AccountId}:parameter/medislot/${Environment}/auth/*
-
-              # Create, read and update patient/user refresh-token records in DynamoDB.
               - Sid: WriteRefreshTokens
                 Effect: Allow
                 Action:
@@ -502,8 +373,6 @@ Resources:
                   - dynamodb:UpdateItem
                 Resource:
                   - !Sub arn:${AWS::Partition}:dynamodb:${AWS::Region}:${AWS::AccountId}:table/medislot-${Environment}-refresh-tokens
-
-              # Allow this Lambda to create log streams and write log events.
               - Sid: WriteLambdaLogs
                 Effect: Allow
                 Action:
@@ -511,8 +380,6 @@ Resources:
                   - logs:PutLogEvents
                 Resource:
                   - !Sub arn:${AWS::Partition}:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/medislot-${Environment}-login:*
-
-              # Allow Lambda-managed creation and management of VPC network interfaces.
               - Sid: LambdaVPCNetworkAccess
                 Effect: Allow
                 Action:
@@ -522,23 +389,15 @@ Resources:
                   - ec2:AssignPrivateIpAddresses
                   - ec2:UnassignPrivateIpAddresses
                 Resource: "*"
-
       Tags:
         - Key: Project
           Value: MediSlot
         - Key: Environment
           Value: !Ref Environment
-
-  # =====================================================
-  # 9. TOKEN MANAGEMENT LAMBDA ROLE
-  # =====================================================
-
   TokenLambdaExecutionRole:
     Type: AWS::IAM::Role
     Properties:
       RoleName: !Sub medislot-${Environment}-token-lambda-role
-
-      # TRUST POLICY – allow the named AWS service to assume this role.
       AssumeRolePolicyDocument:
         Version: '2012-10-17'
         Statement:
@@ -546,14 +405,11 @@ Resources:
             Principal:
               Service: lambda.amazonaws.com
             Action: sts:AssumeRole
-
       Policies:
         - PolicyName: TokenLambdaPolicy
           PolicyDocument:
             Version: '2012-10-17'
             Statement:
-
-              # Read JWT/authentication configuration from Systems Manager Parameter Store.
               - Sid: ReadJWTConfiguration
                 Effect: Allow
                 Action:
@@ -561,8 +417,6 @@ Resources:
                   - ssm:GetParameters
                 Resource:
                   - !Sub arn:${AWS::Partition}:ssm:${AWS::Region}:${AWS::AccountId}:parameter/medislot/${Environment}/auth/*
-
-              # Create, read, update and delete refresh-token records in DynamoDB.
               - Sid: ManageRefreshTokens
                 Effect: Allow
                 Action:
@@ -572,8 +426,6 @@ Resources:
                   - dynamodb:DeleteItem
                 Resource:
                   - !Sub arn:${AWS::Partition}:dynamodb:${AWS::Region}:${AWS::AccountId}:table/medislot-${Environment}-refresh-tokens
-
-              # Read and write revoked-JWT records in DynamoDB.
               - Sid: ManageRevokedJWTs
                 Effect: Allow
                 Action:
@@ -581,8 +433,6 @@ Resources:
                   - dynamodb:PutItem
                 Resource:
                   - !Sub arn:${AWS::Partition}:dynamodb:${AWS::Region}:${AWS::AccountId}:table/medislot-${Environment}-revoked-jwts
-
-              # Allow this Lambda to create log streams and write log events.
               - Sid: WriteLambdaLogs
                 Effect: Allow
                 Action:
@@ -590,23 +440,15 @@ Resources:
                   - logs:PutLogEvents
                 Resource:
                   - !Sub arn:${AWS::Partition}:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/medislot-${Environment}-token:*
-
       Tags:
         - Key: Project
           Value: MediSlot
         - Key: Environment
           Value: !Ref Environment
-
-  # =====================================================
-  # 10. LAMBDA AUTHORIZER ROLE
-  # =====================================================
-
   AuthorizerLambdaExecutionRole:
     Type: AWS::IAM::Role
     Properties:
       RoleName: !Sub medislot-${Environment}-authorizer-lambda-role
-
-      # TRUST POLICY – allow the named AWS service to assume this role.
       AssumeRolePolicyDocument:
         Version: '2012-10-17'
         Statement:
@@ -614,30 +456,23 @@ Resources:
             Principal:
               Service: lambda.amazonaws.com
             Action: sts:AssumeRole
-
       Policies:
         - PolicyName: AuthorizerLambdaPolicy
           PolicyDocument:
             Version: '2012-10-17'
             Statement:
-
-              # Read JWT/authentication configuration from Systems Manager Parameter Store.
               - Sid: ReadJWTConfiguration
                 Effect: Allow
                 Action:
                   - ssm:GetParameter
                 Resource:
                   - !Sub arn:${AWS::Partition}:ssm:${AWS::Region}:${AWS::AccountId}:parameter/medislot/${Environment}/auth/*
-
-              # Check DynamoDB for revoked JWTs.
               - Sid: ReadRevokedJWTs
                 Effect: Allow
                 Action:
                   - dynamodb:GetItem
                 Resource:
                   - !Sub arn:${AWS::Partition}:dynamodb:${AWS::Region}:${AWS::AccountId}:table/medislot-${Environment}-revoked-jwts
-
-              # Allow this Lambda to create log streams and write log events.
               - Sid: WriteLambdaLogs
                 Effect: Allow
                 Action:
@@ -645,23 +480,15 @@ Resources:
                   - logs:PutLogEvents
                 Resource:
                   - !Sub arn:${AWS::Partition}:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/medislot-${Environment}-authorizer:*
-
       Tags:
         - Key: Project
           Value: MediSlot
         - Key: Environment
           Value: !Ref Environment
-
-  # =====================================================
-  # 11. AUTH TEST LAMBDA ROLE
-  # =====================================================
-
   AuthTestLambdaExecutionRole:
     Type: AWS::IAM::Role
     Properties:
       RoleName: !Sub medislot-${Environment}-auth-test-lambda-role
-
-      # TRUST POLICY – allow the named AWS service to assume this role.
       AssumeRolePolicyDocument:
         Version: '2012-10-17'
         Statement:
@@ -669,14 +496,11 @@ Resources:
             Principal:
               Service: lambda.amazonaws.com
             Action: sts:AssumeRole
-
       Policies:
         - PolicyName: AuthTestLambdaPolicy
           PolicyDocument:
             Version: '2012-10-17'
             Statement:
-
-              # Allow this Lambda to create log streams and write log events.
               - Sid: WriteLambdaLogs
                 Effect: Allow
                 Action:
@@ -684,21 +508,15 @@ Resources:
                   - logs:PutLogEvents
                 Resource:
                   - !Sub arn:${AWS::Partition}:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/medislot-${Environment}-auth-test:*
-
       Tags:
         - Key: Project
           Value: MediSlot
         - Key: Environment
           Value: !Ref Environment
-
-  # =====================================================
-  # 12. API GATEWAY ROLE – ALLOW API GATEWAY TO WRITE ACCESS LOGS
-  # =====================================================
   ApiGatewayCloudWatchRole:
     Type: AWS::IAM::Role
     Properties:
       RoleName: !Sub medislot-${Environment}-apigateway-cloudwatch-role
-      # TRUST POLICY – allow the named AWS service to assume this role.
       AssumeRolePolicyDocument:
         Version: '2012-10-17'
         Statement:
@@ -706,7 +524,6 @@ Resources:
             Principal:
               Service: apigateway.amazonaws.com
             Action: sts:AssumeRole
-      # AWS-MANAGED PERMISSIONS – allow API Gateway to publish execution logs to CloudWatch Logs.
       ManagedPolicyArns:
         - arn:aws:iam::aws:policy/service-role/AmazonAPIGatewayPushToCloudWatchLogs
       Tags:
@@ -714,15 +531,6 @@ Resources:
           Value: MediSlot
         - Key: Environment
           Value: !Ref Environment
-
-
-  # Milestone 3: private connectivity to Secrets Manager for VPC Lambdas.
-  # The private subnets have no NAT route; a VPC interface endpoint is required.
- 
-
-  # =====================================================
-  # 13. PATIENT DOMAIN LAMBDA ROLE – DATABASE + SLOT READ ACCESS
-  # =====================================================
   PatientDomainLambdaRole:
     Type: AWS::IAM::Role
     Metadata:
@@ -732,7 +540,6 @@ Resources:
             comment: Lambda VPC ENI permissions require wildcard resource.
     Properties:
       RoleName: !Sub medislot-${Environment}-patient-domain-lambda-role
-      # TRUST POLICY – allow the named AWS service to assume this role.
       AssumeRolePolicyDocument:
         Version: '2012-10-17'
         Statement:
@@ -744,12 +551,10 @@ Resources:
           PolicyDocument:
             Version: '2012-10-17'
             Statement:
-              # Retrieve the RDS database credentials from Secrets Manager.
               - Sid: RDSCredentials
                 Effect: Allow
                 Action: [secretsmanager:GetSecretValue]
                 Resource: !Sub arn:${AWS::Partition}:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:rds!db-*
-              # Allow KMS decryption of the RDS secret through Secrets Manager.
               - Sid: DecryptRDSSecret
                 Effect: Allow
                 Action: [kms:Decrypt]
@@ -757,31 +562,23 @@ Resources:
                 Condition:
                   StringEquals:
                     kms:ViaService: !Sub secretsmanager.${AWS::Region}.amazonaws.com
-              # Allow patient-facing doctor profiles to create presigned URLs for private profile photos.
               - Sid: ReadDoctorProfilePhotos
                 Effect: Allow
                 Action: [s3:GetObject]
                 Resource: !Sub arn:${AWS::Partition}:s3:::medislot-${Environment}-profile-photos-${AWS::AccountId}-${AWS::Region}/*
-              # Read appointment-slot inventory from the specified DynamoDB table or index.
               - Sid: ReadSlotInventory
                 Effect: Allow
                 Action: [dynamodb:Query]
                 Resource:
                   - !Sub arn:${AWS::Partition}:dynamodb:${AWS::Region}:${AWS::AccountId}:table/medislot-${Environment}-slots
-              # Allow this Lambda to create log streams and write log events.
               - Sid: LambdaLogs
                 Effect: Allow
                 Action: [logs:CreateLogStream,logs:PutLogEvents]
                 Resource: !Sub arn:${AWS::Partition}:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/medislot-${Environment}-patient-domain:*
-              # Allow Lambda to manage the network interfaces required for VPC attachment.
               - Sid: LambdaVpcEni
                 Effect: Allow
                 Action: [ec2:CreateNetworkInterface,ec2:DescribeNetworkInterfaces,ec2:DeleteNetworkInterface,ec2:AssignPrivateIpAddresses,ec2:UnassignPrivateIpAddresses]
                 Resource: '*'
-
-  # =====================================================
-  # 14. DOCTOR API LAMBDA ROLE – DATABASE, SLOTS, PHOTOS + MATERIALISER INVOCATION
-  # =====================================================
   DoctorApiLambdaRole:
     Type: AWS::IAM::Role
     Metadata:
@@ -791,7 +588,6 @@ Resources:
             comment: Lambda VPC ENI operations require resource wildcard permissions.
     Properties:
       RoleName: !Sub medislot-${Environment}-doctor-api-lambda-role
-      # TRUST POLICY – allow the named AWS service to assume this role.
       AssumeRolePolicyDocument:
         Version: '2012-10-17'
         Statement:
@@ -803,12 +599,10 @@ Resources:
           PolicyDocument:
             Version: '2012-10-17'
             Statement:
-              # Retrieve the RDS database credentials from Secrets Manager.
               - Sid: RDSCredentials
                 Effect: Allow
                 Action: [secretsmanager:GetSecretValue]
                 Resource: !Sub arn:${AWS::Partition}:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:rds!db-*
-              # Allow KMS decryption of the RDS secret through Secrets Manager.
               - Sid: DecryptRDSSecret
                 Effect: Allow
                 Action: [kms:Decrypt]
@@ -816,28 +610,23 @@ Resources:
                 Condition:
                   StringEquals:
                     kms:ViaService: !Sub secretsmanager.${AWS::Region}.amazonaws.com
-              # Allow Doctor API Lambda to invoke the Slot Materialiser Lambda.
               - Sid: InvokeSlotMaterialiser
                 Effect: Allow
                 Action: [lambda:InvokeFunction]
                 Resource: !Sub arn:${AWS::Partition}:lambda:${AWS::Region}:${AWS::AccountId}:function:medislot-${Environment}-slot-materialiser
-              # Allow profile-photo objects to be uploaded to and retrieved from the designated S3 bucket.
               - Sid: ProfilePhotoUpload
                 Effect: Allow
                 Action: [s3:PutObject, s3:GetObject]
                 Resource: !Sub arn:${AWS::Partition}:s3:::medislot-${Environment}-profile-photos-${AWS::AccountId}-${AWS::Region}/*
-              # Read appointment-slot inventory from the specified DynamoDB table or index.
               - Sid: ReadSlotInventory
                 Effect: Allow
                 Action: [dynamodb:Query, dynamodb:GetItem]
                 Resource:
                   - !Sub arn:${AWS::Partition}:dynamodb:${AWS::Region}:${AWS::AccountId}:table/medislot-${Environment}-slots
-              # Allow this Lambda to create log streams and write log events.
               - Sid: LambdaLogs
                 Effect: Allow
                 Action: [logs:CreateLogStream, logs:PutLogEvents]
                 Resource: !Sub arn:${AWS::Partition}:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/medislot-${Environment}-doctor-api:*
-              # Allow Lambda to manage the network interfaces required for VPC attachment.
               - Sid: LambdaVpcEniCreate
                 Effect: Allow
                 Action: [ec2:CreateNetworkInterface]
@@ -868,10 +657,6 @@ Resources:
                 Effect: Allow
                 Action: [ec2:DeleteNetworkInterface, ec2:AssignPrivateIpAddresses, ec2:UnassignPrivateIpAddresses]
                 Resource: !Sub arn:${AWS::Partition}:ec2:${AWS::Region}:${AWS::AccountId}:network-interface/*
-
-  # =====================================================
-  # 15. SLOT MATERIALISER LAMBDA ROLE – GENERATE AND UPDATE APPOINTMENT SLOTS
-  # =====================================================
   SlotMaterialiserRole:
     Type: AWS::IAM::Role
     Metadata:
@@ -881,7 +666,6 @@ Resources:
             comment: Lambda VPC ENI operations require resource wildcard permissions.
     Properties:
       RoleName: !Sub medislot-${Environment}-slot-materialiser-role
-      # TRUST POLICY – allow the named AWS service to assume this role.
       AssumeRolePolicyDocument:
         Version: '2012-10-17'
         Statement:
@@ -893,12 +677,10 @@ Resources:
           PolicyDocument:
             Version: '2012-10-17'
             Statement:
-              # Retrieve the RDS database credentials from Secrets Manager.
               - Sid: RDSCredentials
                 Effect: Allow
                 Action: [secretsmanager:GetSecretValue]
                 Resource: !Sub arn:${AWS::Partition}:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:rds!db-*
-              # Allow KMS decryption of the RDS secret through Secrets Manager.
               - Sid: DecryptRDSSecret
                 Effect: Allow
                 Action: [kms:Decrypt]
@@ -906,25 +688,19 @@ Resources:
                 Condition:
                   StringEquals:
                     kms:ViaService: !Sub secretsmanager.${AWS::Region}.amazonaws.com
-              # Read the configured appointment booking-window value from Parameter Store.
               - Sid: BookingWindowParameter
                 Effect: Allow
                 Action: [ssm:GetParameter]
                 Resource: !Sub arn:${AWS::Partition}:ssm:${AWS::Region}:${AWS::AccountId}:parameter/medislot/${Environment}/slots/booking-window-days
-              # Create, update and query appointment-slot records in DynamoDB.
               - Sid: SlotInventoryUpdates
                 Effect: Allow
                 Action: [dynamodb:PutItem, dynamodb:UpdateItem, dynamodb:Query]
                 Resource:
                   - !Sub arn:${AWS::Partition}:dynamodb:${AWS::Region}:${AWS::AccountId}:table/medislot-${Environment}-slots
-              # Allow this Lambda to create log streams and write log events.
               - Sid: LambdaLogs
                 Effect: Allow
                 Action: [logs:CreateLogStream, logs:PutLogEvents]
                 Resource: !Sub arn:${AWS::Partition}:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/medislot-${Environment}-slot-materialiser:*
-              # Allow Lambda to manage the network interfaces required for VPC attachment.
-              # Lambda must create ENIs in the application's private subnets and security group.
-              # The service condition prevents this permission from being used by other principals.
               - Sid: LambdaVpcEniCreate
                 Effect: Allow
                 Action: [ec2:CreateNetworkInterface]
@@ -952,19 +728,12 @@ Resources:
                 Effect: Allow
                 Action: [ec2:DeleteNetworkInterface, ec2:AssignPrivateIpAddresses, ec2:UnassignPrivateIpAddresses]
                 Resource: !Sub arn:${AWS::Partition}:ec2:${AWS::Region}:${AWS::AccountId}:network-interface/*
-
-  # =====================================================
-  # MILESTONE 5 - APPOINTMENT API LAMBDA ROLE
-  # =====================================================
-
-  # Dead-letter queue for asynchronous Appointment API Lambda failures.
   AppointmentApiDeadLetterQueue:
     Type: AWS::SQS::Queue
     Properties:
       QueueName: !Sub medislot-${Environment}-appointment-api-dlq
       MessageRetentionPeriod: 1209600
       KmsMasterKeyId: alias/aws/sqs
-
   AppointmentApiLambdaRole:
     Type: AWS::IAM::Role
     Metadata:
@@ -1027,7 +796,6 @@ Resources:
                 Effect: Allow
                 Action: [ec2:CreateNetworkInterface, ec2:DescribeNetworkInterfaces, ec2:DeleteNetworkInterface, ec2:AssignPrivateIpAddresses, ec2:UnassignPrivateIpAddresses]
                 Resource: '*'
-
   AppointmentOutboxSchedulerRole:
     Type: AWS::IAM::Role
     Properties:
@@ -1046,15 +814,10 @@ Resources:
               - Effect: Allow
                 Action: [lambda:InvokeFunction]
                 Resource: !Sub arn:${AWS::Partition}:lambda:${AWS::Region}:${AWS::AccountId}:function:medislot-${Environment}-appointment-api
-
-  # =====================================================
-  # 16. EVENTBRIDGE SCHEDULER ROLE – PERMIT SCHEDULED LAMBDA INVOCATION
-  # =====================================================
   MaterialiserSchedulerRole:
     Type: AWS::IAM::Role
     Properties:
       RoleName: !Sub medislot-${Environment}-materialiser-scheduler-role
-      # TRUST POLICY – allow the named AWS service to assume this role.
       AssumeRolePolicyDocument:
         Version: '2012-10-17'
         Statement:
@@ -1069,33 +832,23 @@ Resources:
               - Effect: Allow
                 Action: [lambda:InvokeFunction]
                 Resource: !Sub arn:${AWS::Partition}:lambda:${AWS::Region}:${AWS::AccountId}:function:medislot-${Environment}-slot-materialiser
-
-  
-  # =====================================================
-  # 17. DOCTOR DASHBOARD EC2 ROLE – SSM, S3 ARTIFACTS + MATERIALISER INVOCATION
-  # =====================================================
   DoctorDashboardInstanceRole:
     Type: AWS::IAM::Role
     Properties:
       RoleName: !Sub medislot-${Environment}-doctor-dashboard-ec2-role
-      # TRUST POLICY – allow the named AWS service to assume this role.
       AssumeRolePolicyDocument:
         Version: '2012-10-17'
         Statement:
           - Effect: Allow
             Principal: {Service: ec2.amazonaws.com}
             Action: sts:AssumeRole
-
-      # AWS-MANAGED PERMISSIONS – allow API Gateway to publish execution logs to CloudWatch Logs.
       ManagedPolicyArns:
         - arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore
-
       Policies:
         - PolicyName: InvokeSlotReconciliation
           PolicyDocument:
             Version: '2012-10-17'
             Statement:
-              # Allow the dashboard EC2 role to invoke Slot Materialiser after availability changes.
               - Sid: InvokeMaterialiserAfterAvailabilityChange
                 Effect: Allow
                 Action: [lambda:InvokeFunction]
@@ -1107,21 +860,11 @@ Resources:
               - Effect: Allow
                 Action: [s3:GetObject]
                 Resource: !Sub arn:${AWS::Partition}:s3:::medislot-${Environment}-sam-artifacts-${AWS::AccountId}-${AWS::Region}/dashboard/*
-
-
-  # =====================================================
-  # 18. EC2 INSTANCE PROFILE – ATTACH THE DASHBOARD ROLE TO EC2
-  # =====================================================
-  # EC2 receives the role through this instance profile.
   DoctorDashboardInstanceProfile:
     Type: AWS::IAM::InstanceProfile
     Properties:
       InstanceProfileName: !Sub medislot-${Environment}-doctor-dashboard-instance-profile
       Roles: [!Ref DoctorDashboardInstanceRole]
-
-  # =====================================================
-  # 19. DOCTOR DASHBOARD SECURITY GROUP – CONTROL HTTP INGRESS + OUTBOUND TRAFFIC
-  # =====================================================
   DoctorDashboardSecurityGroup:
     Type: AWS::EC2::SecurityGroup
     Properties:
@@ -1148,16 +891,6 @@ Resources:
       Tags:
         - Key: Name
           Value: !Sub medislot-${Environment}-doctor-dashboard-sg
-
-
-  # =====================================================
-  # CLOUDWATCH LOGS KMS ENCRYPTION
-  # =====================================================
-  # =====================================================
-  # 20. CLOUDWATCH LOGS KMS KEY – ENCRYPT LOG GROUP DATA
-  # =====================================================
-  # Key policy below permits account-level administration and CloudWatch Logs use
-  # for the specifically configured patient-domain log group encryption context.
   CloudWatchLogsKmsKey:
     Type: AWS::KMS::Key
     Properties:
@@ -1172,7 +905,6 @@ Resources:
               AWS: !Sub arn:${AWS::Partition}:iam::${AWS::AccountId}:root
             Action: kms:*
             Resource: '*'
-
           - Sid: AllowCloudWatchLogsService
             Effect: Allow
             Principal:
@@ -1187,96 +919,67 @@ Resources:
             Condition:
               ArnEquals:
                 kms:EncryptionContext:aws:logs:arn: !Sub arn:${AWS::Partition}:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/medislot-${Environment}-patient-domain
-
-# =====================================================
-# OUTPUTS
-# =====================================================
-
-# =====================================================
-# OUTPUTS – EXPORT RESOURCE IDS AND ARNS FOR OTHER STACKS
-# =====================================================
-
-
-
 Outputs:
-
-  # Network security-group identifiers
   LambdaSecurityGroupId:
     Description: Lambda Security Group ID
     Value: !Ref LambdaSecurityGroup
     Export:
       Name: !Sub medislot-${Environment}-LambdaSecurityGroupId
-
   RDSSecurityGroupId:
     Description: RDS MySQL Security Group ID
     Value: !Ref RDSSecurityGroup
     Export:
       Name: !Sub medislot-${Environment}-RDSSecurityGroupId
-
   SSMEndpointSecurityGroupId:
     Description: SSM Endpoint Security Group ID
     Value: !Ref SSMEndpointSecurityGroup
     Export:
       Name: !Sub medislot-${Environment}-SSMEndpointSecurityGroupId
-
   SSMEndpointId:
     Description: SSM Interface VPC Endpoint ID
     Value: !Ref SSMInterfaceEndpoint
     Export:
       Name: !Sub medislot-${Environment}-SSMEndpointId
-
-  # Core authentication and registration Lambda execution-role ARNs
   DBInitLambdaExecutionRoleArn:
     Description: IAM execution role ARN for database initialization Lambda
     Value: !GetAtt DBInitLambdaExecutionRole.Arn
     Export:
       Name: !Sub medislot-${Environment}-DBInitLambdaExecutionRoleArn
-
   DoctorRegisterLambdaExecutionRoleArn:
     Description: IAM execution role ARN for doctor registration Lambda
     Value: !GetAtt DoctorRegisterLambdaExecutionRole.Arn
     Export:
       Name: !Sub medislot-${Environment}-DoctorRegisterLambdaExecutionRoleArn
-
   PatientRegisterLambdaExecutionRoleArn:
     Description: IAM execution role ARN for patient registration Lambda
     Value: !GetAtt PatientRegisterLambdaExecutionRole.Arn
     Export:
       Name: !Sub medislot-${Environment}-PatientRegisterLambdaExecutionRoleArn
-
   LoginLambdaExecutionRoleArn:
     Description: IAM execution role ARN for login Lambda
     Value: !GetAtt LoginLambdaExecutionRole.Arn
     Export:
       Name: !Sub medislot-${Environment}-LoginLambdaExecutionRoleArn
-
   TokenLambdaExecutionRoleArn:
     Description: IAM execution role ARN for token management Lambda
     Value: !GetAtt TokenLambdaExecutionRole.Arn
     Export:
       Name: !Sub medislot-${Environment}-TokenLambdaExecutionRoleArn
-
   AuthorizerLambdaExecutionRoleArn:
     Description: IAM execution role ARN for Lambda Authorizer
     Value: !GetAtt AuthorizerLambdaExecutionRole.Arn
     Export:
       Name: !Sub medislot-${Environment}-AuthorizerLambdaExecutionRoleArn
-
   AuthTestLambdaExecutionRoleArn:
     Description: IAM execution role ARN for authentication test Lambda
     Value: !GetAtt AuthTestLambdaExecutionRole.Arn
     Export:
       Name: !Sub medislot-${Environment}-AuthTestLambdaExecutionRoleArn
-
-
   ApiGatewayCloudWatchRoleArn:
     Description: IAM role ARN for API Gateway CloudWatch logging
     Value: !GetAtt ApiGatewayCloudWatchRole.Arn
     Export:
       Name: !Sub medislot-${Environment}-ApiGatewayCloudWatchRoleArn
-
-
-  # Domain and scheduling Lambda execution-role ARNs
   PatientDomainLambdaRoleArn:
     Value: !GetAtt PatientDomainLambdaRole.Arn
     Export:
@@ -1294,7 +997,6 @@ Outputs:
     Value: !GetAtt AppointmentApiDeadLetterQueue.Arn
     Export:
       Name: !Sub medislot-${Environment}-AppointmentApiDeadLetterQueueArn
-
   AppointmentApiLambdaRoleArn:
     Value: !GetAtt AppointmentApiLambdaRole.Arn
     Export:
@@ -1307,7 +1009,6 @@ Outputs:
     Value: !GetAtt MaterialiserSchedulerRole.Arn
     Export:
       Name: !Sub medislot-${Environment}-MaterialiserSchedulerRoleArn
-  # Doctor dashboard EC2 attachment and security resources
   DoctorDashboardInstanceProfileName:
     Value: !Ref DoctorDashboardInstanceProfile
     Export:
@@ -1316,11 +1017,6 @@ Outputs:
     Value: !Ref DoctorDashboardSecurityGroup
     Export:
       Name: !Sub medislot-${Environment}-DoctorDashboardSecurityGroupId
-
-
-
-
-  # CloudWatch Logs encryption key
   CloudWatchLogsKmsKeyArn:
     Description: KMS key ARN for MediSlot CloudWatch Logs encryption
     Value: !GetAtt CloudWatchLogsKmsKey.Arn
