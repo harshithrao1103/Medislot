@@ -1685,8 +1685,12 @@ Resources:
       RestApiId: !Ref AuthRestApi
       Description: !Sub Authentication API deployment ${CodeVersion}
 
-  # --- DoctorDomainDeploymentMilestone4V1: Deploys doctor, patient and public discovery API methods ---
-  DoctorDomainDeploymentMilestone4V1: 
+  # --- DoctorDomainDeploymentMilestone5V1: Deploys doctor, patient, public discovery and appointment API methods ---
+  # IMPORTANT: CloudFormation only snapshots API Gateway methods into a NEW deployment when this
+  # logical ID changes (changing Description alone just edits the old snapshot, so new routes such as
+  # POST /appointments never reach the stage and callers get a misleading 403).
+  # Rename this ID (e.g. ...Milestone5V2) whenever API methods/resources are added or changed.
+  DoctorDomainDeploymentMilestone5V1:
     Type: AWS::ApiGateway::Deployment
     DependsOn:
       - AuthDeployment
@@ -1752,7 +1756,7 @@ Resources:
             comment: Authentication and token responses must not be cached; throttling and logging are enabled.
     Properties:
       RestApiId: !Ref AuthRestApi
-      DeploymentId: !Ref DoctorDomainDeploymentMilestone4V1
+      DeploymentId: !Ref DoctorDomainDeploymentMilestone5V1
       StageName: !Ref Environment
       TracingEnabled: true
       AccessLogSetting:

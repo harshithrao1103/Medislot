@@ -57,10 +57,10 @@ jobs:
         run: |
           set -euo pipefail
 
-          STACK_STATUS=$(aws cloudformation describe-stacks \\
-            --stack-name "$STACK_NAME" \\
-            --query "Stacks[0].StackStatus" \\
-            --output text \\
+          STACK_STATUS=$(aws cloudformation describe-stacks \
+            --stack-name "$STACK_NAME" \
+            --query "Stacks[0].StackStatus" \
+            --output text \
             --region "$AWS_REGION")
 
           case "$STACK_STATUS" in
@@ -71,15 +71,15 @@ jobs:
               ;;
           esac
 
-          CURRENT_CODE_VERSION=$(aws cloudformation describe-stacks \\
-            --stack-name "$STACK_NAME" \\
-            --query "Stacks[0].Parameters[?ParameterKey=='CodeVersion'].ParameterValue | [0]" \\
-            --output text \\
+          CURRENT_CODE_VERSION=$(aws cloudformation describe-stacks \
+            --stack-name "$STACK_NAME" \
+            --query "Stacks[0].Parameters[?ParameterKey=='CodeVersion'].ParameterValue | [0]" \
+            --output text \
             --region "$AWS_REGION")
 
-          ARTIFACT_BUCKET=$(aws cloudformation list-exports \\
-            --query "Exports[?Name=='${PROJECT}-${DEPLOY_ENV}-SAMArtifactsBucketName'].Value | [0]" \\
-            --output text \\
+          ARTIFACT_BUCKET=$(aws cloudformation list-exports \
+            --query "Exports[?Name=='${PROJECT}-${DEPLOY_ENV}-SAMArtifactsBucketName'].Value | [0]" \
+            --output text \
             --region "$AWS_REGION")
 
           if [[ -z "$CURRENT_CODE_VERSION" || "$CURRENT_CODE_VERSION" == "None" ]]; then
@@ -99,8 +99,8 @@ jobs:
 
       - name: Validate Application Template
         run: |
-          aws cloudformation validate-template \\
-            --template-body file://Cloudformation/Application_Stack.yaml \\
+          aws cloudformation validate-template \
+            --template-body file://Cloudformation/Application_Stack.yaml \
             --region "$AWS_REGION"
 
       - name: Publish API Gateway Deployment Snapshot
@@ -108,16 +108,16 @@ jobs:
         run: |
           set -euo pipefail
 
-          aws cloudformation deploy \\
-            --template-file Cloudformation/Application_Stack.yaml \\
-            --s3-bucket "$ARTIFACT_BUCKET" \\
-            --s3-prefix "cloudformation/api-only" \\
-            --stack-name "$STACK_NAME" \\
-            --parameter-overrides \\
-              Environment="$DEPLOY_ENV" \\
-              ArtifactBucketName="$ARTIFACT_BUCKET" \\
-              CodeVersion="$CURRENT_CODE_VERSION" \\
-              ApiDeploymentVersion="$GITHUB_SHA" \\
-            --role-arn "$CFN_EXECUTION_ROLE_ARN" \\
-            --region "$AWS_REGION" \\
+          aws cloudformation deploy \
+            --template-file Cloudformation/Application_Stack.yaml \
+            --s3-bucket "$ARTIFACT_BUCKET" \
+            --s3-prefix "cloudformation/api-only" \
+            --stack-name "$STACK_NAME" \
+            --parameter-overrides \
+              Environment="$DEPLOY_ENV" \
+              ArtifactBucketName="$ARTIFACT_BUCKET" \
+              CodeVersion="$CURRENT_CODE_VERSION" \
+              ApiDeploymentVersion="$GITHUB_SHA" \
+            --role-arn "$CFN_EXECUTION_ROLE_ARN" \
+            --region "$AWS_REGION" \
             --no-fail-on-empty-changeset
