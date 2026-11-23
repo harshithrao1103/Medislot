@@ -1287,8 +1287,6 @@ Resources:
       RetentionInDays: 14
       KmsKeyId:
         Fn::ImportValue: !Sub medislot-${Environment}-CloudWatchLogsKmsKeyArn
-      KmsKeyId:
-        Fn::ImportValue: !Sub medislot-${Environment}-CloudWatchLogsKmsKeyArn
 
   AppointmentApiLambda:
     Type: AWS::Lambda::Function
