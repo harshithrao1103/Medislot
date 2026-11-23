@@ -1,4 +1,4 @@
-AWSTemplateFormatVersion: '2010-09-09'
+﻿AWSTemplateFormatVersion: '2010-09-09'
 Description: >
   MediSlot Security Infrastructure -
   Security Groups, SSM Endpoint and Lambda IAM Roles.
@@ -775,6 +775,11 @@ Resources:
                 Condition:
                   StringEquals:
                     kms:ViaService: !Sub secretsmanager.${AWS::Region}.amazonaws.com
+              - Sid: LambdaEnvironmentKmsDecrypt
+                Effect: Allow
+                Action:
+                  - kms:Decrypt
+                Resource: !GetAtt CloudWatchLogsKmsKey.Arn
               - Sid: SlotInventory
                 Effect: Allow
                 Action: [dynamodb:GetItem, dynamodb:Query, dynamodb:UpdateItem]
