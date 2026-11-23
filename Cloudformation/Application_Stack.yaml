@@ -793,7 +793,6 @@ Resources:
         S3Key: !Sub lambda/doctor_api/${CodeVersion}.zip
       Timeout: 30
       MemorySize: 256
-      ReservedConcurrentExecutions: 20
       DeadLetterConfig:
         TargetArn:
           Fn::ImportValue: !Sub medislot-${Environment}-AppointmentApiDeadLetterQueueArn
@@ -1305,7 +1304,6 @@ Resources:
       DeadLetterConfig:
         TargetArn:
           Fn::ImportValue: !Sub medislot-${Environment}-AppointmentApiDeadLetterQueueArn
-      ReservedConcurrentExecutions: 20
       VpcConfig:
         SecurityGroupIds:
           - Fn::ImportValue: !Sub medislot-${Environment}-LambdaSecurityGroupId
