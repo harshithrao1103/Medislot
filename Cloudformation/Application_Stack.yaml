@@ -794,7 +794,6 @@ Resources:
       Timeout: 30
       MemorySize: 256
       ReservedConcurrentExecutions: 20
-      KmsKeyArn: !Sub arn:${AWS::Partition}:kms:${AWS::Region}:${AWS::AccountId}:alias/aws/lambda
       DeadLetterConfig:
         TargetArn:
           Fn::ImportValue: !Sub medislot-${Environment}-AppointmentApiDeadLetterQueueArn
@@ -1304,7 +1303,6 @@ Resources:
       DeadLetterConfig:
         TargetArn:
           Fn::ImportValue: !Sub medislot-${Environment}-AppointmentApiDeadLetterQueueArn
-      KmsKeyArn: !Sub arn:${AWS::Partition}:kms:${AWS::Region}:${AWS::AccountId}:alias/aws/lambda
       ReservedConcurrentExecutions: 20
       VpcConfig:
         SecurityGroupIds:
