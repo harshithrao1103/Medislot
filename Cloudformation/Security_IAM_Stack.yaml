@@ -838,10 +838,36 @@ Resources:
                 Action: [logs:CreateLogStream, logs:PutLogEvents]
                 Resource: !Sub arn:${AWS::Partition}:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/medislot-${Environment}-doctor-api:*
               # Allow Lambda to manage the network interfaces required for VPC attachment.
-              - Sid: LambdaVpcEni
+              - Sid: LambdaVpcEniCreate
                 Effect: Allow
-                Action: [ec2:CreateNetworkInterface, ec2:DescribeNetworkInterfaces, ec2:DeleteNetworkInterface, ec2:AssignPrivateIpAddresses, ec2:UnassignPrivateIpAddresses]
+                Action: [ec2:CreateNetworkInterface]
                 Resource: '*'
+                Condition:
+                  ArnEquals:
+                    ec2:Subnet:
+                      - !Sub
+                        - arn:${AWS::Partition}:ec2:${AWS::Region}:${AWS::AccountId}:subnet/${SubnetA}
+                        - SubnetA: !ImportValue
+                            Fn::Sub: medislot-${Environment}-PrivateSubnetAId
+                      - !Sub
+                        - arn:${AWS::Partition}:ec2:${AWS::Region}:${AWS::AccountId}:subnet/${SubnetB}
+                        - SubnetB: !ImportValue
+                            Fn::Sub: medislot-${Environment}-PrivateSubnetBId
+                    ec2:SecurityGroup:
+                      - !Sub
+                        - arn:${AWS::Partition}:ec2:${AWS::Region}:${AWS::AccountId}:security-group/${LambdaSecurityGroup}
+                        - LambdaSecurityGroup: !ImportValue
+                            Fn::Sub: medislot-${Environment}-LambdaSecurityGroupId
+                  StringEquals:
+                    ec2:AuthorizedService: lambda.amazonaws.com
+              - Sid: LambdaVpcEniDescribe
+                Effect: Allow
+                Action: [ec2:DescribeNetworkInterfaces]
+                Resource: '*'
+              - Sid: LambdaVpcEniManage
+                Effect: Allow
+                Action: [ec2:DeleteNetworkInterface, ec2:AssignPrivateIpAddresses, ec2:UnassignPrivateIpAddresses]
+                Resource: !Sub arn:${AWS::Partition}:ec2:${AWS::Region}:${AWS::AccountId}:network-interface/*
 
   # =====================================================
   # 15. SLOT MATERIALISER LAMBDA ROLE – GENERATE AND UPDATE APPOINTMENT SLOTS
@@ -905,6 +931,15 @@ Resources:
   # =====================================================
   # MILESTONE 5 - APPOINTMENT API LAMBDA ROLE
   # =====================================================
+
+  # Dead-letter queue for asynchronous Appointment API Lambda failures.
+  AppointmentApiDeadLetterQueue:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: !Sub medislot-${Environment}-appointment-api-dlq
+      MessageRetentionPeriod: 1209600
+      SqsManagedSseEnabled: true
+
   AppointmentApiLambdaRole:
     Type: AWS::IAM::Role
     Properties:
@@ -947,6 +982,10 @@ Resources:
                 Effect: Allow
                 Action: [events:PutEvents]
                 Resource: !Sub arn:${AWS::Partition}:events:${AWS::Region}:${AWS::AccountId}:event-bus/medislot-${Environment}-appointments
+              - Sid: SendAppointmentApiFailuresToDLQ
+                Effect: Allow
+                Action: [sqs:SendMessage]
+                Resource: !GetAtt AppointmentApiDeadLetterQueue.Arn
               - Sid: LambdaLogs
                 Effect: Allow
                 Action: [logs:CreateLogStream, logs:PutLogEvents]
@@ -1217,6 +1256,12 @@ Outputs:
     Value: !GetAtt SlotMaterialiserRole.Arn
     Export:
       Name: !Sub medislot-${Environment}-SlotMaterialiserRoleArn
+  AppointmentApiDeadLetterQueueArn:
+    Description: SQS dead-letter queue ARN for Appointment API Lambda
+    Value: !GetAtt AppointmentApiDeadLetterQueue.Arn
+    Export:
+      Name: !Sub medislot-${Environment}-AppointmentApiDeadLetterQueueArn
+
   AppointmentApiLambdaRoleArn:
     Value: !GetAtt AppointmentApiLambdaRole.Arn
     Export:
