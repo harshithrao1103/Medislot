@@ -149,82 +149,75 @@ def _slot(doctor_id, slot_id):
             return None
         kwargs["ExclusiveStartKey"] = key
 
-
 def _reserve_seat(doctor_id, slot):
     slot_key = {"doctorId": str(doctor_id), "slotKey": slot["slotKey"]}
+
     for attempt in range(MAX_CONFLICT_RETRIES + 1):
-        current = _slots.get_item(Key=slot_key, ConsistentRead=True).get("Item")
+        current = _slots.get_item(
+            Key=slot_key,
+            ConsistentRead=True
+        ).get("Item")
+
         if not current or current.get("status") != "AVAILABLE":
             raise ApiError(409, "Slot is no longer available")
+
         capacity = int(current.get("capacity", 0))
         booked = int(current.get("bookedCount", 0))
         held = int(current.get("heldCount", 0))
         version = int(current.get("version", 0))
+
         if capacity < 1 or booked + held >= capacity:
             raise ApiError(409, "Slot is full")
+
         try:
             _slots.update_item(
                 Key=slot_key,
-                UpdateExpression="SET bookedCount = bookedCount + :one, #v = #v + :one",
-                ConditionExpression=(
-                    "#st = :available AND #v = :version AND bookedCount = :booked "
-                    "AND heldCount = :held AND capacity = :capacity AND bookedCount < :max_booked"
+                UpdateExpression=(
+                    "SET bookedCount = bookedCount + :one, "
+                    "#v = #v + :one"
                 ),
-                ExpressionAttributeNames={"#st": "status", "#v": "version"},
+                ConditionExpression=(
+                    "#st = :available AND #v = :version "
+                    "AND bookedCount = :booked "
+                    "AND heldCount = :held "
+                    "AND #cap = :capacity "
+                    "AND bookedCount < :max_booked"
+                ),
+                ExpressionAttributeNames={
+                    "#st": "status",
+                    "#v": "version",
+                    "#cap": "capacity"
+                },
                 ExpressionAttributeValues={
-                    ":one": 1, ":available": "AVAILABLE", ":version": version,
-                    ":booked": booked, ":held": held, ":capacity": capacity,
+                    ":one": 1,
+                    ":available": "AVAILABLE",
+                    ":version": version,
+                    ":booked": booked,
+                    ":held": held,
+                    ":capacity": capacity,
                     ":max_booked": capacity - held,
                 },
             )
             return
+
         except ClientError as exc:
             if exc.response.get("Error", {}).get("Code") != "ConditionalCheckFailedException":
                 raise
+
             if attempt >= MAX_CONFLICT_RETRIES:
                 raise ApiError(409, "Booking contention; please retry")
-            # The metric counts actual conditional conflicts that cause a retry.
-            _metric("BookingConflictRetries", 1, {"Environment": os.environ.get("ENVIRONMENT", "unknown")})
-            time.sleep(random.uniform(0.01, min(0.025 * (2 ** attempt), 0.4)))
+
+            _metric(
+                "BookingConflictRetries",
+                1,
+                {"Environment": os.environ.get("ENVIRONMENT", "unknown")}
+            )
+
+            time.sleep(
+                random.uniform(0.01, min(0.025 * (2 ** attempt), 0.4))
+            )
+
     raise ApiError(409, "Booking contention; please retry")
-
-
-def _release_seat(doctor_id, slot_key):
-    _slots.update_item(
-        Key={"doctorId": str(doctor_id), "slotKey": slot_key},
-        UpdateExpression="SET bookedCount = bookedCount - :one, #v = #v + :one",
-        ConditionExpression="bookedCount > :zero",
-        ExpressionAttributeNames={"#v": "version"},
-        ExpressionAttributeValues={":one": 1, ":zero": 0},
-    )
-
-
-def _recover_committed_booking(key, patient_id):
-    conn = db_connection()
-    try:
-        with conn.cursor() as cur:
-            cur.execute(
-                "SELECT appointment_id,patient_id,doctor_id,slot_id,start_time_utc,status,fee FROM appointments WHERE idempotency_key=%s LIMIT 1",
-                (f"{patient_id}#{key}",),
-            )
-            row = cur.fetchone()
-            if not row:
-                return None
-            appointment = dict(row)
-            appointment["start_time_utc"] = appointment["start_time_utc"].replace(tzinfo=timezone.utc).isoformat().replace("+00:00", "Z")
-            appointment["fee"] = str(appointment["fee"])
-            _idempotency.update_item(
-                Key={"idempotencyKey": f"{patient_id}#{key}"},
-                UpdateExpression="SET #s=:completed, appointmentId=:aid, #r=:response",
-                ExpressionAttributeNames={"#s": "status", "#r": "response"},
-                ExpressionAttributeValues={
-                    ":completed": "COMPLETED", ":aid": str(appointment["appointment_id"]),
-                    ":response": json.dumps(appointment, default=_json_safe),
-                },
-            )
-            return appointment
-    finally:
-        conn.close()
 
 
 def _claim_idempotency(key, patient_id, request_hash):
