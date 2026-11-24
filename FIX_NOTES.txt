@@ -1,0 +1,13 @@
+MediSlot final fix notes
+========================
+
+Fixed doctor appointments dashboard route.
+- Added Flask endpoint: GET/POST /doctor/appointments (doctor_appointments_page).
+- Connected the page to the existing Appointment API endpoints.
+- Added UTC-to-IST display conversion, date/status/period filtering, and pagination.
+- Connected doctor cancellation, completion, and no-show actions to existing API operations.
+- Preserved authentication and CSRF protections already used by the application.
+
+The appointment API Lambda was not changed. The Lambda remains responsible for validating appointment ownership, state, and time eligibility.
+
+Deployment still requires the project's configured environment variables, dependencies, AWS resources, API Gateway routes, and database.

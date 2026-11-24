@@ -313,6 +313,153 @@ def page_post(method, path, payload):
 
 
 # ====================================================================
+# DOCTOR APPOINTMENTS
+# ====================================================================
+@app.route('/doctor/appointments', methods=['GET', 'POST'])
+@protected
+def doctor_appointments_page():
+    """List and manage the authenticated doctor's patient appointments."""
+    from zoneinfo import ZoneInfo
+
+    # Mutations are sent to the appointment API, which independently checks
+    # ownership, appointment state, and the relevant time-based eligibility.
+    if request.method == 'POST':
+        appointment_id = (request.form.get('appointment_id') or '').strip()
+        action = (request.form.get('action') or '').strip().upper()
+        if not appointment_id.isdigit():
+            flash('Invalid appointment ID')
+        elif action == 'CANCEL':
+            reason = (request.form.get('reason') or '').strip()
+            if not reason:
+                flash('Please provide a cancellation reason')
+            else:
+                page_post('DELETE', f'/doctors/me/appointments/{appointment_id}',
+                          {'reason': reason[:200]})
+        elif action in ('COMPLETED', 'NO_SHOW'):
+            page_post('POST', f'/doctors/me/appointments/{appointment_id}/outcome',
+                      {'outcome': action})
+        else:
+            flash('Invalid appointment action')
+        return redirect(url_for('doctor_appointments_page',
+                                from_date=request.args.get('from_date', ''),
+                                to_date=request.args.get('to_date', ''),
+                                status=request.args.get('status', ''),
+                                period=request.args.get('period', 'upcoming'),
+                                per_page=request.args.get('per_page', 10),
+                                page=request.args.get('page', 1)))
+
+    ist = ZoneInfo('Asia/Kolkata')
+    now_utc = datetime.now(timezone.utc)
+    filters = {
+        'from_date': (request.args.get('from_date') or '').strip(),
+        'to_date': (request.args.get('to_date') or '').strip(),
+        'status': (request.args.get('status') or '').strip().upper(),
+        'period': (request.args.get('period') or 'upcoming').strip().lower(),
+    }
+    if filters['period'] not in ('upcoming', 'past', 'all'):
+        filters['period'] = 'upcoming'
+    if filters['status'] not in ('', 'CONFIRMED', 'COMPLETED', 'CANCELLED', 'NO_SHOW'):
+        filters['status'] = ''
+
+    # The API accepts UTC boundaries and limits a response to 100 records.
+    api_params = {}
+    try:
+        if filters['from_date']:
+            local_from = datetime.combine(date.fromisoformat(filters['from_date']), datetime.min.time(), tzinfo=ist)
+            api_params['from'] = local_from.astimezone(timezone.utc).isoformat().replace('+00:00', 'Z')
+        if filters['to_date']:
+            local_to = datetime.combine(date.fromisoformat(filters['to_date']), datetime.max.time(), tzinfo=ist)
+            api_params['to'] = local_to.astimezone(timezone.utc).isoformat().replace('+00:00', 'Z')
+        if filters['from_date'] and filters['to_date'] and filters['from_date'] > filters['to_date']:
+            raise ValueError
+    except (ValueError, TypeError):
+        flash('Please select a valid date range')
+        filters['from_date'] = filters['to_date'] = ''
+        api_params = {}
+
+    payload = page_get('/doctors/me/appointments' + (('?' + urlencode(api_params)) if api_params else ''))
+    if payload is None:
+        return redirect(url_for('login'))
+    if not isinstance(payload, dict):
+        payload = {}
+
+    appointments = []
+    for record in payload.get('appointments', []):
+        if not isinstance(record, dict):
+            continue
+        item = dict(record)
+        try:
+            start_raw = item.get('start_time_utc')
+            start_dt = datetime.fromisoformat(str(start_raw).replace('Z', '+00:00'))
+            if start_dt.tzinfo is None:
+                start_dt = start_dt.replace(tzinfo=timezone.utc)
+            start_dt = start_dt.astimezone(timezone.utc)
+        except (TypeError, ValueError):
+            start_dt = None
+
+        try:
+            end_raw = item.get('end_time_utc')
+            end_dt = datetime.fromisoformat(str(end_raw).replace('Z', '+00:00')) if end_raw else None
+            if end_dt and end_dt.tzinfo is None:
+                end_dt = end_dt.replace(tzinfo=timezone.utc)
+            if end_dt:
+                end_dt = end_dt.astimezone(timezone.utc)
+        except (TypeError, ValueError):
+            end_dt = None
+
+        status_value = str(item.get('status') or 'UNKNOWN').upper()
+        item['status'] = status_value
+        item['display_status'] = status_value.replace('_', ' ').title()
+        item['fee'] = item.get('fee') if item.get('fee') is not None else '0'
+        if start_dt:
+            local_start = start_dt.astimezone(ist)
+            item['appointment_date'] = local_start.strftime('%A, %d %B %Y')
+            item['appointment_time'] = local_start.strftime('%I:%M %p')
+            item['_local_date'] = local_start.date()
+            item['_is_future'] = start_dt > now_utc
+            item['no_show_eligible'] = now_utc >= start_dt + timedelta(minutes=5)
+        else:
+            item['appointment_date'] = 'Date unavailable'
+            item['appointment_time'] = ''
+            item['_local_date'] = None
+            item['_is_future'] = False
+            item['no_show_eligible'] = False
+
+        item['completion_at_utc'] = end_dt.isoformat().replace('+00:00', 'Z') if end_dt else ''
+        item['completion_eligible'] = bool(end_dt and now_utc >= end_dt)
+        if filters['status'] == 'CANCELLED':
+            if status_value not in ('CANCELLED_BY_PATIENT', 'CANCELLED_BY_DOCTOR'):
+                continue
+        elif filters['status'] and status_value != filters['status']:
+            continue
+        if filters['period'] == 'upcoming' and not item['_is_future']:
+            continue
+        if filters['period'] == 'past' and item['_is_future']:
+            continue
+        if filters['from_date'] and item['_local_date'] and item['_local_date'] < date.fromisoformat(filters['from_date']):
+            continue
+        if filters['to_date'] and item['_local_date'] and item['_local_date'] > date.fromisoformat(filters['to_date']):
+            continue
+        appointments.append(item)
+
+    try:
+        per_page = int(request.args.get('per_page', 10))
+    except (TypeError, ValueError):
+        per_page = 10
+    if per_page not in (10, 20, 50):
+        per_page = 10
+    total_appointments = len(appointments)
+    total_pages = max(1, (total_appointments + per_page - 1) // per_page)
+    try:
+        page = max(1, min(int(request.args.get('page', 1)), total_pages))
+    except (TypeError, ValueError):
+        page = 1
+    visible = appointments[(page - 1) * per_page:page * per_page]
+    return render_template('doctor_appointments.html', appointments=visible,
+                           filters=filters, page=page, per_page=per_page,
+                           total_appointments=total_appointments, total_pages=total_pages)
+
+# ====================================================================
 # DOCTOR PROFILE
 # ====================================================================
 # Display the doctor's profile and process profile updates.
