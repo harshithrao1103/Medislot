@@ -495,7 +495,7 @@ def materialise(
                 )
             ),
 
-            'ProjectionExpression': 'doctorId,slotKey,slotId,#st',
+            'ProjectionExpression': 'doctorId,slotKey,slotId,#st,bookedCount,heldCount',
 
             'ExpressionAttributeNames': {
                 '#st': 'status'
@@ -542,6 +542,7 @@ def materialise(
 
                             ConditionExpression=(
                                 '#st=:active '
+                                'AND bookedCount=:zero '
                                 'AND heldCount=:zero'
                             ),
 

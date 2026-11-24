@@ -453,9 +453,17 @@ def consultation(event, uid, method, item_id, correlation):
                 )
 
                 # 2.2 Return all matching consultation types.
+                items = cur.fetchall()
+                for item in items:
+                    item['active_appointments'] = int(item.get('active_appointments') or 0)
+                    item['status'] = (
+                        'PENDING_CANCELLATIONS'
+                        if item['active_appointments'] > 0
+                        else 'APPLIED'
+                    )
                 return respond(
                     200,
-                    {'items': cur.fetchall()},
+                    {'items': items},
                     correlation
                 )
 
@@ -985,12 +993,19 @@ def blackouts(event, uid, method, item_id, correlation):
                 cur.execute(
                     """
                     SELECT
-                        blackout_id,
-                        blackout_date,
-                        reason
-                    FROM doctor_blackouts
-                    WHERE doctor_id = %s
-                    ORDER BY blackout_date
+                        b.blackout_id,
+                        b.blackout_date,
+                        b.reason,
+                        (
+                            SELECT COUNT(*)
+                            FROM appointments a
+                            WHERE a.doctor_id = b.doctor_id
+                              AND a.status = 'CONFIRMED'
+                              AND DATE(CONVERT_TZ(a.start_time_utc, '+00:00', '+05:30')) = b.blackout_date
+                        ) AS active_appointments
+                    FROM doctor_blackouts b
+                    WHERE b.doctor_id = %s
+                    ORDER BY b.blackout_date
                     """,
                     (uid,)
                 )

@@ -7,6 +7,7 @@ import random
 import time
 import uuid
 from datetime import datetime, timezone, timedelta
+from zoneinfo import ZoneInfo
 from decimal import Decimal, ROUND_HALF_UP
 
 import boto3
@@ -838,6 +839,57 @@ def refund_history(event, correlation):
         conn.close()
 
 
+def _deactivate_blackout_slot_if_empty(doctor_id, slot_key, appointment_id):
+    """Keep a booked slot until its final appointment is cancelled on a blackout day."""
+    try:
+        slot_start = datetime.fromisoformat(slot_key.split("#", 1)[0])
+        if slot_start.tzinfo is None:
+            slot_start = slot_start.replace(tzinfo=timezone.utc)
+        blackout_day = slot_start.astimezone(ZoneInfo("Asia/Kolkata")).date()
+
+        conn = db_connection()
+        try:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "SELECT 1 FROM doctor_blackouts WHERE doctor_id=%s AND blackout_date=%s LIMIT 1",
+                    (int(doctor_id), blackout_day),
+                )
+                is_blackout = cur.fetchone() is not None
+        finally:
+            conn.close()
+
+        if not is_blackout:
+            return
+
+        # Only the final cancellation can make the slot unavailable.
+        # Conditional expression protects against concurrent bookings/holds.
+        _slots.update_item(
+            Key={"doctorId": str(doctor_id), "slotKey": slot_key},
+            UpdateExpression="SET #st=:inactive ADD #v :one",
+            ConditionExpression=(
+                "bookedCount=:zero AND heldCount=:zero AND #st=:available"
+            ),
+            ExpressionAttributeNames={"#st": "status", "#v": "version"},
+            ExpressionAttributeValues={
+                ":inactive": "INACTIVE",
+                ":available": "AVAILABLE",
+                ":zero": 0,
+                ":one": 1,
+            },
+        )
+        log.info(
+            "Blackout slot deactivated after final cancellation appointmentId=%s doctorId=%s slotKey=%s date=%s",
+            appointment_id, doctor_id, slot_key, blackout_day.isoformat(),
+        )
+    except ClientError as exc:
+        if exc.response.get("Error", {}).get("Code") != "ConditionalCheckFailedException":
+            log.exception("Could not deactivate empty blackout slot appointmentId=%s", appointment_id)
+    except Exception:
+        # Seat release has already committed. Never turn a successful cancellation
+        # into a failed API response; a later reconciliation can safely retry this.
+        log.exception("Blackout completion check failed appointmentId=%s", appointment_id)
+
+
 def _release_seat_once(payload):
     """Release one booked seat exactly once for a cancelled appointment.
 
@@ -896,6 +948,7 @@ def _release_seat_once(payload):
             doctor_id,
             slot_key,
         )
+        _deactivate_blackout_slot_if_empty(doctor_id, slot_key, appointment_id)
 
     except ClientError as exc:
         code = exc.response.get("Error", {}).get("Code")
@@ -912,6 +965,7 @@ def _release_seat_once(payload):
                     "Duplicate seat release ignored appointmentId=%s",
                     appointment_id,
                 )
+                _deactivate_blackout_slot_if_empty(doctor_id, slot_key, appointment_id)
                 return
 
         log.exception(

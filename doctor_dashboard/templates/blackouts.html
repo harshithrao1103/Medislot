@@ -47,6 +47,15 @@
                 </td>
 
 
+                <td>
+                    {% if item.status == 'APPLIED' %}
+                        <strong>Applied</strong>
+                    {% else %}
+                        <strong>Pending cancellations</strong>
+                        <small>{{ item.active_appointments }} confirmed appointment(s) remaining</small>
+                    {% endif %}
+                </td>
+
                 <!-- ========================================= -->
                 <!-- 3. DELETE BLACKOUT ACTION                 -->
                 <!-- ========================================= -->
