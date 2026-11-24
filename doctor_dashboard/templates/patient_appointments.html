@@ -9,18 +9,50 @@
     </div>
   </div>
 
-  <div class="appointment-filter-bar" role="group" aria-label="Filter appointments">
-    <a class="appointment-filter {{ 'is-selected' if selected_filter == 'active' else '' }}"
-       href="{{ url_for('patient_appointments', filter='active') }}"
-       {% if selected_filter == 'active' %}aria-current="page"{% endif %}>
-      <span>Active</span><strong>{{ active_count }}</strong>
-    </a>
-    <a class="appointment-filter {{ 'is-selected' if selected_filter == 'past' else '' }}"
-       href="{{ url_for('patient_appointments', filter='past') }}"
-       {% if selected_filter == 'past' %}aria-current="page"{% endif %}>
-      <span>Past</span><strong>{{ past_count }}</strong>
-    </a>
-  </div>
+  <form method="get" action="{{ url_for('patient_appointments') }}" class="appointment-filters" aria-label="Filter my appointments">
+    <div class="appointment-filter-field">
+      <label for="patient-from-date">From date</label>
+      <input id="patient-from-date" type="date" name="from_date" value="{{ filters.from_date }}">
+    </div>
+    <div class="appointment-filter-field">
+      <label for="patient-to-date">To date</label>
+      <input id="patient-to-date" type="date" name="to_date" value="{{ filters.to_date }}">
+    </div>
+    <div class="appointment-filter-field">
+      <label for="patient-status">Appointment status</label>
+      <select id="patient-status" name="status">
+        <option value="">All statuses</option>
+        {% for value, label in [('CONFIRMED','Confirmed'),('COMPLETED','Completed'),('CANCELLED','Cancelled'),('NO_SHOW','No-show')] %}
+          <option value="{{ value }}" {% if filters.status == value %}selected{% endif %}>{{ label }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="appointment-filter-field">
+      <label for="patient-period">Appointment period</label>
+      <select id="patient-period" name="period">
+        <option value="upcoming" {% if filters.period == 'upcoming' %}selected{% endif %}>Upcoming</option>
+        <option value="past" {% if filters.period == 'past' %}selected{% endif %}>Past</option>
+        <option value="all" {% if filters.period == 'all' %}selected{% endif %}>All</option>
+      </select>
+    </div>
+    <div class="appointment-filter-field">
+      <label for="patient-doctor">Doctor name</label>
+      <input id="patient-doctor" type="search" name="doctor" value="{{ filters.doctor }}" placeholder="Search doctor">
+    </div>
+    <div class="appointment-filter-field">
+      <label for="patient-specialization">Specialization</label>
+      <select id="patient-specialization" name="specialization">
+        <option value="">All specializations</option>
+        {% for specialization in specializations %}
+          <option value="{{ specialization }}" {% if filters.specialization == specialization %}selected{% endif %}>{{ specialization }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="appointment-filter-actions">
+      <a class="secondary-button" href="{{ url_for('patient_appointments') }}">Reset</a>
+      <button type="submit">Apply filters</button>
+    </div>
+  </form>
 
   {% if appointments %}
     <div class="patient-appointment-list">
@@ -103,7 +135,7 @@
   {% else %}
     <div class="appointments-empty-state">
       <span class="appointments-empty-icon">▣</span>
-      {% if selected_filter == 'active' %}
+      {% if selected_filter == 'upcoming' %}
         <h3>No active appointments</h3>
         <p>Your upcoming confirmed appointments will appear here after you book a visit.</p>
         <a class="btn" href="{{ url_for('patient_search') }}">Find a doctor <span aria-hidden="true">→</span></a>

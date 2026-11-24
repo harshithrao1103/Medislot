@@ -185,3 +185,61 @@
 .cancellation-refund-policy small{color:#70877e;line-height:1.45}
 .doctor-appointment-actions button:disabled{opacity:.48;cursor:not-allowed;filter:grayscale(.2)}
 .completion-wait{display:block;color:#758896;font-size:11px;margin-top:5px}
+
+
+/* Appointment list filters */
+.appointment-filters {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 14px;
+  align-items: end;
+  margin: 22px 0;
+  padding: 18px;
+  border: 1px solid var(--border-color, #e5e7eb);
+  border-radius: 14px;
+  background: var(--surface-muted, #f8fafc);
+}
+.appointment-filter-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+.appointment-filter-field label {
+  font-size: .86rem;
+  font-weight: 600;
+}
+.appointment-filter-field input,
+.appointment-filter-field select {
+  width: 100%;
+  min-height: 42px;
+  box-sizing: border-box;
+  padding: 9px 11px;
+  border: 1px solid var(--border-color, #d1d5db);
+  border-radius: 9px;
+  background: var(--card-bg, #fff);
+  color: inherit;
+  font: inherit;
+}
+.appointment-filter-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  grid-column: 1 / -1;
+  justify-content: flex-end;
+}
+.appointment-filter-actions button,
+.appointment-filter-actions a {
+  min-height: 40px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 8px 16px;
+  border-radius: 9px;
+  text-decoration: none;
+}
+@media (max-width: 600px) {
+  .appointment-filters { grid-template-columns: 1fr; padding: 14px; }
+  .appointment-filter-actions { justify-content: stretch; }
+  .appointment-filter-actions > * { flex: 1; }
+}

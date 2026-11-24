@@ -433,7 +433,7 @@ def request_slot_reconciliation():
 @app.route('/doctor/appointments', methods=['GET', 'POST'])
 @protected
 def doctor_appointments_page():
-    """List doctor appointments and process per-appointment cancellation/outcomes."""
+    """List doctor appointments with date, status and period filters."""
     if request.method == 'POST':
         appointment_id = request.form.get('appointment_id', '').strip()
         action = request.form.get('action', '').strip()
@@ -454,18 +454,47 @@ def doctor_appointments_page():
         flash('Appointment updated successfully' if result.ok else api_error(result))
         return redirect(url_for('doctor_appointments_page'))
 
+    from zoneinfo import ZoneInfo
+    ist = ZoneInfo('Asia/Kolkata')
+    today_ist = datetime.now(ist).date()
+    filters = {
+        'from_date': request.args.get('from_date', '').strip(),
+        'to_date': request.args.get('to_date', '').strip(),
+        'status': request.args.get('status', '').strip().upper(),
+        'period': request.args.get('period', 'upcoming').strip().lower(),
+    }
+    if filters['status'] not in {'', 'CONFIRMED', 'COMPLETED', 'CANCELLED', 'NO_SHOW'}:
+        filters['status'] = ''
+    if filters['period'] not in {'upcoming', 'past', 'all'}:
+        filters['period'] = 'upcoming'
+    from_dt = to_dt = None
+    try:
+        if filters['from_date']:
+            from_dt = date.fromisoformat(filters['from_date'])
+        if filters['to_date']:
+            to_dt = date.fromisoformat(filters['to_date'])
+        if from_dt and to_dt and from_dt > to_dt:
+            flash('From date cannot be later than To date.')
+            from_dt = to_dt = None
+            filters['from_date'] = filters['to_date'] = ''
+    except ValueError:
+        flash('Please enter valid dates.')
+        from_dt = to_dt = None
+        filters['from_date'] = filters['to_date'] = ''
+
     data = page_get('/doctors/me/appointments')
     if data is None:
         return redirect(url_for('login'))
     now = datetime.now(timezone.utc)
-    from zoneinfo import ZoneInfo
+    filtered_appointments = []
     for item in (data or {}).get('appointments', []):
         try:
             start = datetime.fromisoformat(str(item.get('start_time_utc')).replace('Z', '+00:00'))
             if start.tzinfo is None:
                 start = start.replace(tzinfo=timezone.utc)
             start = start.astimezone(timezone.utc)
-            local = start.astimezone(ZoneInfo('Asia/Kolkata'))
+            local = start.astimezone(ist)
+            local_date = local.date()
             item['appointment_date'] = local.strftime('%A, %d %B %Y')
             item['appointment_time'] = local.strftime('%I:%M %p')
             item['no_show_eligible'] = now >= start + timedelta(minutes=5)
@@ -478,17 +507,35 @@ def doctor_appointments_page():
             item['completion_eligible'] = now >= end_utc
             item['completion_at_utc'] = end_utc.isoformat()
         except (TypeError, ValueError):
+            local_date = None
             item['appointment_date'] = 'Date unavailable'
             item['appointment_time'] = ''
             item['no_show_eligible'] = False
             item['seconds_until_no_show'] = 0
             item['completion_eligible'] = False
             item['completion_at_utc'] = None
-        item['display_status'] = str(item.get('status', 'UNKNOWN')).replace('_', ' ').title()
-    return render_template('doctor_appointments.html', appointments=(data or {}).get('appointments', []))
+
+        status = str(item.get('status') or 'UNKNOWN').upper()
+        item['display_status'] = status.replace('_', ' ').title()
+        if filters['period'] == 'upcoming' and (local_date is None or start <= now):
+            continue
+        if filters['period'] == 'past' and (local_date is None or start > now):
+            continue
+        if filters['status']:
+            if filters['status'] == 'CANCELLED':
+                if not status.startswith('CANCELLED'):
+                    continue
+            elif status != filters['status']:
+                continue
+        if from_dt and (local_date is None or local_date < from_dt):
+            continue
+        if to_dt and (local_date is None or local_date > to_dt):
+            continue
+        filtered_appointments.append(item)
+
+    return render_template('doctor_appointments.html', appointments=filtered_appointments, filters=filters)
 
 
-# ====================================================================
 # WEEKLY AVAILABILITY
 # ====================================================================
 @app.route('/doctor/availability',methods=['GET','POST'])
@@ -798,13 +845,13 @@ def patient_book_appointment():
 @app.route('/patient/appointments', methods=['GET', 'POST'])
 @patient_protected
 def patient_appointments():
-    """Show the signed-in patient's appointments with active/past filtering."""
+    """Show patient appointments with composable date, status, period and doctor filters."""
     if request.method == 'POST':
         appointment_id = request.form.get('appointment_id', '').strip()
         reason = request.form.get('reason', '').strip()
         if not appointment_id.isdigit() or not reason:
             flash('Please provide a valid appointment and cancellation reason')
-            return redirect(url_for('patient_appointments', filter='active'))
+            return redirect(url_for('patient_appointments'))
         try:
             cancelled = api('DELETE', f'/appointments/{appointment_id}', json={'reason': reason})
             if cancelled.ok:
@@ -814,23 +861,48 @@ def patient_appointments():
                 flash(api_error(cancelled))
         except (requests.RequestException, ValueError):
             flash('Unable to cancel appointment right now')
-        return redirect(url_for('patient_appointments', filter='past'))
+        return redirect(url_for('patient_appointments'))
 
-    selected_filter = request.args.get('filter', 'active').lower()
-    if selected_filter not in ('active', 'past'):
-        selected_filter = 'active'
+    from zoneinfo import ZoneInfo
+    ist = ZoneInfo('Asia/Kolkata')
+    today_ist = datetime.now(ist).date()
+
+    filters = {
+        'from_date': request.args.get('from_date', '').strip(),
+        'to_date': request.args.get('to_date', '').strip(),
+        'status': request.args.get('status', '').strip().upper(),
+        'period': request.args.get('period', 'upcoming').strip().lower(),
+        'doctor': request.args.get('doctor', '').strip(),
+        'specialization': request.args.get('specialization', '').strip(),
+    }
+    allowed_statuses = {'', 'CONFIRMED', 'COMPLETED', 'CANCELLED', 'NO_SHOW'}
+    if filters['status'] not in allowed_statuses:
+        filters['status'] = ''
+    if filters['period'] not in {'upcoming', 'past', 'all'}:
+        filters['period'] = 'upcoming'
+
+    from_dt = to_dt = None
+    try:
+        if filters['from_date']:
+            from_dt = date.fromisoformat(filters['from_date'])
+        if filters['to_date']:
+            to_dt = date.fromisoformat(filters['to_date'])
+        if from_dt and to_dt and from_dt > to_dt:
+            flash('From date cannot be later than To date.')
+            from_dt = to_dt = None
+            filters['from_date'] = filters['to_date'] = ''
+    except ValueError:
+        flash('Please enter valid dates.')
+        from_dt = to_dt = None
+        filters['from_date'] = filters['to_date'] = ''
 
     try:
         response = api('GET', '/appointments')
         if not response.ok:
             flash(api_error(response))
-            return render_template(
-                'patient_appointments.html',
-                appointments=[],
-                selected_filter=selected_filter,
-                active_count=0,
-                past_count=0
-            )
+            return render_template('patient_appointments.html', appointments=[],
+                                   selected_filter=filters['period'], filters=filters,
+                                   active_count=0, past_count=0, specializations=[])
 
         records = response.json().get('appointments', [])
         refund_by_appointment = {}
@@ -840,38 +912,37 @@ def patient_appointments():
                 refund_by_appointment = {str(x.get('appointment_id')): x for x in refund_response.json().get('refunds', [])}
         except (requests.RequestException, ValueError):
             app.logger.exception('Unable to load patient refund history')
+
         now = datetime.now(timezone.utc)
         appointments = []
         doctor_cache = {}
-
         for record in records:
             raw_start = record.get('start_time_utc')
             try:
-                start_dt = datetime.fromisoformat(
-                    str(raw_start).replace('Z', '+00:00')
-                )
+                start_dt = datetime.fromisoformat(str(raw_start).replace('Z', '+00:00'))
                 if start_dt.tzinfo is None:
                     start_dt = start_dt.replace(tzinfo=timezone.utc)
-                else:
-                    start_dt = start_dt.astimezone(timezone.utc)
+                start_dt = start_dt.astimezone(timezone.utc)
             except (TypeError, ValueError):
-                # An invalid/missing timestamp should not be presented as upcoming.
                 start_dt = None
 
             status = str(record.get('status') or 'UNKNOWN').upper()
             is_active = status == 'CONFIRMED' and start_dt is not None and start_dt > now
-
             if start_dt:
-                local_start = start_dt.astimezone(
-                    __import__('zoneinfo').ZoneInfo('Asia/Kolkata')
-                )
+                local_start = start_dt.astimezone(ist)
+                local_date = local_start.date()
                 record['appointment_date'] = local_start.strftime('%A, %d %B %Y')
                 record['appointment_time'] = local_start.strftime('%I:%M %p')
                 record['appointment_datetime'] = local_start.strftime('%d %b %Y, %I:%M %p')
+                record['_filter_date'] = local_date
+                record['_filter_future'] = start_dt > now
             else:
+                local_date = None
                 record['appointment_date'] = 'Date unavailable'
                 record['appointment_time'] = ''
                 record['appointment_datetime'] = 'Date unavailable'
+                record['_filter_date'] = None
+                record['_filter_future'] = False
 
             record['is_active'] = is_active
             record['display_status'] = status.replace('_', ' ').title()
@@ -880,68 +951,77 @@ def patient_appointments():
             record['refund_estimate_amount'] = None
             if is_active and start_dt is not None:
                 hours_remaining = (start_dt - now).total_seconds() / 3600.0
-                if hours_remaining > 24:
-                    refund_percentage = 100.0
-                elif hours_remaining >= 12:
-                    refund_percentage = 75.0
-                elif hours_remaining >= 3:
-                    refund_percentage = 50.0
-                else:
-                    refund_percentage = 0.0
+                refund_percentage = 100.0 if hours_remaining > 24 else 75.0 if hours_remaining >= 12 else 50.0 if hours_remaining >= 3 else 0.0
                 try:
                     fee_amount = float(record.get('fee') or 0)
                 except (TypeError, ValueError):
                     fee_amount = 0.0
                 record['refund_estimate_percentage'] = refund_percentage
                 record['refund_estimate_amount'] = round(fee_amount * refund_percentage / 100.0, 2)
-            record['doctor'] = {}
 
             doctor_id = record.get('doctor_id')
-            if doctor_id is not None:
-                doctor_key = str(doctor_id)
+            doctor_key = str(doctor_id) if doctor_id is not None else ''
+            if doctor_key:
                 if doctor_key not in doctor_cache:
                     try:
                         doctor_response = api('GET', f'/doctors/{doctor_key}')
-                        doctor_cache[doctor_key] = (
-                            doctor_response.json() if doctor_response.ok else {}
-                        )
+                        doctor_cache[doctor_key] = doctor_response.json() if doctor_response.ok else {}
                     except (requests.RequestException, ValueError):
-                        app.logger.exception(
-                            'Unable to load doctor profile for appointment %s',
-                            record.get('appointment_id')
-                        )
+                        app.logger.exception('Unable to load doctor profile for appointment %s', record.get('appointment_id'))
                         doctor_cache[doctor_key] = {}
-                record['doctor'] = doctor_cache[doctor_key]
+            doctor = doctor_cache.get(doctor_key, {})
+            record['doctor'] = doctor
+            doctor_name = f"{doctor.get('first_name', '')} {doctor.get('last_name', '')}".strip()
+            record['_doctor_name'] = doctor_name
+            record['_specialization'] = str(doctor.get('specialization') or '').strip()
 
             appointments.append(record)
 
-        active_appointments = [item for item in appointments if item['is_active']]
-        past_appointments = [item for item in appointments if not item['is_active']]
-        visible_appointments = (
-            active_appointments if selected_filter == 'active' else past_appointments
-        )
+        active_appointments = [x for x in appointments if x['is_active']]
+        past_appointments = [x for x in appointments if not x['is_active']]
+        specializations = sorted({x['_specialization'] for x in appointments if x['_specialization']})
 
-        return render_template(
-            'patient_appointments.html',
-            appointments=visible_appointments,
-            selected_filter=selected_filter,
-            active_count=len(active_appointments),
-            past_count=len(past_appointments)
-        )
+        visible = []
+        for item in appointments:
+            appt_date = item.get('_filter_date')
+            if filters['period'] == 'upcoming' and not item.get('_filter_future'):
+                continue
+            if filters['period'] == 'past' and item.get('_filter_future'):
+                continue
+            if filters['status']:
+                item_status = str(item.get('status', '')).upper()
+                if filters['status'] == 'CANCELLED':
+                    if not item_status.startswith('CANCELLED'):
+                        continue
+                elif item_status != filters['status']:
+                    continue
+            if from_dt and (appt_date is None or appt_date < from_dt):
+                continue
+            if to_dt and (appt_date is None or appt_date > to_dt):
+                continue
+            if filters['doctor'] and filters['doctor'].casefold() not in item['_doctor_name'].casefold():
+                continue
+            if filters['specialization'] and filters['specialization'].casefold() != item['_specialization'].casefold():
+                continue
+            visible.append(item)
 
+        # Internal filter helpers are not needed by the template.
+        for item in visible:
+            item.pop('_filter_date', None)
+            item.pop('_filter_future', None)
+            item.pop('_doctor_name', None)
+            item.pop('_specialization', None)
+
+        return render_template('patient_appointments.html', appointments=visible,
+                               selected_filter=filters['period'], filters=filters,
+                               active_count=len(active_appointments), past_count=len(past_appointments),
+                               specializations=specializations)
     except (requests.RequestException, ValueError):
         app.logger.exception('Unable to load patient appointments')
         flash('Unable to load appointments right now. Please try again.')
-        return render_template(
-            'patient_appointments.html',
-            appointments=[],
-            selected_filter=selected_filter,
-            active_count=0,
-            past_count=0
-        )
-
-
-# ============================================================
+        return render_template('patient_appointments.html', appointments=[],
+                               selected_filter=filters['period'], filters=filters,
+                               active_count=0, past_count=0, specializations=[])
 # PATIENT DOCTOR SEARCH
 # ============================================================
 

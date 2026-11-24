@@ -4,6 +4,37 @@
   <span class="section-kicker">DOCTOR WORKSPACE</span>
   <h2>Patient appointments</h2>
   <p>Review bookings, cancel an appointment when needed, or record its outcome.</p>
+  <form method="get" action="{{ url_for('doctor_appointments_page') }}" class="appointment-filters" aria-label="Filter appointments">
+    <div class="appointment-filter-field">
+      <label for="doctor-from-date">From date</label>
+      <input id="doctor-from-date" type="date" name="from_date" value="{{ filters.from_date }}">
+    </div>
+    <div class="appointment-filter-field">
+      <label for="doctor-to-date">To date</label>
+      <input id="doctor-to-date" type="date" name="to_date" value="{{ filters.to_date }}">
+    </div>
+    <div class="appointment-filter-field">
+      <label for="doctor-status">Appointment status</label>
+      <select id="doctor-status" name="status">
+        <option value="">All statuses</option>
+        {% for value, label in [('CONFIRMED','Confirmed'),('COMPLETED','Completed'),('CANCELLED','Cancelled'),('NO_SHOW','No-show')] %}
+          <option value="{{ value }}" {% if filters.status == value %}selected{% endif %}>{{ label }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="appointment-filter-field">
+      <label for="doctor-period">Appointment period</label>
+      <select id="doctor-period" name="period">
+        <option value="upcoming" {% if filters.period == 'upcoming' %}selected{% endif %}>Upcoming</option>
+        <option value="past" {% if filters.period == 'past' %}selected{% endif %}>Past</option>
+        <option value="all" {% if filters.period == 'all' %}selected{% endif %}>All</option>
+      </select>
+    </div>
+    <div class="appointment-filter-actions">
+      <a class="secondary-button" href="{{ url_for('doctor_appointments_page') }}">Reset</a>
+      <button type="submit">Apply filters</button>
+    </div>
+  </form>
   {% if appointments %}
     <div class="doctor-appointment-list">
     {% for item in appointments %}
