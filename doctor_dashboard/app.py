@@ -467,6 +467,16 @@ def doctor_appointments_page():
         filters['status'] = ''
     if filters['period'] not in {'upcoming', 'past', 'all'}:
         filters['period'] = 'upcoming'
+    try:
+        page = max(1, int(request.args.get('page', '1')))
+    except (TypeError, ValueError):
+        page = 1
+    try:
+        per_page = int(request.args.get('per_page', '10'))
+    except (TypeError, ValueError):
+        per_page = 10
+    if per_page not in {10, 20, 50}:
+        per_page = 10
     from_dt = to_dt = None
     try:
         if filters['from_date']:
@@ -533,7 +543,13 @@ def doctor_appointments_page():
             continue
         filtered_appointments.append(item)
 
-    return render_template('doctor_appointments.html', appointments=filtered_appointments, filters=filters)
+    total_appointments = len(filtered_appointments)
+    total_pages = max(1, (total_appointments + per_page - 1) // per_page)
+    page = min(page, total_pages)
+    page_appointments = filtered_appointments[(page - 1) * per_page:page * per_page]
+    return render_template('doctor_appointments.html', appointments=page_appointments, filters=filters,
+                           page=page, per_page=per_page, total_appointments=total_appointments,
+                           total_pages=total_pages)
 
 
 # WEEKLY AVAILABILITY
@@ -880,6 +896,16 @@ def patient_appointments():
         filters['status'] = ''
     if filters['period'] not in {'upcoming', 'past', 'all'}:
         filters['period'] = 'upcoming'
+    try:
+        page = max(1, int(request.args.get('page', '1')))
+    except (TypeError, ValueError):
+        page = 1
+    try:
+        per_page = int(request.args.get('per_page', '10'))
+    except (TypeError, ValueError):
+        per_page = 10
+    if per_page not in {10, 20, 50}:
+        per_page = 10
 
     from_dt = to_dt = None
     try:
@@ -902,7 +928,8 @@ def patient_appointments():
             flash(api_error(response))
             return render_template('patient_appointments.html', appointments=[],
                                    selected_filter=filters['period'], filters=filters,
-                                   active_count=0, past_count=0, specializations=[])
+                                   active_count=0, past_count=0, specializations=[], page=1, per_page=10,
+                                   total_appointments=0, total_pages=1)
 
         records = response.json().get('appointments', [])
         refund_by_appointment = {}
@@ -1005,6 +1032,11 @@ def patient_appointments():
                 continue
             visible.append(item)
 
+        total_appointments = len(visible)
+        total_pages = max(1, (total_appointments + per_page - 1) // per_page)
+        page = min(page, total_pages)
+        visible = visible[(page - 1) * per_page:page * per_page]
+
         # Internal filter helpers are not needed by the template.
         for item in visible:
             item.pop('_filter_date', None)
@@ -1015,7 +1047,8 @@ def patient_appointments():
         return render_template('patient_appointments.html', appointments=visible,
                                selected_filter=filters['period'], filters=filters,
                                active_count=len(active_appointments), past_count=len(past_appointments),
-                               specializations=specializations)
+                               specializations=specializations, page=page, per_page=per_page,
+                               total_appointments=total_appointments, total_pages=total_pages)
     except (requests.RequestException, ValueError):
         app.logger.exception('Unable to load patient appointments')
         flash('Unable to load appointments right now. Please try again.')
