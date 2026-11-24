@@ -311,6 +311,73 @@ def _complete_idempotency(key, patient_id, appointment):
     )
 
 
+def _recover_committed_booking(key, patient_id):
+    """Recover an appointment if RDS committed but the caller lost the response."""
+    request_key = f"{patient_id}#{key}"
+    conn = db_connection()
+    try:
+        with conn.cursor() as cur:
+            cur.execute(
+                """SELECT appointment_id, patient_id, doctor_id, slot_id,
+                          start_time_utc, status, fee
+                   FROM appointments
+                   WHERE idempotency_key=%s
+                   LIMIT 1""",
+                (request_key,),
+            )
+            row = cur.fetchone()
+            if not row:
+                return None
+
+            start = row["start_time_utc"]
+            if start.tzinfo is None:
+                start = start.replace(tzinfo=timezone.utc)
+            else:
+                start = start.astimezone(timezone.utc)
+
+            appointment = {
+                "appointment_id": row["appointment_id"],
+                "patient_id": row["patient_id"],
+                "doctor_id": row["doctor_id"],
+                "slot_id": row["slot_id"],
+                "start_time_utc": start.isoformat().replace("+00:00", "Z"),
+                "status": row["status"],
+                "fee": str(row["fee"]),
+            }
+
+        # Best-effort repair of the DynamoDB request record. The RDS unique
+        # idempotency key remains the source of truth for committed bookings.
+        try:
+            _complete_idempotency(key, patient_id, appointment)
+        except ClientError:
+            log.exception(
+                "Could not mark recovered booking idempotency record complete "
+                "patientId=%s idempotencyKey=%s",
+                patient_id,
+                key,
+            )
+        return appointment
+    finally:
+        conn.close()
+
+
+def _release_seat(doctor_id, slot_key):
+    """Compensate a DynamoDB seat reservation when no RDS booking committed."""
+    _slots.update_item(
+        Key={"doctorId": str(doctor_id), "slotKey": str(slot_key)},
+        UpdateExpression="SET #bc = #bc - :one, #v = #v + :one",
+        ConditionExpression="attribute_exists(#bc) AND #bc > :zero",
+        ExpressionAttributeNames={
+            "#bc": "bookedCount",
+            "#v": "version",
+        },
+        ExpressionAttributeValues={
+            ":one": 1,
+            ":zero": 0,
+        },
+    )
+
+
 def _outbox(cur, aggregate_type, aggregate_id, event_type, payload):
     cur.execute(
         """INSERT INTO event_outbox
@@ -760,37 +827,88 @@ def refund_history(event, correlation):
 
 
 def _release_seat_once(payload):
+    """Release one booked seat exactly once for a cancelled appointment.
+
+    The idempotency record and slot counter update are committed atomically.
+    This function uses the low-level DynamoDB client, so AttributeValue maps
+    ({"N": "1"}, {"S": "..."}) are intentional here.
+    """
     appointment_id = str(payload["appointmentId"])
+    doctor_id = str(payload["doctorId"])
+    slot_key = str(payload["slotKey"])
+
     release_key = f"seat-release#{appointment_id}"
     client = _slots.meta.client
+    now = int(time.time())
+
     try:
-        client.transact_write_items(TransactItems=[
-            {"Put": {
-                "TableName": os.environ["IDEMPOTENCY_TABLE"],
-                "Item": {
-                    "idempotencyKey": {"S": release_key},
-                    "status": {"S": "COMPLETED"},
-                    "createdAt": {"N": str(int(time.time()))},
-                    "expiresAt": {"N": str(int(time.time()) + 30 * 24 * 3600)},
+        client.transact_write_items(
+            TransactItems=[
+                {
+                    "Put": {
+                        "TableName": os.environ["IDEMPOTENCY_TABLE"],
+                        "Item": {
+                            "idempotencyKey": {"S": release_key},
+                            "status": {"S": "COMPLETED"},
+                            "createdAt": {"N": str(now)},
+                            "expiresAt": {"N": str(now + 30 * 24 * 60 * 60)},
+                        },
+                        "ConditionExpression": "attribute_not_exists(#ik)",
+                        "ExpressionAttributeNames": {"#ik": "idempotencyKey"},
+                    }
                 },
-                "ConditionExpression": "attribute_not_exists(idempotencyKey)",
-            }},
-            {"Update": {
-                "TableName": os.environ["SLOTS_TABLE"],
-                "Key": {"doctorId": {"S": str(payload["doctorId"])}, "slotKey": {"S": str(payload["slotKey"])}},
-                "UpdateExpression": "SET bookedCount = bookedCount - :one, #v = #v + :one",
-                "ConditionExpression": "bookedCount > :zero",
-                "ExpressionAttributeNames": {"#v": "version"},
-                "ExpressionAttributeValues": {":one": {"N": "1"}, ":zero": {"N": "0"}},
-            }},
-        ])
+                {
+                    "Update": {
+                        "TableName": os.environ["SLOTS_TABLE"],
+                        "Key": {
+                            "doctorId": {"S": doctor_id},
+                            "slotKey": {"S": slot_key},
+                        },
+                        "UpdateExpression": "SET #bc = #bc - :one, #v = #v + :one",
+                        "ConditionExpression": "attribute_exists(#bc) AND #bc > :zero",
+                        "ExpressionAttributeNames": {
+                            "#bc": "bookedCount",
+                            "#v": "version",
+                        },
+                        "ExpressionAttributeValues": {
+                            ":one": {"N": "1"},
+                            ":zero": {"N": "0"},
+                        },
+                    }
+                },
+            ]
+        )
+        log.info(
+            "Seat released successfully appointmentId=%s doctorId=%s slotKey=%s",
+            appointment_id,
+            doctor_id,
+            slot_key,
+        )
+
     except ClientError as exc:
         code = exc.response.get("Error", {}).get("Code")
-        if code not in ("TransactionCanceledException", "ConditionalCheckFailedException"):
-            raise
-        prior = _idempotency.get_item(Key={"idempotencyKey": release_key}, ConsistentRead=True).get("Item")
-        if prior and prior.get("status") == "COMPLETED":
-            return
+
+        # A prior successful transaction means this is a safe retry.
+        if code in ("TransactionCanceledException", "ConditionalCheckFailedException"):
+            prior = _idempotency.get_item(
+                Key={"idempotencyKey": release_key},
+                ConsistentRead=True,
+            ).get("Item")
+
+            if prior and prior.get("status") == "COMPLETED":
+                log.info(
+                    "Duplicate seat release ignored appointmentId=%s",
+                    appointment_id,
+                )
+                return
+
+        log.exception(
+            "Seat release failed appointmentId=%s doctorId=%s slotKey=%s errorCode=%s",
+            appointment_id,
+            doctor_id,
+            slot_key,
+            code,
+        )
         raise
 
 
