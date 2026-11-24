@@ -1,0 +1,93 @@
+{% extends 'base.html' %}
+{% block content %}
+<section class="card patient-appointments-page">
+  <div class="appointments-intro">
+    <div>
+      <span class="section-kicker">YOUR CARE, IN ONE PLACE</span>
+      <h2>My Appointments</h2>
+      <p>Keep track of your upcoming visits and appointment history.</p>
+    </div>
+  </div>
+
+  <div class="appointment-filter-bar" role="group" aria-label="Filter appointments">
+    <a class="appointment-filter {{ 'is-selected' if selected_filter == 'active' else '' }}"
+       href="{{ url_for('patient_appointments', filter='active') }}"
+       {% if selected_filter == 'active' %}aria-current="page"{% endif %}>
+      <span>Active</span><strong>{{ active_count }}</strong>
+    </a>
+    <a class="appointment-filter {{ 'is-selected' if selected_filter == 'past' else '' }}"
+       href="{{ url_for('patient_appointments', filter='past') }}"
+       {% if selected_filter == 'past' %}aria-current="page"{% endif %}>
+      <span>Past</span><strong>{{ past_count }}</strong>
+    </a>
+  </div>
+
+  {% if appointments %}
+    <div class="patient-appointment-list">
+      {% for appointment in appointments %}
+        {% set doctor = appointment.get('doctor', {}) %}
+        {% set doctor_name = ((doctor.get('first_name', '') ~ ' ' ~ doctor.get('last_name', ''))|trim) %}
+        <article class="patient-appointment-card">
+          <div class="patient-appointment-doctor">
+            {% if doctor.get('profile_photo_url') %}
+              <img class="patient-appointment-photo" src="{{ doctor.get('profile_photo_url') }}"
+                   alt="{{ doctor_name or 'Doctor' }}" loading="lazy" referrerpolicy="no-referrer">
+            {% else %}
+              <span class="patient-appointment-photo patient-appointment-photo-fallback" aria-hidden="true">✚</span>
+            {% endif %}
+            <div class="patient-appointment-doctor-info">
+              <span class="appointment-card-kicker">DOCTOR</span>
+              <h3>{{ doctor_name or ('Doctor #' ~ appointment.get('doctor_id', '')) }}</h3>
+              {% if doctor.get('specialization') %}
+                <p>{{ doctor.get('specialization') }}</p>
+              {% endif %}
+              {% if doctor.get('hospital_name') or doctor.get('city') %}
+                <p class="appointment-hospital">
+                  {{ doctor.get('hospital_name', '') }}{% if doctor.get('hospital_name') and doctor.get('city') %} · {% endif %}{{ doctor.get('city', '') }}
+                </p>
+              {% endif %}
+            </div>
+          </div>
+
+          <div class="patient-appointment-details">
+            <div class="appointment-detail-item">
+              <span>Date</span><strong>{{ appointment.get('appointment_date') }}</strong>
+            </div>
+            <div class="appointment-detail-item">
+              <span>Time (IST)</span><strong>{{ appointment.get('appointment_time') or '—' }}</strong>
+            </div>
+            <div class="appointment-detail-item">
+              <span>Appointment ID</span><strong>#{{ appointment.get('appointment_id', '—') }}</strong>
+            </div>
+            {% if appointment.get('fee') is not none %}
+              <div class="appointment-detail-item">
+                <span>Consultation fee</span><strong>₹{{ appointment.get('fee') }}</strong>
+              </div>
+            {% endif %}
+          </div>
+
+          <div class="patient-appointment-footer">
+            <span class="appointment-status {{ 'appointment-status-active' if appointment.get('is_active') else 'appointment-status-past' }}">
+              <i></i>{{ appointment.get('display_status') }}
+            </span>
+            <span class="appointment-slot-id">Booking reference: {{ appointment.get('slot_id', '—') }}</span>
+          </div>
+        </article>
+      {% endfor %}
+    </div>
+  {% else %}
+    <div class="appointments-empty-state">
+      <span class="appointments-empty-icon">▣</span>
+      {% if selected_filter == 'active' %}
+        <h3>No active appointments</h3>
+        <p>Your upcoming confirmed appointments will appear here after you book a visit.</p>
+        <a class="btn" href="{{ url_for('patient_search') }}">Find a doctor <span aria-hidden="true">→</span></a>
+      {% else %}
+        <h3>No past appointments</h3>
+        <p>Your completed and previous appointments will appear here.</p>
+      {% endif %}
+    </div>
+  {% endif %}
+  <p class="appointments-time-note">Appointment dates and times are displayed in India Standard Time (IST).</p>
+</section>
+{% endblock %}

@@ -734,6 +734,109 @@ def patient_book_appointment():
         return jsonify({'error': 'Appointment service unavailable'}), 502
 
 
+@app.route('/patient/appointments')
+@patient_protected
+def patient_appointments():
+    """Show the signed-in patient's appointments with active/past filtering."""
+    selected_filter = request.args.get('filter', 'active').lower()
+    if selected_filter not in ('active', 'past'):
+        selected_filter = 'active'
+
+    try:
+        response = api('GET', '/appointments')
+        if not response.ok:
+            flash(api_error(response))
+            return render_template(
+                'patient_appointments.html',
+                appointments=[],
+                selected_filter=selected_filter,
+                active_count=0,
+                past_count=0
+            )
+
+        records = response.json().get('appointments', [])
+        now = datetime.now(timezone.utc)
+        appointments = []
+        doctor_cache = {}
+
+        for record in records:
+            raw_start = record.get('start_time_utc')
+            try:
+                start_dt = datetime.fromisoformat(
+                    str(raw_start).replace('Z', '+00:00')
+                )
+                if start_dt.tzinfo is None:
+                    start_dt = start_dt.replace(tzinfo=timezone.utc)
+                else:
+                    start_dt = start_dt.astimezone(timezone.utc)
+            except (TypeError, ValueError):
+                # An invalid/missing timestamp should not be presented as upcoming.
+                start_dt = None
+
+            status = str(record.get('status') or 'UNKNOWN').upper()
+            is_active = status == 'CONFIRMED' and start_dt is not None and start_dt > now
+
+            if start_dt:
+                local_start = start_dt.astimezone(
+                    __import__('zoneinfo').ZoneInfo('Asia/Kolkata')
+                )
+                record['appointment_date'] = local_start.strftime('%A, %d %B %Y')
+                record['appointment_time'] = local_start.strftime('%I:%M %p')
+                record['appointment_datetime'] = local_start.strftime('%d %b %Y, %I:%M %p')
+            else:
+                record['appointment_date'] = 'Date unavailable'
+                record['appointment_time'] = ''
+                record['appointment_datetime'] = 'Date unavailable'
+
+            record['is_active'] = is_active
+            record['display_status'] = status.replace('_', ' ').title()
+            record['doctor'] = {}
+
+            doctor_id = record.get('doctor_id')
+            if doctor_id is not None:
+                doctor_key = str(doctor_id)
+                if doctor_key not in doctor_cache:
+                    try:
+                        doctor_response = api('GET', f'/doctors/{doctor_key}')
+                        doctor_cache[doctor_key] = (
+                            doctor_response.json() if doctor_response.ok else {}
+                        )
+                    except (requests.RequestException, ValueError):
+                        app.logger.exception(
+                            'Unable to load doctor profile for appointment %s',
+                            record.get('appointment_id')
+                        )
+                        doctor_cache[doctor_key] = {}
+                record['doctor'] = doctor_cache[doctor_key]
+
+            appointments.append(record)
+
+        active_appointments = [item for item in appointments if item['is_active']]
+        past_appointments = [item for item in appointments if not item['is_active']]
+        visible_appointments = (
+            active_appointments if selected_filter == 'active' else past_appointments
+        )
+
+        return render_template(
+            'patient_appointments.html',
+            appointments=visible_appointments,
+            selected_filter=selected_filter,
+            active_count=len(active_appointments),
+            past_count=len(past_appointments)
+        )
+
+    except (requests.RequestException, ValueError):
+        app.logger.exception('Unable to load patient appointments')
+        flash('Unable to load appointments right now. Please try again.')
+        return render_template(
+            'patient_appointments.html',
+            appointments=[],
+            selected_filter=selected_filter,
+            active_count=0,
+            past_count=0
+        )
+
+
 # ============================================================
 # PATIENT DOCTOR SEARCH
 # ============================================================

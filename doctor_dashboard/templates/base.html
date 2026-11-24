@@ -33,6 +33,7 @@
       <nav aria-label="Patient portal">
         <a class="{{ 'active' if request.endpoint == 'patient_profile' else '' }}" href="{{ url_for('patient_profile') }}"><span class="nav-icon">◉</span><span>My profile</span></a>
         <a class="{{ 'active' if request.endpoint in ('patient_search','patient_doctor') else '' }}" href="{{ url_for('patient_search') }}"><span class="nav-icon">⌕</span><span>Find doctors</span></a>
+        <a class="{{ 'active' if request.endpoint == 'patient_appointments' else '' }}" href="{{ url_for('patient_appointments') }}"><span class="nav-icon">▣</span><span>My Appointments</span></a>
       </nav>
       <div class="sidebar-note"><span class="sidebar-note-icon">♥</span><div><strong>Your health, simplified</strong><small>Find care that fits your schedule.</small></div></div>
       <form class="logout" method="post" action="{{ url_for('logout') }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button type="submit"><span>↪</span> Sign out</button></form>
@@ -45,7 +46,7 @@
     <header class="topbar">
       <div class="topbar-heading">
         <span class="eyebrow">MEDISLOT <span class="eyebrow-separator">/</span> {{ 'PATIENT' if session.get('role') == 'patient' else 'DOCTOR' if session.get('role') == 'doctor' else 'HEALTHCARE PORTAL' }}</span>
-        <h1>{% if request.endpoint == 'patient_profile' %}My profile{% elif request.endpoint == 'patient_search' %}Find doctors{% elif request.endpoint == 'patient_doctor' %}Doctor details{% elif request.endpoint == 'patient_register' %}Patient registration{% elif request.endpoint == 'patient_login' %}Patient login{% elif request.endpoint == 'profile' %}My profile{% elif request.endpoint == 'consultations' %}Consultations{% elif request.endpoint == 'availability' %}Weekly availability{% elif request.endpoint == 'blackouts' %}Blackout dates{% elif request.endpoint == 'schedule' %}Schedule{% elif request.endpoint == 'register' %}Doctor registration{% elif request.endpoint == 'welcome' %}Welcome{% else %}Doctor login{% endif %}</h1>
+        <h1>{% if request.endpoint == 'patient_profile' %}My profile{% elif request.endpoint == 'patient_search' %}Find doctors{% elif request.endpoint == 'patient_doctor' %}Doctor details{% elif request.endpoint == 'patient_appointments' %}My Appointments{% elif request.endpoint == 'patient_register' %}Patient registration{% elif request.endpoint == 'patient_login' %}Patient login{% elif request.endpoint == 'profile' %}My profile{% elif request.endpoint == 'consultations' %}Consultations{% elif request.endpoint == 'availability' %}Weekly availability{% elif request.endpoint == 'blackouts' %}Blackout dates{% elif request.endpoint == 'schedule' %}Schedule{% elif request.endpoint == 'register' %}Doctor registration{% elif request.endpoint == 'welcome' %}Welcome{% else %}Doctor login{% endif %}</h1>
       </div>
       <div class="topbar-right"><span class="topbar-status"><i></i> Portal online</span><span class="topbar-tag">{{ 'Patient workspace' if session.get('role') == 'patient' else 'Doctor workspace' if session.get('role') == 'doctor' else 'Welcome' }}</span></div>
     </header>
