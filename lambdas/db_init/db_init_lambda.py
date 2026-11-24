@@ -7,6 +7,45 @@ import logging
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
 
+# Columns added to `appointments` by Milestone 5 (booking idempotency / cancellation / one-active-booking guard).
+APPOINTMENT_M5_COLUMNS = {'idempotency_key', 'cancelled_at', 'cancellation_actor', 'active_booking_guard'}
+
+
+def _column_exists(cursor, table, column):
+    cursor.execute(f'SHOW COLUMNS FROM `{table}` LIKE %s', (column,))
+    return cursor.fetchone() is not None
+
+
+def _index_exists(cursor, table, index_name):
+    cursor.execute(f'SHOW INDEX FROM `{table}` WHERE Key_name=%s', (index_name,))
+    return cursor.fetchone() is not None
+
+
+def migrate_milestone5(cursor):
+    """Idempotently bring an existing (pre-Milestone 5) database up to the current schema.
+
+    CREATE TABLE IF NOT EXISTS in schema.sql cannot alter an existing table, so without this the
+    booking INSERT fails with 'Unknown column idempotency_key' and the API returns HTTP 500.
+    Every step checks first, so it is safe to run on every deployment and on fresh databases.
+    """
+    additions = (
+        ('idempotency_key', 'ADD COLUMN idempotency_key VARCHAR(160) NULL'),
+        ('cancelled_at', 'ADD COLUMN cancelled_at DATETIME NULL'),
+        ('cancellation_actor', "ADD COLUMN cancellation_actor ENUM('PATIENT','DOCTOR','SYSTEM') NULL"),
+        ('active_booking_guard',
+         "ADD COLUMN active_booking_guard TINYINT GENERATED ALWAYS AS (CASE WHEN status='CONFIRMED' THEN 1 ELSE NULL END) STORED"),
+    )
+    for column, ddl in additions:
+        if not _column_exists(cursor, 'appointments', column):
+            logger.info('Migrating appointments: %s', ddl)
+            cursor.execute(f'ALTER TABLE appointments {ddl}')
+    if not _index_exists(cursor, 'appointments', 'uq_appointment_idempotency'):
+        cursor.execute('ALTER TABLE appointments ADD UNIQUE KEY uq_appointment_idempotency (idempotency_key)')
+    if not _index_exists(cursor, 'appointments', 'uq_active_patient_slot'):
+        cursor.execute('ALTER TABLE appointments ADD UNIQUE KEY uq_active_patient_slot (patient_id,slot_id,active_booking_guard)')
+    if not _index_exists(cursor, 'refund_ledger', 'uq_refund_appointment'):
+        cursor.execute('ALTER TABLE refund_ledger ADD UNIQUE KEY uq_refund_appointment (appointment_id)')
+
 
 def lambda_handler(event, context):
 
@@ -88,7 +127,11 @@ def lambda_handler(event, context):
             for table in existing.intersection(expected):
                 cursor.execute(f'SHOW COLUMNS FROM `{table}`')
                 actual_columns = {row[0] for row in cursor.fetchall()}
-                if actual_columns != expected[table]:
+                allowed = [expected[table]]
+                if table == 'appointments':
+                    # Legacy layout (pre-Milestone 5) is migrated below; new layout is already current.
+                    allowed.append(expected[table] | APPOINTMENT_M5_COLUMNS)
+                if actual_columns not in allowed:
                     raise ValueError(
                         f'Existing {table} schema differs from finalized design. '
                         'Back up and migrate/reset explicitly before initialization.'
@@ -99,6 +142,10 @@ def lambda_handler(event, context):
 
             for statement in statements:
                 cursor.execute(statement)
+
+        # Idempotent Milestone 5 migration for databases created before booking was added.
+        with connection.cursor() as cursor:
+            migrate_milestone5(cursor)
 
         # Idempotent additive Milestone 4 indexes for existing databases.
         with connection.cursor() as cursor:

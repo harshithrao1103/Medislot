@@ -1,86 +1,53 @@
 {
-  "swagger" : "2.0",
+  "openapi" : "3.0.1",
   "info" : {
-    "version" : "2026-11-05T06:56:27Z",
-    "title" : "medislot-dev-auth-api"
+    "title" : "medislot-dev-auth-api",
+    "version" : "2026-11-06T10:16:14Z"
   },
-  "host" : "6z22fm70cf.execute-api.us-east-1.amazonaws.com",
-  "basePath" : "/dev",
-  "schemes" : [ "https" ],
+  "servers" : [ {
+    "url" : "https://6z22fm70cf.execute-api.us-east-1.amazonaws.com/{basePath}",
+    "variables" : {
+      "basePath" : {
+        "default" : "dev"
+      }
+    }
+  } ],
   "paths" : {
-    "/auth/doctors/login" : {
-      "post" : {
-        "responses" : { }
-      }
-    },
-    "/auth/doctors/register" : {
-      "post" : {
-        "responses" : { }
-      }
-    },
-    "/auth/logout" : {
-      "post" : {
-        "responses" : { },
-        "security" : [ {
-          "medislot-dev-jwt-authorizer" : [ ]
-        } ]
-      }
-    },
-    "/auth/patients/login" : {
-      "post" : {
-        "responses" : { }
-      }
-    },
-    "/auth/patients/register" : {
-      "post" : {
-        "responses" : { }
-      }
-    },
     "/auth/refresh" : {
       "post" : {
-        "responses" : { }
+        "x-amazon-apigateway-integration" : {
+          "uri" : "arn:aws:apigateway:us-east-1:lambda:path/2015-03-31/functions/arn:aws:lambda:us-east-1:598886663370:function:medislot-dev-token/invocations",
+          "httpMethod" : "POST",
+          "passthroughBehavior" : "when_no_match",
+          "responseTransferMode" : "BUFFERED",
+          "type" : "aws_proxy"
+        }
       }
     },
-    "/doctor-auth-check" : {
+    "/doctors/me/consultation-types" : {
       "get" : {
-        "responses" : { },
         "security" : [ {
           "medislot-dev-jwt-authorizer" : [ ]
-        } ]
-      }
-    },
-    "/doctors/me" : {
-      "get" : {
-        "responses" : { },
-        "security" : [ {
-          "medislot-dev-jwt-authorizer" : [ ]
-        } ]
-      },
-      "put" : {
-        "responses" : { },
-        "security" : [ {
-          "medislot-dev-jwt-authorizer" : [ ]
-        } ]
-      }
-    },
-    "/doctors/me/availability" : {
-      "get" : {
-        "responses" : { },
-        "security" : [ {
-          "medislot-dev-jwt-authorizer" : [ ]
-        } ]
+        } ],
+        "x-amazon-apigateway-integration" : {
+          "uri" : "arn:aws:apigateway:us-east-1:lambda:path/2015-03-31/functions/arn:aws:lambda:us-east-1:598886663370:function:medislot-dev-doctor-api/invocations",
+          "httpMethod" : "POST",
+          "passthroughBehavior" : "when_no_match",
+          "responseTransferMode" : "BUFFERED",
+          "type" : "aws_proxy"
+        }
       },
       "post" : {
-        "responses" : { },
         "security" : [ {
           "medislot-dev-jwt-authorizer" : [ ]
-        } ]
-      },
-      "put" : {
-        "responses" : { },
-        "security" : [ {
-          "medislot-dev-jwt-authorizer" : [ ]
-        } ]
+        } ],
+        "x-amazon-apigateway-integration" : {
+          "uri" : "arn:aws:apigateway:us-east-1:lambda:path/2015-03-31/functions/arn:aws:lambda:us-east-1:598886663370:function:medislot-dev-doctor-api/invocations",
+          "httpMethod" : "POST",
+          "passthroughBehavior" : "when_no_match",
+          "responseTransferMode" : "BUFFERED",
+          "type" : "aws_proxy"
+        }
       }
     },
     "/doctors/me/availability/{id}" : {
@@ -89,66 +56,92 @@
           "name" : "id",
           "in" : "path",
           "required" : true,
-          "type" : "string"
+          "schema" : {
+            "type" : "string"
+          }
         } ],
-        "responses" : { },
         "security" : [ {
           "medislot-dev-jwt-authorizer" : [ ]
-        } ]
+        } ],
+        "x-amazon-apigateway-integration" : {
+          "uri" : "arn:aws:apigateway:us-east-1:lambda:path/2015-03-31/functions/arn:aws:lambda:us-east-1:598886663370:function:medislot-dev-doctor-api/invocations",
+          "httpMethod" : "POST",
+          "passthroughBehavior" : "when_no_match",
+          "responseTransferMode" : "BUFFERED",
+          "type" : "aws_proxy"
+        }
       },
       "delete" : {
         "parameters" : [ {
           "name" : "id",
           "in" : "path",
           "required" : true,
-          "type" : "string"
+          "schema" : {
+            "type" : "string"
+          }
         } ],
-        "responses" : { },
         "security" : [ {
           "medislot-dev-jwt-authorizer" : [ ]
-        } ]
+        } ],
+        "x-amazon-apigateway-integration" : {
+          "uri" : "arn:aws:apigateway:us-east-1:lambda:path/2015-03-31/functions/arn:aws:lambda:us-east-1:598886663370:function:medislot-dev-doctor-api/invocations",
+          "httpMethod" : "POST",
+          "passthroughBehavior" : "when_no_match",
+          "responseTransferMode" : "BUFFERED",
+          "type" : "aws_proxy"
+        }
       }
     },
-    "/doctors/me/blackouts" : {
+    "/doctors/me" : {
       "get" : {
-        "responses" : { },
         "security" : [ {
           "medislot-dev-jwt-authorizer" : [ ]
-        } ]
+        } ],
+        "x-amazon-apigateway-integration" : {
+          "uri" : "arn:aws:apigateway:us-east-1:lambda:path/2015-03-31/functions/arn:aws:lambda:us-east-1:598886663370:function:medislot-dev-doctor-api/invocations",
+          "httpMethod" : "POST",
+          "passthroughBehavior" : "when_no_match",
+          "responseTransferMode" : "BUFFERED",
+          "type" : "aws_proxy"
+        }
+      },
+      "put" : {
+        "security" : [ {
+          "medislot-dev-jwt-authorizer" : [ ]
+        } ],
+        "x-amazon-apigateway-integration" : {
+          "uri" : "arn:aws:apigateway:us-east-1:lambda:path/2015-03-31/functions/arn:aws:lambda:us-east-1:598886663370:function:medislot-dev-doctor-api/invocations",
+          "httpMethod" : "POST",
+          "passthroughBehavior" : "when_no_match",
+          "responseTransferMode" : "BUFFERED",
+          "type" : "aws_proxy"
+        }
+      }
+    },
+    "/doctors/me/photo" : {
+      "get" : {
+        "security" : [ {
+          "medislot-dev-jwt-authorizer" : [ ]
+        } ],
+        "x-amazon-apigateway-integration" : {
+          "uri" : "arn:aws:apigateway:us-east-1:lambda:path/2015-03-31/functions/arn:aws:lambda:us-east-1:598886663370:function:medislot-dev-doctor-api/invocations",
+          "httpMethod" : "POST",
+          "passthroughBehavior" : "when_no_match",
+          "responseTransferMode" : "BUFFERED",
+          "type" : "aws_proxy"
+        }
       },
       "post" : {
-        "responses" : { },
         "security" : [ {
           "medislot-dev-jwt-authorizer" : [ ]
-        } ]
-      }
-    },
-    "/doctors/me/blackouts/{id}" : {
-      "delete" : {
-        "parameters" : [ {
-          "name" : "id",
-          "in" : "path",
-          "required" : true,
-          "type" : "string"
         } ],
-        "responses" : { },
-        "security" : [ {
-          "medislot-dev-jwt-authorizer" : [ ]
-        } ]
-      }
-    },
-    "/doctors/me/consultation-types" : {
-      "get" : {
-        "responses" : { },
-        "security" : [ {
-          "medislot-dev-jwt-authorizer" : [ ]
-        } ]
-      },
-      "post" : {
-        "responses" : { },
-        "security" : [ {
-          "medislot-dev-jwt-authorizer" : [ ]
-        } ]
+        "x-amazon-apigateway-integration" : {
+          "uri" : "arn:aws:apigateway:us-east-1:lambda:path/2015-03-31/functions/arn:aws:lambda:us-east-1:598886663370:function:medislot-dev-doctor-api/invocations",
+          "httpMethod" : "POST",
+          "passthroughBehavior" : "when_no_match",
+          "responseTransferMode" : "BUFFERED",
+          "type" : "aws_proxy"
+        }
       }
     },
     "/doctors/me/consultation-types/{id}" : {
@@ -157,60 +150,321 @@
           "name" : "id",
           "in" : "path",
           "required" : true,
-          "type" : "string"
+          "schema" : {
+            "type" : "string"
+          }
         } ],
-        "responses" : { },
         "security" : [ {
           "medislot-dev-jwt-authorizer" : [ ]
-        } ]
+        } ],
+        "x-amazon-apigateway-integration" : {
+          "uri" : "arn:aws:apigateway:us-east-1:lambda:path/2015-03-31/functions/arn:aws:lambda:us-east-1:598886663370:function:medislot-dev-doctor-api/invocations",
+          "httpMethod" : "POST",
+          "passthroughBehavior" : "when_no_match",
+          "responseTransferMode" : "BUFFERED",
+          "type" : "aws_proxy"
+        }
       },
       "delete" : {
         "parameters" : [ {
           "name" : "id",
           "in" : "path",
           "required" : true,
-          "type" : "string"
+          "schema" : {
+            "type" : "string"
+          }
         } ],
-        "responses" : { },
         "security" : [ {
           "medislot-dev-jwt-authorizer" : [ ]
-        } ]
-      }
-    },
-    "/doctors/me/photo" : {
-      "get" : {
-        "responses" : { },
-        "security" : [ {
-          "medislot-dev-jwt-authorizer" : [ ]
-        } ]
-      },
-      "post" : {
-        "responses" : { },
-        "security" : [ {
-          "medislot-dev-jwt-authorizer" : [ ]
-        } ]
-      }
-    },
-    "/doctors/me/schedule" : {
-      "get" : {
-        "responses" : { },
-        "security" : [ {
-          "medislot-dev-jwt-authorizer" : [ ]
-        } ]
+        } ],
+        "x-amazon-apigateway-integration" : {
+          "uri" : "arn:aws:apigateway:us-east-1:lambda:path/2015-03-31/functions/arn:aws:lambda:us-east-1:598886663370:function:medislot-dev-doctor-api/invocations",
+          "httpMethod" : "POST",
+          "passthroughBehavior" : "when_no_match",
+          "responseTransferMode" : "BUFFERED",
+          "type" : "aws_proxy"
+        }
       }
     },
     "/specializations" : {
       "get" : {
-        "responses" : { }
+        "x-amazon-apigateway-integration" : {
+          "uri" : "arn:aws:apigateway:us-east-1:lambda:path/2015-03-31/functions/arn:aws:lambda:us-east-1:598886663370:function:medislot-dev-doctor-register/invocations",
+          "httpMethod" : "POST",
+          "passthroughBehavior" : "when_no_match",
+          "responseTransferMode" : "BUFFERED",
+          "type" : "aws_proxy"
+        }
+      }
+    },
+    "/auth/logout" : {
+      "post" : {
+        "security" : [ {
+          "medislot-dev-jwt-authorizer" : [ ]
+        } ],
+        "x-amazon-apigateway-integration" : {
+          "uri" : "arn:aws:apigateway:us-east-1:lambda:path/2015-03-31/functions/arn:aws:lambda:us-east-1:598886663370:function:medislot-dev-token/invocations",
+          "httpMethod" : "POST",
+          "passthroughBehavior" : "when_no_match",
+          "responseTransferMode" : "BUFFERED",
+          "type" : "aws_proxy"
+        }
+      }
+    },
+    "/doctors/me/availability" : {
+      "get" : {
+        "security" : [ {
+          "medislot-dev-jwt-authorizer" : [ ]
+        } ],
+        "x-amazon-apigateway-integration" : {
+          "uri" : "arn:aws:apigateway:us-east-1:lambda:path/2015-03-31/functions/arn:aws:lambda:us-east-1:598886663370:function:medislot-dev-doctor-api/invocations",
+          "httpMethod" : "POST",
+          "passthroughBehavior" : "when_no_match",
+          "responseTransferMode" : "BUFFERED",
+          "type" : "aws_proxy"
+        }
+      },
+      "put" : {
+        "security" : [ {
+          "medislot-dev-jwt-authorizer" : [ ]
+        } ],
+        "x-amazon-apigateway-integration" : {
+          "uri" : "arn:aws:apigateway:us-east-1:lambda:path/2015-03-31/functions/arn:aws:lambda:us-east-1:598886663370:function:medislot-dev-doctor-api/invocations",
+          "httpMethod" : "POST",
+          "passthroughBehavior" : "when_no_match",
+          "responseTransferMode" : "BUFFERED",
+          "type" : "aws_proxy"
+        }
+      },
+      "post" : {
+        "security" : [ {
+          "medislot-dev-jwt-authorizer" : [ ]
+        } ],
+        "x-amazon-apigateway-integration" : {
+          "uri" : "arn:aws:apigateway:us-east-1:lambda:path/2015-03-31/functions/arn:aws:lambda:us-east-1:598886663370:function:medislot-dev-doctor-api/invocations",
+          "httpMethod" : "POST",
+          "passthroughBehavior" : "when_no_match",
+          "responseTransferMode" : "BUFFERED",
+          "type" : "aws_proxy"
+        }
+      }
+    },
+    "/doctor-auth-check" : {
+      "get" : {
+        "security" : [ {
+          "medislot-dev-jwt-authorizer" : [ ]
+        } ],
+        "x-amazon-apigateway-integration" : {
+          "uri" : "arn:aws:apigateway:us-east-1:lambda:path/2015-03-31/functions/arn:aws:lambda:us-east-1:598886663370:function:medislot-dev-auth-test/invocations",
+          "httpMethod" : "POST",
+          "passthroughBehavior" : "when_no_match",
+          "responseTransferMode" : "BUFFERED",
+          "type" : "aws_proxy"
+        }
+      }
+    },
+    "/doctors/me/blackouts/{id}" : {
+      "delete" : {
+        "parameters" : [ {
+          "name" : "id",
+          "in" : "path",
+          "required" : true,
+          "schema" : {
+            "type" : "string"
+          }
+        } ],
+        "security" : [ {
+          "medislot-dev-jwt-authorizer" : [ ]
+        } ],
+        "x-amazon-apigateway-integration" : {
+          "uri" : "arn:aws:apigateway:us-east-1:lambda:path/2015-03-31/functions/arn:aws:lambda:us-east-1:598886663370:function:medislot-dev-doctor-api/invocations",
+          "httpMethod" : "POST",
+          "passthroughBehavior" : "when_no_match",
+          "responseTransferMode" : "BUFFERED",
+          "type" : "aws_proxy"
+        }
+      }
+    },
+    "/doctors/{doctorId}" : {
+      "get" : {
+        "parameters" : [ {
+          "name" : "doctorId",
+          "in" : "path",
+          "required" : true,
+          "schema" : {
+            "type" : "string"
+          }
+        } ],
+        "x-amazon-apigateway-integration" : {
+          "uri" : "arn:aws:apigateway:us-east-1:lambda:path/2015-03-31/functions/arn:aws:lambda:us-east-1:598886663370:function:medislot-dev-patient-domain/invocations",
+          "httpMethod" : "POST",
+          "passthroughBehavior" : "when_no_match",
+          "responseTransferMode" : "BUFFERED",
+          "type" : "aws_proxy"
+        }
+      }
+    },
+    "/doctors/me/blackouts" : {
+      "get" : {
+        "security" : [ {
+          "medislot-dev-jwt-authorizer" : [ ]
+        } ],
+        "x-amazon-apigateway-integration" : {
+          "uri" : "arn:aws:apigateway:us-east-1:lambda:path/2015-03-31/functions/arn:aws:lambda:us-east-1:598886663370:function:medislot-dev-doctor-api/invocations",
+          "httpMethod" : "POST",
+          "passthroughBehavior" : "when_no_match",
+          "responseTransferMode" : "BUFFERED",
+          "type" : "aws_proxy"
+        }
+      },
+      "post" : {
+        "security" : [ {
+          "medislot-dev-jwt-authorizer" : [ ]
+        } ],
+        "x-amazon-apigateway-integration" : {
+          "uri" : "arn:aws:apigateway:us-east-1:lambda:path/2015-03-31/functions/arn:aws:lambda:us-east-1:598886663370:function:medislot-dev-doctor-api/invocations",
+          "httpMethod" : "POST",
+          "passthroughBehavior" : "when_no_match",
+          "responseTransferMode" : "BUFFERED",
+          "type" : "aws_proxy"
+        }
+      }
+    },
+    "/patients/me" : {
+      "get" : {
+        "security" : [ {
+          "medislot-dev-jwt-authorizer" : [ ]
+        } ],
+        "x-amazon-apigateway-integration" : {
+          "uri" : "arn:aws:apigateway:us-east-1:lambda:path/2015-03-31/functions/arn:aws:lambda:us-east-1:598886663370:function:medislot-dev-patient-domain/invocations",
+          "httpMethod" : "POST",
+          "passthroughBehavior" : "when_no_match",
+          "responseTransferMode" : "BUFFERED",
+          "type" : "aws_proxy"
+        }
+      },
+      "put" : {
+        "security" : [ {
+          "medislot-dev-jwt-authorizer" : [ ]
+        } ],
+        "x-amazon-apigateway-integration" : {
+          "uri" : "arn:aws:apigateway:us-east-1:lambda:path/2015-03-31/functions/arn:aws:lambda:us-east-1:598886663370:function:medislot-dev-patient-domain/invocations",
+          "httpMethod" : "POST",
+          "passthroughBehavior" : "when_no_match",
+          "responseTransferMode" : "BUFFERED",
+          "type" : "aws_proxy"
+        }
+      },
+      "delete" : {
+        "security" : [ {
+          "medislot-dev-jwt-authorizer" : [ ]
+        } ],
+        "x-amazon-apigateway-integration" : {
+          "uri" : "arn:aws:apigateway:us-east-1:lambda:path/2015-03-31/functions/arn:aws:lambda:us-east-1:598886663370:function:medislot-dev-patient-domain/invocations",
+          "httpMethod" : "POST",
+          "passthroughBehavior" : "when_no_match",
+          "responseTransferMode" : "BUFFERED",
+          "type" : "aws_proxy"
+        }
+      }
+    },
+    "/doctors/{doctorId}/slots" : {
+      "get" : {
+        "parameters" : [ {
+          "name" : "doctorId",
+          "in" : "path",
+          "required" : true,
+          "schema" : {
+            "type" : "string"
+          }
+        } ],
+        "x-amazon-apigateway-integration" : {
+          "uri" : "arn:aws:apigateway:us-east-1:lambda:path/2015-03-31/functions/arn:aws:lambda:us-east-1:598886663370:function:medislot-dev-patient-domain/invocations",
+          "httpMethod" : "POST",
+          "passthroughBehavior" : "when_no_match",
+          "responseTransferMode" : "BUFFERED",
+          "type" : "aws_proxy"
+        }
+      }
+    },
+    "/doctors/me/schedule" : {
+      "get" : {
+        "security" : [ {
+          "medislot-dev-jwt-authorizer" : [ ]
+        } ],
+        "x-amazon-apigateway-integration" : {
+          "uri" : "arn:aws:apigateway:us-east-1:lambda:path/2015-03-31/functions/arn:aws:lambda:us-east-1:598886663370:function:medislot-dev-doctor-api/invocations",
+          "httpMethod" : "POST",
+          "passthroughBehavior" : "when_no_match",
+          "responseTransferMode" : "BUFFERED",
+          "type" : "aws_proxy"
+        }
+      }
+    },
+    "/auth/patients/register" : {
+      "post" : {
+        "x-amazon-apigateway-integration" : {
+          "uri" : "arn:aws:apigateway:us-east-1:lambda:path/2015-03-31/functions/arn:aws:lambda:us-east-1:598886663370:function:medislot-dev-patient-register/invocations",
+          "httpMethod" : "POST",
+          "passthroughBehavior" : "when_no_match",
+          "responseTransferMode" : "BUFFERED",
+          "type" : "aws_proxy"
+        }
+      }
+    },
+    "/doctors" : {
+      "get" : {
+        "x-amazon-apigateway-integration" : {
+          "uri" : "arn:aws:apigateway:us-east-1:lambda:path/2015-03-31/functions/arn:aws:lambda:us-east-1:598886663370:function:medislot-dev-patient-domain/invocations",
+          "httpMethod" : "POST",
+          "passthroughBehavior" : "when_no_match",
+          "responseTransferMode" : "BUFFERED",
+          "type" : "aws_proxy"
+        }
+      }
+    },
+    "/auth/doctors/login" : {
+      "post" : {
+        "x-amazon-apigateway-integration" : {
+          "uri" : "arn:aws:apigateway:us-east-1:lambda:path/2015-03-31/functions/arn:aws:lambda:us-east-1:598886663370:function:medislot-dev-login/invocations",
+          "httpMethod" : "POST",
+          "passthroughBehavior" : "when_no_match",
+          "responseTransferMode" : "BUFFERED",
+          "type" : "aws_proxy"
+        }
+      }
+    },
+    "/auth/doctors/register" : {
+      "post" : {
+        "x-amazon-apigateway-integration" : {
+          "uri" : "arn:aws:apigateway:us-east-1:lambda:path/2015-03-31/functions/arn:aws:lambda:us-east-1:598886663370:function:medislot-dev-doctor-register/invocations",
+          "httpMethod" : "POST",
+          "passthroughBehavior" : "when_no_match",
+          "responseTransferMode" : "BUFFERED",
+          "type" : "aws_proxy"
+        }
+      }
+    },
+    "/auth/patients/login" : {
+      "post" : {
+        "x-amazon-apigateway-integration" : {
+          "uri" : "arn:aws:apigateway:us-east-1:lambda:path/2015-03-31/functions/arn:aws:lambda:us-east-1:598886663370:function:medislot-dev-login/invocations",
+          "httpMethod" : "POST",
+          "passthroughBehavior" : "when_no_match",
+          "responseTransferMode" : "BUFFERED",
+          "type" : "aws_proxy"
+        }
       }
     }
   },
-  "securityDefinitions" : {
-    "medislot-dev-jwt-authorizer" : {
-      "type" : "apiKey",
-      "name" : "Authorization",
-      "in" : "header",
-      "x-amazon-apigateway-authtype" : "custom"
+  "components" : {
+    "securitySchemes" : {
+      "medislot-dev-jwt-authorizer" : {
+        "type" : "apiKey",
+        "name" : "Authorization",
+        "in" : "header",
+        "x-amazon-apigateway-authtype" : "custom"
+      }
     }
   },
   "x-amazon-apigateway-security-policy" : "TLS_1_0"
