@@ -1002,7 +1002,14 @@ def blackouts(event, uid, method, item_id, correlation):
                             WHERE a.doctor_id = b.doctor_id
                               AND a.status = 'CONFIRMED'
                               AND DATE(CONVERT_TZ(a.start_time_utc, '+00:00', '+05:30')) = b.blackout_date
-                        ) AS active_appointments
+                        ) AS active_appointments,
+                        CASE WHEN (
+                            SELECT COUNT(*)
+                            FROM appointments a
+                            WHERE a.doctor_id = b.doctor_id
+                              AND a.status = 'CONFIRMED'
+                              AND DATE(CONVERT_TZ(a.start_time_utc, '+00:00', '+05:30')) = b.blackout_date
+                        ) = 0 THEN 'APPLIED' ELSE 'PENDING_CANCELLATIONS' END AS status
                     FROM doctor_blackouts b
                     WHERE b.doctor_id = %s
                     ORDER BY b.blackout_date
@@ -1199,9 +1206,9 @@ def schedule(event, uid, correlation):
     # 2. CHECK WHETHER THE REQUESTED DATE IS A DOCTOR BLACKOUT
     # ========================================================
 
-    # Return an empty schedule immediately for blackout dates.
-    # This makes the dashboard reflect the change without waiting for
-    # the asynchronous DynamoDB reconciliation to finish.
+    # Determine whether this date is blacked out. Do not return an empty
+    # schedule here: already-booked appointments must remain visible to the
+    # doctor until the patient or doctor explicitly cancels them.
     blackout_conn = db_connection()
     try:
         with blackout_conn.cursor() as blackout_cur:
@@ -1215,16 +1222,7 @@ def schedule(event, uid, correlation):
                 """,
                 (uid, day)
             )
-            if blackout_cur.fetchone():
-                return respond(
-                    200,
-                    {
-                        'date': day.isoformat(),
-                        'timezone': 'Asia/Kolkata',
-                        'slots': []
-                    },
-                    correlation
-                )
+            is_blackout = blackout_cur.fetchone() is not None
     finally:
         blackout_conn.close()
 
@@ -1365,6 +1363,16 @@ def schedule(event, uid, correlation):
             slot['slotId'],
             []
         )
+
+    # On a blackout date, show only slots that still have a confirmed
+    # appointment. Free slots must disappear, while booked appointments
+    # remain visible until either party cancels them.
+    if is_blackout:
+        items = [
+            slot for slot in items
+            if any(appointment.get('status') == 'CONFIRMED'
+                   for appointment in slot.get('appointments', []))
+        ]
 
     # ========================================================
     # 12. RETURN DAILY SCHEDULE RESPONSE
