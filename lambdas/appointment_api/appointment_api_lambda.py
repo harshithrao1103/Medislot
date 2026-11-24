@@ -40,6 +40,10 @@ def db_connection():
 log = logging.getLogger("medislot.appointments")
 log.setLevel(logging.INFO)
 _ddb = boto3.resource("dynamodb")
+# Plain low-level client: _release_seat_once() writes explicit AttributeValue maps ({"S": ...}).
+# Do NOT use _slots.meta.client for that: it belongs to the boto3 *resource* and re-serialises
+# values, turning {"S": "x"} into a Map and making DynamoDB reject the transaction.
+_ddb_client = boto3.client("dynamodb")
 _ssm = boto3.client("ssm")
 _events = boto3.client("events")
 _slots = _ddb.Table(os.environ["SLOTS_TABLE"])
@@ -595,6 +599,14 @@ def cancel_appointment(event, correlation):
             _outbox(cur, "APPOINTMENT", appointment_id, "AppointmentCancelled", {"appointmentId": appointment_id, "actor": "PATIENT", "refundPercentage": str(percentage), "refundAmount": str(refund)})
             _outbox(cur, "SLOT", appt["slot_id"], "SlotSeatFreed", {"doctorId": appt["doctor_id"], "slotId": appt["slot_id"], "slotKey": slot["slotKey"], "appointmentId": appointment_id})
         conn.commit()
+        # Free the seat immediately (best effort). _release_seat_once is idempotent (keyed by appointment id),
+        # so if this fails the PENDING SlotSeatFreed outbox row is retried by the scheduler, and if it succeeds
+        # the later dispatcher run will not release the seat a second time.
+        try:
+            _release_seat_once({"appointmentId": appointment_id, "doctorId": appt["doctor_id"],
+                                "slotId": appt["slot_id"], "slotKey": slot["slotKey"]})
+        except Exception:
+            log.exception("Immediate seat release failed; outbox dispatcher will retry appointmentId=%s", appointment_id)
         _metric("CancellationsByTier", 1, {"Environment": os.environ.get("ENVIRONMENT", "unknown"), "Tier": tier})
         return response(200, {"appointmentId": appointment_id, "status": "CANCELLED_BY_PATIENT", "refundPercentage": str(percentage), "refundAmount": str(refund), "deductionAmount": str(deduction), "refundTier": tier, "reason": cancellation_reason}, correlation)
     except Exception:
@@ -838,7 +850,7 @@ def _release_seat_once(payload):
     slot_key = str(payload["slotKey"])
 
     release_key = f"seat-release#{appointment_id}"
-    client = _slots.meta.client
+    client = _ddb_client
     now = int(time.time())
 
     try:
@@ -923,25 +935,31 @@ def dispatch_outbox(event, correlation):
             cur.execute("SELECT event_id,event_type,payload FROM event_outbox WHERE status='PENDING' ORDER BY created_at LIMIT %s FOR UPDATE SKIP LOCKED", (limit,))
             rows = cur.fetchall()
         for row in rows:
-            payload = row["payload"]
-            if isinstance(payload, str):
-                payload = json.loads(payload)
-            if row["event_type"] == "SlotSeatFreed":
-                payload["slotKey"] = payload.get("slotKey") or _slot(payload["doctorId"], payload["slotId"])["slotKey"]
-                _release_seat_once(payload)
-            result = _events.put_events(Entries=[{
-                "EventBusName": os.environ["EVENT_BUS_NAME"],
-                "Source": "medislot.appointments",
-                "DetailType": row["event_type"],
-                "Detail": json.dumps(payload, default=_json_safe, separators=(",", ":")),
-            }])
-            if result.get("FailedEntryCount", 0) == 0:
+            try:
+                payload = row["payload"]
+                if isinstance(payload, str):
+                    payload = json.loads(payload)
+                if row["event_type"] == "SlotSeatFreed":
+                    payload["slotKey"] = payload.get("slotKey") or _slot(payload["doctorId"], payload["slotId"])["slotKey"]
+                    _release_seat_once(payload)
+                result = _events.put_events(Entries=[{
+                    "EventBusName": os.environ["EVENT_BUS_NAME"],
+                    "Source": "medislot.appointments",
+                    "DetailType": row["event_type"],
+                    "Detail": json.dumps(payload, default=_json_safe, separators=(",", ":")),
+                }])
+                if result.get("FailedEntryCount", 0) == 0:
+                    with conn.cursor() as cur:
+                        cur.execute("UPDATE event_outbox SET status='PUBLISHED',published_at=UTC_TIMESTAMP(),attempt_count=attempt_count+1 WHERE event_id=%s AND status='PENDING'", (row["event_id"],))
+                    published += 1
+                else:
+                    with conn.cursor() as cur:
+                        cur.execute("UPDATE event_outbox SET attempt_count=attempt_count+1,last_error=%s WHERE event_id=%s", (json.dumps(result.get("Entries", []))[:1000], row["event_id"]))
+            except Exception as exc:
+                # Record the failure on this row and keep going so it cannot block later events.
+                log.exception("Outbox event failed event_id=%s type=%s", row.get("event_id"), row.get("event_type"))
                 with conn.cursor() as cur:
-                    cur.execute("UPDATE event_outbox SET status='PUBLISHED',published_at=UTC_TIMESTAMP(),attempt_count=attempt_count+1 WHERE event_id=%s AND status='PENDING'", (row["event_id"],))
-                published += 1
-            else:
-                with conn.cursor() as cur:
-                    cur.execute("UPDATE event_outbox SET attempt_count=attempt_count+1,last_error=%s WHERE event_id=%s", (json.dumps(result.get("Entries", []))[:1000], row["event_id"]))
+                    cur.execute("UPDATE event_outbox SET attempt_count=attempt_count+1,last_error=%s WHERE event_id=%s", (str(exc)[:1000], row["event_id"]))
         conn.commit()
         return {"published": published, "examined": len(rows)}
     finally:
