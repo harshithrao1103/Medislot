@@ -285,3 +285,166 @@
 .appointments-pagination-controls .disabled {
   opacity: .45;
 }
+
+
+/* -------------------------------------------------------------------------
+   MediSlot premium workspace refresh
+   Visual-only layer: keeps existing routes, forms, controls and behaviour.
+   ------------------------------------------------------------------------- */
+:root {
+  --ink: #142f43;
+  --muted: #6b7f8e;
+  --line: #e2eaf0;
+  --surface: #ffffff;
+  --teal: #087f78;
+  --teal-dark: #066b67;
+  --shadow: 0 14px 40px rgba(20, 47, 67, .075);
+}
+body {
+  background:
+    radial-gradient(ellipse at 78% -12%, rgba(37, 174, 157, .12), transparent 34%),
+    radial-gradient(ellipse at 5% 35%, rgba(81, 145, 190, .07), transparent 28%),
+    #f4f7fa;
+}
+.sidebar {
+  padding: 28px 17px 20px;
+  box-shadow: 12px 0 38px rgba(11, 35, 52, .08);
+  border-right: 1px solid rgba(255,255,255,.05);
+}
+.brand { margin-bottom: 4px; }
+.sidebar nav { gap: 7px; }
+.sidebar nav a { min-height: 45px; }
+.sidebar nav a.active {
+  background: linear-gradient(105deg, rgba(34,137,132,.42), rgba(37,89,107,.55));
+  border-color: rgba(141,226,215,.18);
+}
+.main-column { min-width: 0; }
+.topbar {
+  min-height: 104px;
+  padding: 20px clamp(20px, 4vw, 58px);
+  background: rgba(255,255,255,.82);
+  border-bottom: 1px solid rgba(218,230,237,.9);
+  backdrop-filter: blur(16px);
+}
+.topbar h1 { font-size: clamp(23px, 2vw, 29px); letter-spacing: -1px; }
+.topbar-tag { box-shadow: 0 4px 12px rgba(8,127,120,.06); }
+main { padding-top: clamp(24px, 3vw, 42px); }
+section {
+  border-color: rgba(218,229,236,.92);
+  border-radius: 20px;
+  box-shadow: 0 10px 32px rgba(25,55,75,.045);
+}
+section.card { background: rgba(255,255,255,.96); }
+section > h2 { font-size: clamp(22px, 2vw, 27px); }
+.section-kicker, .appointment-card-kicker, .portal-label {
+  letter-spacing: 1.25px;
+}
+button, .btn, .secondary-button, .danger-button {
+  border-radius: 10px;
+  font-weight: 750;
+}
+button:not(:disabled):hover, .btn:hover {
+  transform: translateY(-1px);
+}
+input, select, textarea {
+  min-height: 44px;
+  border-radius: 11px;
+  border-color: #dce6ec;
+  background: #fbfdfe;
+}
+input:focus, select:focus, textarea:focus {
+  border-color: #159d91;
+  box-shadow: 0 0 0 4px rgba(21,157,145,.12);
+}
+.appointment-filters {
+  border-color: #e1eaf0;
+  border-radius: 16px;
+  background: linear-gradient(145deg,#f8fbfc,#f3f8f8);
+  padding: 20px;
+}
+.doctor-appointment-card, .patient-appointment-card, .doctor-search-card,
+.portal-card {
+  border: 1px solid #e4edf1;
+  border-radius: 17px;
+  box-shadow: 0 7px 22px rgba(22,52,71,.045);
+  transition: transform .18s ease, box-shadow .18s ease, border-color .18s ease;
+}
+.doctor-appointment-card:hover, .patient-appointment-card:hover,
+.doctor-search-card:hover, .portal-card:hover {
+  transform: translateY(-2px);
+  border-color: #cfe4e2;
+  box-shadow: 0 13px 30px rgba(22,52,71,.075);
+}
+.appointment-status {
+  border-radius: 999px;
+  padding: 7px 12px;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: .25px;
+}
+.appointments-pagination { color: #718492; }
+.appointments-pagination-controls .current {
+  background: #087f78;
+  border-color: #087f78;
+}
+.alert {
+  border-radius: 13px;
+  box-shadow: 0 6px 18px rgba(20,47,67,.04);
+}
+footer {
+  padding: 20px clamp(20px, 4vw, 58px);
+  border-top: 1px solid #e3ebef;
+  color: #8495a0;
+  font-size: 11px;
+}
+.welcome-hero {
+  overflow: hidden;
+  border: 1px solid rgba(211,229,232,.9);
+  border-radius: 24px;
+  box-shadow: 0 18px 48px rgba(22,58,75,.08);
+}
+.welcome-hero h2 { letter-spacing: -1.8px; }
+.portal-card { padding: 25px; }
+.doctor-search-card { padding: 20px; }
+@media (max-width: 900px) {
+  .app-shell { grid-template-columns: 220px minmax(0,1fr); }
+  .sidebar { padding-inline: 13px; }
+}
+@media (max-width: 720px) {
+  .app-shell { display: flex; flex-direction: column; }
+  .sidebar {
+    position: relative;
+    top: auto;
+    height: auto;
+    min-height: 0;
+    padding: 14px 16px;
+    gap: 13px;
+    overflow: visible;
+  }
+  .brand { padding: 0 4px; }
+  .sidebar .nav-label, .sidebar-note, .sidebar-welcome, .sidebar-bottom { display: none; }
+  .sidebar nav {
+    display: flex;
+    gap: 7px;
+    overflow-x: auto;
+    padding: 2px 0 5px;
+    scrollbar-width: thin;
+  }
+  .sidebar nav a {
+    flex: 0 0 auto;
+    min-height: 39px;
+    padding: 9px 12px;
+    white-space: nowrap;
+    font-size: 12px;
+  }
+  .logout { position: absolute; right: 15px; top: 17px; width: auto; }
+  .logout button { width: auto; padding: 8px 11px; }
+  .topbar { min-height: 82px; padding: 15px 18px; }
+  .topbar-status { display: none; }
+  main { padding: 20px 14px 30px; }
+  section { padding: 20px 16px; border-radius: 16px; }
+  footer { padding: 16px; gap: 8px; flex-wrap: wrap; }
+}
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { scroll-behavior: auto !important; transition-duration: .01ms !important; }
+}
