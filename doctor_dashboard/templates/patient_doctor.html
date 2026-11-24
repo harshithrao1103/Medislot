@@ -72,7 +72,7 @@
           >
             <div class="time-slot-top">
               <span class="time-slot-time">{{ slot.local_time }}</span>
-              <span class="time-slot-state">{% if slot.free_seats > 0 %}✓ Available{% else %}Fully booked{% endif %}</span>
+              <span class="time-slot-state">{% if slot.free_seats > 0 %}✓ Available{% else %}Already booked{% endif %}</span>
             </div>
             <div class="time-slot-meta">
               {{ slot.consultation_type_name }}
@@ -80,14 +80,14 @@
               {% if slot.consultation_fee is not none %} · ₹{{ slot.consultation_fee }}{% endif %}
             </div>
             <div class="time-slot-seats">
-              {% if slot.free_seats > 0 %}{{ slot.free_seats }} seat{% if slot.free_seats != 1 %}s{% endif %} remaining{% else %}0 seats remaining{% endif %}
+              {% if slot.free_seats > 0 %}{{ slot.free_seats }} seat{% if slot.free_seats != 1 %}s{% endif %} remaining{% else %}Booked by another patient · 0 seats remaining{% endif %}
             </div>
             {% if slot.free_seats > 0 %}
             <button type="button" class="slot-book-button" data-book-slot aria-pressed="false">
               Book appointment <span aria-hidden="true">→</span>
             </button>
             {% else %}
-            <span class="slot-book-unavailable">No seats available</span>
+            <span class="slot-book-unavailable">Already booked · cannot book this slot</span>
             {% endif %}
           </article>
           {% endfor %}

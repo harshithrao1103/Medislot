@@ -625,9 +625,8 @@ def slots(doctor_id, event, correlation):
         held_count = int(slot.get("heldCount", 0))
         free_seats = max(0, capacity - booked_count - held_count)
 
-        # Skip slots that are completely full.
-        if free_seats <= 0:
-            continue
+        # Keep fully booked slots visible to patients. The UI marks them as
+        # unavailable; the booking API remains the final capacity guard.
 
         # Add the valid slot to the patient response.
         items.append(

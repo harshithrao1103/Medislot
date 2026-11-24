@@ -678,7 +678,14 @@ def doctor_appointments(event, correlation):
                 args.append(status)
             sql += " ORDER BY start_time_utc LIMIT 100"
             cur.execute(sql, tuple(args))
-            return response(200, {"appointments": cur.fetchall()}, correlation)
+            appointments = cur.fetchall()
+            # Include the canonical slot end time so the dashboard can render
+            # the completion action accurately. The outcome endpoint validates
+            # the same condition independently on the server.
+            for appointment in appointments:
+                slot = _slot(appointment["doctor_id"], appointment["slot_id"])
+                appointment["end_time_utc"] = (slot or {}).get("endTimeUTC")
+            return response(200, {"appointments": appointments}, correlation)
     finally:
         conn.close()
 
@@ -695,12 +702,26 @@ def appointment_outcome(event, correlation):
     conn = db_connection()
     try:
         with conn.cursor() as cur:
-            cur.execute("SELECT appointment_id,patient_id,doctor_id,fee,status,start_time_utc FROM appointments WHERE appointment_id=%s AND doctor_id=%s FOR UPDATE", (int(raw), doctor_id))
+            cur.execute("SELECT appointment_id,patient_id,doctor_id,slot_id,fee,status,start_time_utc FROM appointments WHERE appointment_id=%s AND doctor_id=%s FOR UPDATE", (int(raw), doctor_id))
             appt = cur.fetchone()
             if not appt:
                 raise ApiError(404, "Appointment not found")
             if appt["status"] != "CONFIRMED":
                 raise ApiError(409, "Only confirmed appointments can receive an outcome")
+            if outcome == "COMPLETED":
+                slot = _slot(appt["doctor_id"], appt["slot_id"])
+                if not slot or not slot.get("endTimeUTC"):
+                    raise ApiError(500, "Unable to verify the scheduled appointment end time")
+                try:
+                    end_time = datetime.fromisoformat(str(slot["endTimeUTC"]).replace("Z", "+00:00"))
+                    if end_time.tzinfo is None:
+                        end_time = end_time.replace(tzinfo=timezone.utc)
+                    else:
+                        end_time = end_time.astimezone(timezone.utc)
+                except (TypeError, ValueError):
+                    raise ApiError(500, "The scheduled appointment end time is invalid")
+                if datetime.now(timezone.utc) < end_time:
+                    raise ApiError(409, "Appointment can be marked completed only after its scheduled end time", {"eligibleAt": end_time.isoformat()})
             if outcome == "NO_SHOW":
                 start = appt["start_time_utc"]
                 if start.tzinfo is None:

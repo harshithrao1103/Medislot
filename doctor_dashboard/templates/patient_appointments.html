@@ -79,6 +79,17 @@
               <form method="post" class="appointment-cancel-form" onsubmit="return confirm('Cancel this appointment? The refund will follow MediSlot policy.');">
                 <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                 <input type="hidden" name="appointment_id" value="{{ appointment.get('appointment_id') }}">
+                <div class="cancellation-refund-policy" aria-label="MediSlot cancellation refund policy">
+                  <strong>Refund policy</strong>
+                  <ul>
+                    <li>More than 24 hours before: 100%</li>
+                    <li>12–24 hours before: 75%</li>
+                    <li>3–12 hours before: 50%</li>
+                    <li>Less than 3 hours before: 0%</li>
+                  </ul>
+                  <p class="refund-estimate">Estimated refund: <strong>₹{{ '%.2f'|format(appointment.get('refund_estimate_amount') or 0) }}</strong> ({{ appointment.get('refund_estimate_percentage') or 0 }}%)</p>
+                  <small>Estimate only. The backend calculates the final amount when cancellation is submitted.</small>
+                </div>
                 <label>Cancellation reason
                   <input name="reason" maxlength="200" required placeholder="Tell us why you are cancelling">
                 </label>

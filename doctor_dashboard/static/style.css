@@ -176,3 +176,12 @@
 .doctor-appointment-actions .secondary-button{color:#31566a}
 .no-show-wait{align-self:center;color:#758896;font-size:11px}
 @media(max-width:700px){.doctor-appointment-actions{display:grid}.doctor-appointment-actions form{max-width:none}}
+
+/* Refund preview and scheduled appointment completion guard */
+.cancellation-refund-policy{display:grid;gap:7px;padding:12px 14px;border:1px solid #d7e9e4;border-radius:11px;background:#f5fbf8;color:#315d51;font-size:12px}
+.cancellation-refund-policy ul{margin:0;padding-left:18px;display:grid;gap:3px}
+.cancellation-refund-policy .refund-estimate{margin:2px 0 0;font-size:13px}
+.cancellation-refund-policy .refund-estimate strong{color:#087e58}
+.cancellation-refund-policy small{color:#70877e;line-height:1.45}
+.doctor-appointment-actions button:disabled{opacity:.48;cursor:not-allowed;filter:grayscale(.2)}
+.completion-wait{display:block;color:#758896;font-size:11px;margin-top:5px}

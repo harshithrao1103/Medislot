@@ -470,11 +470,20 @@ def doctor_appointments_page():
             item['appointment_time'] = local.strftime('%I:%M %p')
             item['no_show_eligible'] = now >= start + timedelta(minutes=5)
             item['seconds_until_no_show'] = max(0, int((start + timedelta(minutes=5) - now).total_seconds()))
+            raw_end = item.get('end_time_utc') or item.get('endTimeUTC')
+            end = datetime.fromisoformat(str(raw_end).replace('Z', '+00:00'))
+            if end.tzinfo is None:
+                end = end.replace(tzinfo=timezone.utc)
+            end_utc = end.astimezone(timezone.utc)
+            item['completion_eligible'] = now >= end_utc
+            item['completion_at_utc'] = end_utc.isoformat()
         except (TypeError, ValueError):
             item['appointment_date'] = 'Date unavailable'
             item['appointment_time'] = ''
             item['no_show_eligible'] = False
             item['seconds_until_no_show'] = 0
+            item['completion_eligible'] = False
+            item['completion_at_utc'] = None
         item['display_status'] = str(item.get('status', 'UNKNOWN')).replace('_', ' ').title()
     return render_template('doctor_appointments.html', appointments=(data or {}).get('appointments', []))
 
@@ -867,6 +876,24 @@ def patient_appointments():
             record['is_active'] = is_active
             record['display_status'] = status.replace('_', ' ').title()
             record['refund'] = refund_by_appointment.get(str(record.get('appointment_id')))
+            record['refund_estimate_percentage'] = None
+            record['refund_estimate_amount'] = None
+            if is_active and start_dt is not None:
+                hours_remaining = (start_dt - now).total_seconds() / 3600.0
+                if hours_remaining > 24:
+                    refund_percentage = 100.0
+                elif hours_remaining >= 12:
+                    refund_percentage = 75.0
+                elif hours_remaining >= 3:
+                    refund_percentage = 50.0
+                else:
+                    refund_percentage = 0.0
+                try:
+                    fee_amount = float(record.get('fee') or 0)
+                except (TypeError, ValueError):
+                    fee_amount = 0.0
+                record['refund_estimate_percentage'] = refund_percentage
+                record['refund_estimate_amount'] = round(fee_amount * refund_percentage / 100.0, 2)
             record['doctor'] = {}
 
             doctor_id = record.get('doctor_id')

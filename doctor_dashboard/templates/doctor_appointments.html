@@ -28,7 +28,8 @@
             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
             <input type="hidden" name="appointment_id" value="{{ item.get('appointment_id') }}">
             <input type="hidden" name="action" value="COMPLETED">
-            <button type="submit" class="secondary-button">Mark completed</button>
+            <button type="submit" class="secondary-button" data-completion-at="{{ item.get('completion_at_utc') or '' }}" {% if not item.get('completion_eligible') %}disabled aria-disabled="true" title="Available after the scheduled appointment end time"{% endif %}>Mark completed</button>
+            {% if not item.get('completion_eligible') %}<small class="completion-wait">Mark completed becomes available after the scheduled end time.</small>{% endif %}
           </form>
           {% if item.get('no_show_eligible') %}
           <form method="post" onsubmit="return confirm('Mark this patient as no-show? No refund will be recorded.');">
@@ -45,4 +46,27 @@
     </div>
   {% else %}<div class="appointments-empty-state"><h3>No appointments found</h3><p>Patient bookings will appear here.</p></div>{% endif %}
 </section>
+<script>
+(() => {
+  document.querySelectorAll('[data-completion-at]').forEach((button) => {
+    if (!button.disabled) return;
+    const endAt = Date.parse(button.dataset.completionAt || '');
+    if (!Number.isFinite(endAt)) return;
+    const enable = () => {
+      if (Date.now() >= endAt) {
+        button.disabled = false;
+        button.removeAttribute('aria-disabled');
+        button.removeAttribute('title');
+        const note = button.parentElement.querySelector('.completion-wait');
+        if (note) note.remove();
+        return true;
+      }
+      return false;
+    };
+    const remaining = endAt - Date.now();
+    if (remaining <= 0) { enable(); return; }
+    window.setTimeout(enable, Math.min(remaining, 2147483000));
+  });
+})();
+</script>
 {% endblock %}
