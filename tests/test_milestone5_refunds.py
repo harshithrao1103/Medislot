@@ -24,17 +24,17 @@ sys.modules.setdefault("pymysql", pymysql_stub)
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "lambdas/_shared"))
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "lambdas/appointment_api"))
 
-from appointment_api_lambda import _refund_tier, _identity, ApiError
+from appointment_api_lambda import _refund_tier, _identity, _no_show_eligible, ApiError
 
 
 def test_refund_tier_exact_boundaries():
     now = datetime(2026, 11, 23, 12, 0, tzinfo=timezone.utc)
-    assert _refund_tier(now + timedelta(hours=48, seconds=1), now, "PATIENT")[1] == 100
-    assert _refund_tier(now + timedelta(hours=48), now, "PATIENT")[1] == 75
+    assert _refund_tier(now + timedelta(hours=24, seconds=1), now, "PATIENT")[1] == 100
     assert _refund_tier(now + timedelta(hours=24), now, "PATIENT")[1] == 75
-    assert _refund_tier(now + timedelta(hours=24, seconds=-1), now, "PATIENT")[1] == 50
-    assert _refund_tier(now + timedelta(hours=6), now, "PATIENT")[1] == 50
-    assert _refund_tier(now + timedelta(hours=6, seconds=-1), now, "PATIENT")[1] == 0
+    assert _refund_tier(now + timedelta(hours=12), now, "PATIENT")[1] == 75
+    assert _refund_tier(now + timedelta(hours=12, seconds=-1), now, "PATIENT")[1] == 50
+    assert _refund_tier(now + timedelta(hours=3), now, "PATIENT")[1] == 50
+    assert _refund_tier(now + timedelta(hours=3, seconds=-1), now, "PATIENT")[1] == 0
 
 
 def test_no_show_has_zero_refund():
@@ -56,3 +56,9 @@ def test_identity_comes_only_from_authorizer_context():
         assert exc.status == 403
     else:
         raise AssertionError("patient-only endpoint accepted a doctor")
+
+
+def test_no_show_requires_five_full_minutes_after_start():
+    start = datetime(2026, 11, 23, 12, 0, tzinfo=timezone.utc)
+    assert not _no_show_eligible(start, start + timedelta(minutes=4, seconds=59))
+    assert _no_show_eligible(start, start + timedelta(minutes=5))

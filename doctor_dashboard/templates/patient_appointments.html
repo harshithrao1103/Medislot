@@ -56,9 +56,6 @@
             <div class="appointment-detail-item">
               <span>Time (IST)</span><strong>{{ appointment.get('appointment_time') or '—' }}</strong>
             </div>
-            <div class="appointment-detail-item">
-              <span>Appointment ID</span><strong>#{{ appointment.get('appointment_id', '—') }}</strong>
-            </div>
             {% if appointment.get('fee') is not none %}
               <div class="appointment-detail-item">
                 <span>Consultation fee</span><strong>₹{{ appointment.get('fee') }}</strong>
@@ -66,11 +63,28 @@
             {% endif %}
           </div>
 
+          {% if appointment.get('refund') %}
+            <div class="appointment-refund-summary">
+              <strong>Refund details</strong>
+              <span>Refund: ₹{{ '%.2f'|format(appointment.get('refund').get('refund_amount', 0)|float) }}</span>
+              <span>{{ appointment.get('refund').get('refund_percentage', 0) }}% refund</span>
+              <small>{{ appointment.get('refund').get('reason', '') }}</small>
+            </div>
+          {% endif %}
           <div class="patient-appointment-footer">
             <span class="appointment-status {{ 'appointment-status-active' if appointment.get('is_active') else 'appointment-status-past' }}">
               <i></i>{{ appointment.get('display_status') }}
             </span>
-            <span class="appointment-slot-id">Booking reference: {{ appointment.get('slot_id', '—') }}</span>
+            {% if appointment.get('is_active') %}
+              <form method="post" class="appointment-cancel-form" onsubmit="return confirm('Cancel this appointment? The refund will follow MediSlot policy.');">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <input type="hidden" name="appointment_id" value="{{ appointment.get('appointment_id') }}">
+                <label>Cancellation reason
+                  <input name="reason" maxlength="200" required placeholder="Tell us why you are cancelling">
+                </label>
+                <button type="submit">Cancel appointment</button>
+              </form>
+            {% endif %}
           </div>
         </article>
       {% endfor %}

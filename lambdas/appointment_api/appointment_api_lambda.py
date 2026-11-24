@@ -6,7 +6,7 @@ import os
 import random
 import time
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from decimal import Decimal, ROUND_HALF_UP
 
 import boto3
@@ -98,7 +98,7 @@ def _refund_policy():
     value = _ssm.get_parameter(Name=name)["Parameter"]["Value"]
     policy = json.loads(value)
     tiers = policy.get("tiers", [])
-    expected = {"MORE_THAN_48_HOURS", "24_TO_48_HOURS", "6_TO_24_HOURS", "LESS_THAN_6_HOURS", "NO_SHOW"}
+    expected = {"MORE_THAN_24_HOURS", "12_TO_24_HOURS", "3_TO_12_HOURS", "LESS_THAN_3_HOURS", "NO_SHOW"}
     if {x.get("name") for x in tiers} != expected:
         raise RuntimeError("Refund policy parameter has an invalid tier set")
     return policy
@@ -112,10 +112,10 @@ def _refund_tier(start_time, now, actor, policy=None):
     hours = (start_time - now).total_seconds() / 3600.0
     if policy is None:
         policy = {"tiers": [
-            {"name": "MORE_THAN_48_HOURS", "refundPercentage": 100, "minHours": 48, "minInclusive": False},
-            {"name": "24_TO_48_HOURS", "refundPercentage": 75, "minHours": 24, "minInclusive": True, "maxHours": 48, "maxInclusive": True},
-            {"name": "6_TO_24_HOURS", "refundPercentage": 50, "minHours": 6, "minInclusive": True, "maxHours": 24, "maxInclusive": False},
-            {"name": "LESS_THAN_6_HOURS", "refundPercentage": 0, "maxHours": 6, "maxInclusive": False},
+            {"name": "MORE_THAN_24_HOURS", "refundPercentage": 100, "minHours": 24, "minInclusive": False},
+            {"name": "12_TO_24_HOURS", "refundPercentage": 75, "minHours": 12, "minInclusive": True, "maxHours": 24, "maxInclusive": True},
+            {"name": "3_TO_12_HOURS", "refundPercentage": 50, "minHours": 3, "minInclusive": True, "maxHours": 12, "maxInclusive": False},
+            {"name": "LESS_THAN_3_HOURS", "refundPercentage": 0, "maxHours": 3, "maxInclusive": False},
         ]}
     for tier in policy.get("tiers", []):
         if tier.get("name") == "NO_SHOW":
@@ -127,6 +127,20 @@ def _refund_tier(start_time, now, actor, policy=None):
         if above_min and below_max:
             return tier["name"], Decimal(str(tier["refundPercentage"]))
     raise RuntimeError("No refund tier matches the cancellation time")
+
+
+def _no_show_eligible(start_time, now=None):
+    """Return True once five full minutes have elapsed after appointment start."""
+    now = now or datetime.now(timezone.utc)
+    if start_time.tzinfo is None:
+        start_time = start_time.replace(tzinfo=timezone.utc)
+    else:
+        start_time = start_time.astimezone(timezone.utc)
+    if now.tzinfo is None:
+        now = now.replace(tzinfo=timezone.utc)
+    else:
+        now = now.astimezone(timezone.utc)
+    return now >= start_time + timedelta(minutes=5)
 
 
 def _slot(doctor_id, slot_id):
@@ -484,6 +498,8 @@ def cancel_appointment(event, correlation):
     if not str(raw or "").isdigit():
         raise ApiError(400, "Invalid appointmentId")
     appointment_id = int(raw)
+    request_data = body_json(event)
+    cancellation_reason = str(request_data.get("reason") or "Patient requested cancellation").strip()[:200]
     conn = db_connection()
     try:
         with conn.cursor() as cur:
@@ -504,7 +520,8 @@ def cancel_appointment(event, correlation):
             refund = (fee * percentage / Decimal("100")).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
             deduction = fee - refund
             cur.execute("UPDATE appointments SET status='CANCELLED_BY_PATIENT', cancelled_at=UTC_TIMESTAMP(), cancellation_actor='PATIENT' WHERE appointment_id=%s AND status='CONFIRMED'", (appointment_id,))
-            cur.execute("INSERT INTO refund_ledger (appointment_id,refund_percentage,refund_amount,deduction_amount,reason) VALUES (%s,%s,%s,%s,%s)", (appointment_id, percentage, refund, deduction, tier))
+            ledger_reason = f"{tier}: {cancellation_reason}"[:255]
+            cur.execute("INSERT INTO refund_ledger (appointment_id,refund_percentage,refund_amount,deduction_amount,reason) VALUES (%s,%s,%s,%s,%s)", (appointment_id, percentage, refund, deduction, ledger_reason))
             slot = _slot(appt["doctor_id"], appt["slot_id"])
             if not slot:
                 raise ApiError(500, "Associated slot inventory record not found")
@@ -512,7 +529,7 @@ def cancel_appointment(event, correlation):
             _outbox(cur, "SLOT", appt["slot_id"], "SlotSeatFreed", {"doctorId": appt["doctor_id"], "slotId": appt["slot_id"], "slotKey": slot["slotKey"], "appointmentId": appointment_id})
         conn.commit()
         _metric("CancellationsByTier", 1, {"Environment": os.environ.get("ENVIRONMENT", "unknown"), "Tier": tier})
-        return response(200, {"appointmentId": appointment_id, "status": "CANCELLED_BY_PATIENT", "refundPercentage": str(percentage), "refundAmount": str(refund), "deductionAmount": str(deduction), "refundTier": tier}, correlation)
+        return response(200, {"appointmentId": appointment_id, "status": "CANCELLED_BY_PATIENT", "refundPercentage": str(percentage), "refundAmount": str(refund), "deductionAmount": str(deduction), "refundTier": tier, "reason": cancellation_reason}, correlation)
     except Exception:
         conn.rollback()
         raise
@@ -544,11 +561,19 @@ def cancel_doctor_slot(event, correlation):
             raise ApiError(409, "Slot cannot be cancelled in its current state")
         with conn.cursor() as cur:
             cur.execute(
-                "SELECT appointment_id,patient_id,fee FROM appointments WHERE doctor_id=%s AND slot_id=%s AND status='CONFIRMED' FOR UPDATE",
+                "SELECT appointment_id,patient_id,fee,start_time_utc FROM appointments WHERE doctor_id=%s AND slot_id=%s AND status='CONFIRMED' FOR UPDATE",
                 (doctor_id, slot_id),
             )
             appointments = cur.fetchall()
+            now_utc = datetime.now(timezone.utc)
             for appt in appointments:
+                appointment_start = appt["start_time_utc"]
+                if appointment_start.tzinfo is None:
+                    appointment_start = appointment_start.replace(tzinfo=timezone.utc)
+                else:
+                    appointment_start = appointment_start.astimezone(timezone.utc)
+                if now_utc >= appointment_start + timedelta(minutes=5):
+                    raise ApiError(409, "An appointment past the 5-minute no-show threshold must be marked NO_SHOW, not cancelled")
                 fee = Decimal(str(appt["fee"]))
                 cur.execute(
                     "UPDATE appointments SET status='CANCELLED_BY_DOCTOR',cancelled_at=UTC_TIMESTAMP(),cancellation_actor='DOCTOR' WHERE appointment_id=%s AND status='CONFIRMED'",
@@ -582,6 +607,49 @@ def cancel_doctor_slot(event, correlation):
                 )
             except Exception:
                 log.exception("Could not restore slot after failed doctor cancellation")
+        raise
+    finally:
+        conn.close()
+
+
+def cancel_doctor_appointment(event, correlation):
+    """Cancel one appointment for this doctor and record a full refund."""
+    doctor_id, _ = _identity(event, "DOCTOR")
+    raw = (event.get("pathParameters") or {}).get("appointmentId")
+    if not str(raw or "").isdigit():
+        raise ApiError(400, "Invalid appointmentId")
+    appointment_id = int(raw)
+    data = body_json(event)
+    reason = str(data.get("reason") or "Doctor cancelled appointment").strip()[:200]
+    conn = db_connection()
+    try:
+        with conn.cursor() as cur:
+            cur.execute("SELECT appointment_id,patient_id,doctor_id,slot_id,start_time_utc,fee,status FROM appointments WHERE appointment_id=%s AND doctor_id=%s FOR UPDATE", (appointment_id, doctor_id))
+            appt = cur.fetchone()
+            if not appt:
+                raise ApiError(404, "Appointment not found")
+            if appt["status"] != "CONFIRMED":
+                raise ApiError(409, "Only confirmed appointments can be cancelled")
+            appointment_start = appt["start_time_utc"]
+            if appointment_start.tzinfo is None:
+                appointment_start = appointment_start.replace(tzinfo=timezone.utc)
+            else:
+                appointment_start = appointment_start.astimezone(timezone.utc)
+            if datetime.now(timezone.utc) >= appointment_start + timedelta(minutes=5):
+                raise ApiError(409, "This appointment has passed the 5-minute no-show threshold. Mark it NO_SHOW instead.")
+            fee = Decimal(str(appt["fee"]))
+            cur.execute("UPDATE appointments SET status='CANCELLED_BY_DOCTOR',cancelled_at=UTC_TIMESTAMP(),cancellation_actor='DOCTOR' WHERE appointment_id=%s AND status='CONFIRMED'", (appointment_id,))
+            ledger_reason = ("DOCTOR_CANCELLED: " + reason)[:255]
+            cur.execute("INSERT INTO refund_ledger (appointment_id,refund_percentage,refund_amount,deduction_amount,reason) VALUES (%s,100.00,%s,0.00,%s)", (appointment_id, fee, ledger_reason))
+            slot = _slot(appt["doctor_id"], appt["slot_id"])
+            if not slot:
+                raise ApiError(500, "Associated slot inventory record not found")
+            _outbox(cur, "APPOINTMENT", appointment_id, "AppointmentCancelled", {"appointmentId": appointment_id, "actor": "DOCTOR", "refundPercentage": "100.00", "refundAmount": str(fee), "reason": reason})
+            _outbox(cur, "SLOT", appt["slot_id"], "SlotSeatFreed", {"doctorId": appt["doctor_id"], "slotId": appt["slot_id"], "slotKey": slot["slotKey"], "appointmentId": appointment_id})
+        conn.commit()
+        return response(200, {"appointmentId": appointment_id, "status": "CANCELLED_BY_DOCTOR", "refundPercentage": "100.00", "refundAmount": str(fee)}, correlation)
+    except Exception:
+        conn.rollback()
         raise
     finally:
         conn.close()
@@ -627,12 +695,23 @@ def appointment_outcome(event, correlation):
     conn = db_connection()
     try:
         with conn.cursor() as cur:
-            cur.execute("SELECT appointment_id,patient_id,doctor_id,fee,status FROM appointments WHERE appointment_id=%s AND doctor_id=%s FOR UPDATE", (int(raw), doctor_id))
+            cur.execute("SELECT appointment_id,patient_id,doctor_id,fee,status,start_time_utc FROM appointments WHERE appointment_id=%s AND doctor_id=%s FOR UPDATE", (int(raw), doctor_id))
             appt = cur.fetchone()
             if not appt:
                 raise ApiError(404, "Appointment not found")
             if appt["status"] != "CONFIRMED":
                 raise ApiError(409, "Only confirmed appointments can receive an outcome")
+            if outcome == "NO_SHOW":
+                start = appt["start_time_utc"]
+                if start.tzinfo is None:
+                    start = start.replace(tzinfo=timezone.utc)
+                else:
+                    start = start.astimezone(timezone.utc)
+                eligible_at = start + timedelta(minutes=5)
+                now = datetime.now(timezone.utc)
+                if not _no_show_eligible(start, now):
+                    remaining = max(1, int((eligible_at - now).total_seconds() + 0.999))
+                    raise ApiError(409, "No-show can be marked only 5 minutes after appointment start", {"eligibleAt": eligible_at.isoformat(), "secondsRemaining": remaining})
             cur.execute("UPDATE appointments SET status=%s WHERE appointment_id=%s AND status='CONFIRMED'", (outcome, int(raw)))
             if outcome == "NO_SHOW":
                 fee = Decimal(str(appt["fee"]))
@@ -751,6 +830,8 @@ def lambda_handler(event, context):
             return cancel_doctor_slot(event, correlation)
         if resource == "/doctors/me/appointments" and method == "GET":
             return doctor_appointments(event, correlation)
+        if resource == "/doctors/me/appointments/{appointmentId}" and method == "DELETE":
+            return cancel_doctor_appointment(event, correlation)
         if resource == "/doctors/me/appointments/{appointmentId}/outcome" and method == "POST":
             return appointment_outcome(event, correlation)
         raise ApiError(404, "Route not found")

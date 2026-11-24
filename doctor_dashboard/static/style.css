@@ -158,3 +158,21 @@
 .appointments-empty-state p{max-width:430px;margin:0 0 17px;color:#748899;font-size:13px}
 .appointments-time-note{margin:17px 0 0;color:#8293a0;font-size:11px}
 @media(max-width:650px){.patient-appointments-page{padding:17px}.patient-appointment-details{gap:14px 20px}.appointment-detail-item{min-width:calc(50% - 12px)}.patient-appointment-footer{align-items:flex-start;flex-direction:column}.appointment-slot-id{max-width:100%}}
+
+/* Appointment cancellation, refunds and doctor appointment management */
+.appointment-cancel-form,.doctor-appointment-actions form{display:grid;gap:8px;margin:12px 0;max-width:420px}
+.appointment-cancel-form label,.doctor-appointment-actions label{margin:0;font-size:11px}
+.appointment-cancel-form button,.danger-button{background:#b94c4c;color:#fff}
+.appointment-cancel-form button:hover,.danger-button:hover{background:#9f3838}
+.appointment-refund-summary{display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin:14px 0;padding:13px 15px;border:1px solid #cfe9df;border-radius:11px;background:#f0faf5;color:#176c56;font-size:12px}
+.appointment-refund-summary small{width:100%;color:#72877e}
+.doctor-appointment-list{display:grid;gap:14px;margin-top:18px}
+.doctor-appointment-card{padding:18px;border:1px solid #e3ebef;border-radius:14px;background:#fff}
+.doctor-appointment-heading{display:flex;justify-content:space-between;gap:15px;align-items:flex-start;flex-wrap:wrap}
+.doctor-appointment-heading h3{margin:7px 0;font-size:16px}
+.doctor-appointment-heading p{margin:0;font-size:12px}
+.doctor-appointment-actions{display:flex;gap:16px;align-items:flex-end;flex-wrap:wrap;margin-top:12px;padding-top:12px;border-top:1px solid #edf1f4}
+.doctor-appointment-actions form{min-width:190px}
+.doctor-appointment-actions .secondary-button{color:#31566a}
+.no-show-wait{align-self:center;color:#758896;font-size:11px}
+@media(max-width:700px){.doctor-appointment-actions{display:grid}.doctor-appointment-actions form{max-width:none}}

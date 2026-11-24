@@ -1640,6 +1640,18 @@ Resources:
         Type: AWS_PROXY
         IntegrationHttpMethod: POST
         Uri: !Sub arn:${AWS::Partition}:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${AppointmentApiLambda.Arn}/invocations
+  DoctorAppointmentCancelDelete:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref AuthRestApi
+      ResourceId: !Ref DoctorAppointmentIdResource
+      HttpMethod: DELETE
+      AuthorizationType: CUSTOM
+      AuthorizerId: !Ref JwtAuthorizer
+      Integration:
+        Type: AWS_PROXY
+        IntegrationHttpMethod: POST
+        Uri: !Sub arn:${AWS::Partition}:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${AppointmentApiLambda.Arn}/invocations
   DoctorAppointmentOutcomePost:
     Type: AWS::ApiGateway::Method
     Properties:
@@ -1685,12 +1697,12 @@ Resources:
       RestApiId: !Ref AuthRestApi
       Description: !Sub Authentication API deployment ${CodeVersion}
 
-  # --- DoctorDomainDeploymentMilestone5V1: Deploys doctor, patient, public discovery and appointment API methods ---
+  # --- DoctorDomainDeploymentMilestone5V2: Deploys doctor, patient, public discovery and appointment API methods ---
   # IMPORTANT: CloudFormation only snapshots API Gateway methods into a NEW deployment when this
   # logical ID changes (changing Description alone just edits the old snapshot, so new routes such as
   # POST /appointments never reach the stage and callers get a misleading 403).
   # Rename this ID (e.g. ...Milestone5V2) whenever API methods/resources are added or changed.
-  DoctorDomainDeploymentMilestone5V1:
+  DoctorDomainDeploymentMilestone5V2:
     Type: AWS::ApiGateway::Deployment
     DependsOn:
       - AuthDeployment
@@ -1726,6 +1738,7 @@ Resources:
       - DoctorSlotCancelDelete
       - DoctorAppointmentsGet
       - DoctorAppointmentOutcomePost
+      - DoctorAppointmentCancelDelete
     Properties:
       RestApiId: !Ref AuthRestApi
       Description: !Sub Doctor domain API deployment ${ApiDeploymentVersion}
@@ -1756,7 +1769,7 @@ Resources:
             comment: Authentication and token responses must not be cached; throttling and logging are enabled.
     Properties:
       RestApiId: !Ref AuthRestApi
-      DeploymentId: !Ref DoctorDomainDeploymentMilestone5V1
+      DeploymentId: !Ref DoctorDomainDeploymentMilestone5V2
       StageName: !Ref Environment
       TracingEnabled: true
       AccessLogSetting:

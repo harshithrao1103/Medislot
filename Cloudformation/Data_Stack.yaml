@@ -730,8 +730,8 @@ Resources:
     Properties:
       Name: !Sub /medislot/${Environment}/appointments/refund-policy
       Type: String
-      Value: '{"tiers":[{"name":"MORE_THAN_48_HOURS","minHours":48,"minInclusive":false,"refundPercentage":100},{"name":"24_TO_48_HOURS","minHours":24,"minInclusive":true,"maxHours":48,"maxInclusive":true,"refundPercentage":75},{"name":"6_TO_24_HOURS","minHours":6,"minInclusive":true,"maxHours":24,"maxInclusive":false,"refundPercentage":50},{"name":"LESS_THAN_6_HOURS","maxHours":6,"maxInclusive":false,"refundPercentage":0},{"name":"NO_SHOW","refundPercentage":0}]}'
-      Description: Milestone 5 patient cancellation refund percentages; doctor cancellation is always 100 percent
+      Value: '{"tiers":[{"name":"MORE_THAN_24_HOURS","minHours":24,"minInclusive":false,"refundPercentage":100},{"name":"12_TO_24_HOURS","minHours":12,"minInclusive":true,"maxHours":24,"maxInclusive":true,"refundPercentage":75},{"name":"3_TO_12_HOURS","minHours":3,"minInclusive":true,"maxHours":12,"maxInclusive":false,"refundPercentage":50},{"name":"LESS_THAN_3_HOURS","maxHours":3,"maxInclusive":false,"refundPercentage":0},{"name":"NO_SHOW","refundPercentage":0}]}'
+      Description: "Patient cancellation refunds: over 24h 100%, 12-24h 75%, 3-12h 50%, under 3h 0%; doctor cancellation 100%"
 
   # Stores the minimum password length consumed by the application.
   PasswordMinLengthParameter:

@@ -428,6 +428,58 @@ def request_slot_reconciliation():
 
 
 # ====================================================================
+# DOCTOR APPOINTMENT MANAGEMENT
+# ====================================================================
+@app.route('/doctor/appointments', methods=['GET', 'POST'])
+@protected
+def doctor_appointments_page():
+    """List doctor appointments and process per-appointment cancellation/outcomes."""
+    if request.method == 'POST':
+        appointment_id = request.form.get('appointment_id', '').strip()
+        action = request.form.get('action', '').strip()
+        if not appointment_id.isdigit():
+            flash('Invalid appointment')
+            return redirect(url_for('doctor_appointments_page'))
+        reason = request.form.get('reason', '').strip()
+        if action == 'cancel':
+            if not reason:
+                flash('Please provide a cancellation reason')
+                return redirect(url_for('doctor_appointments_page'))
+            result = api('DELETE', f'/doctors/me/appointments/{appointment_id}', json={'reason': reason})
+        elif action in ('COMPLETED', 'NO_SHOW'):
+            result = api('POST', f'/doctors/me/appointments/{appointment_id}/outcome', json={'outcome': action})
+        else:
+            flash('Invalid appointment action')
+            return redirect(url_for('doctor_appointments_page'))
+        flash('Appointment updated successfully' if result.ok else api_error(result))
+        return redirect(url_for('doctor_appointments_page'))
+
+    data = page_get('/doctors/me/appointments')
+    if data is None:
+        return redirect(url_for('login'))
+    now = datetime.now(timezone.utc)
+    from zoneinfo import ZoneInfo
+    for item in (data or {}).get('appointments', []):
+        try:
+            start = datetime.fromisoformat(str(item.get('start_time_utc')).replace('Z', '+00:00'))
+            if start.tzinfo is None:
+                start = start.replace(tzinfo=timezone.utc)
+            start = start.astimezone(timezone.utc)
+            local = start.astimezone(ZoneInfo('Asia/Kolkata'))
+            item['appointment_date'] = local.strftime('%A, %d %B %Y')
+            item['appointment_time'] = local.strftime('%I:%M %p')
+            item['no_show_eligible'] = now >= start + timedelta(minutes=5)
+            item['seconds_until_no_show'] = max(0, int((start + timedelta(minutes=5) - now).total_seconds()))
+        except (TypeError, ValueError):
+            item['appointment_date'] = 'Date unavailable'
+            item['appointment_time'] = ''
+            item['no_show_eligible'] = False
+            item['seconds_until_no_show'] = 0
+        item['display_status'] = str(item.get('status', 'UNKNOWN')).replace('_', ' ').title()
+    return render_template('doctor_appointments.html', appointments=(data or {}).get('appointments', []))
+
+
+# ====================================================================
 # WEEKLY AVAILABILITY
 # ====================================================================
 @app.route('/doctor/availability',methods=['GET','POST'])
@@ -734,10 +786,27 @@ def patient_book_appointment():
         return jsonify({'error': 'Appointment service unavailable'}), 502
 
 
-@app.route('/patient/appointments')
+@app.route('/patient/appointments', methods=['GET', 'POST'])
 @patient_protected
 def patient_appointments():
     """Show the signed-in patient's appointments with active/past filtering."""
+    if request.method == 'POST':
+        appointment_id = request.form.get('appointment_id', '').strip()
+        reason = request.form.get('reason', '').strip()
+        if not appointment_id.isdigit() or not reason:
+            flash('Please provide a valid appointment and cancellation reason')
+            return redirect(url_for('patient_appointments', filter='active'))
+        try:
+            cancelled = api('DELETE', f'/appointments/{appointment_id}', json={'reason': reason})
+            if cancelled.ok:
+                result = cancelled.json()
+                flash(f"Appointment cancelled. Refund recorded: ₹{result.get('refundAmount', '0.00')} ({result.get('refundPercentage', '0')}%).")
+            else:
+                flash(api_error(cancelled))
+        except (requests.RequestException, ValueError):
+            flash('Unable to cancel appointment right now')
+        return redirect(url_for('patient_appointments', filter='past'))
+
     selected_filter = request.args.get('filter', 'active').lower()
     if selected_filter not in ('active', 'past'):
         selected_filter = 'active'
@@ -755,6 +824,13 @@ def patient_appointments():
             )
 
         records = response.json().get('appointments', [])
+        refund_by_appointment = {}
+        try:
+            refund_response = api('GET', '/patients/me/refunds')
+            if refund_response.ok:
+                refund_by_appointment = {str(x.get('appointment_id')): x for x in refund_response.json().get('refunds', [])}
+        except (requests.RequestException, ValueError):
+            app.logger.exception('Unable to load patient refund history')
         now = datetime.now(timezone.utc)
         appointments = []
         doctor_cache = {}
@@ -790,6 +866,7 @@ def patient_appointments():
 
             record['is_active'] = is_active
             record['display_status'] = status.replace('_', ' ').title()
+            record['refund'] = refund_by_appointment.get(str(record.get('appointment_id')))
             record['doctor'] = {}
 
             doctor_id = record.get('doctor_id')

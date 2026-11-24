@@ -1,0 +1,48 @@
+{% extends 'base.html' %}
+{% block content %}
+<section class="card doctor-appointments-page">
+  <span class="section-kicker">DOCTOR WORKSPACE</span>
+  <h2>Patient appointments</h2>
+  <p>Review bookings, cancel an appointment when needed, or record its outcome.</p>
+  {% if appointments %}
+    <div class="doctor-appointment-list">
+    {% for item in appointments %}
+      <article class="doctor-appointment-card">
+        <div class="doctor-appointment-heading">
+          <div><span class="appointment-card-kicker">PATIENT #{{ item.get('patient_id') }}</span>
+            <h3>{{ item.get('appointment_date') }} · {{ item.get('appointment_time') }} IST</h3>
+            <p>Appointment #{{ item.get('appointment_id') }} · Fee ₹{{ item.get('fee', '0') }}</p>
+          </div>
+          <span class="appointment-status {{ 'appointment-status-active' if item.get('status') == 'CONFIRMED' else 'appointment-status-past' }}">{{ item.get('display_status') }}</span>
+        </div>
+        {% if item.get('status') == 'CONFIRMED' %}
+        <div class="doctor-appointment-actions">
+          <form method="post" onsubmit="return confirm('Cancel this appointment and issue a full refund?');">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <input type="hidden" name="appointment_id" value="{{ item.get('appointment_id') }}">
+            <input type="hidden" name="action" value="cancel">
+            <label>Cancellation reason<input name="reason" maxlength="200" required placeholder="Reason for cancellation"></label>
+            <button type="submit" class="danger-button">Cancel appointment · 100% refund</button>
+          </form>
+          <form method="post" onsubmit="return confirm('Mark this appointment as completed?');">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <input type="hidden" name="appointment_id" value="{{ item.get('appointment_id') }}">
+            <input type="hidden" name="action" value="COMPLETED">
+            <button type="submit" class="secondary-button">Mark completed</button>
+          </form>
+          {% if item.get('no_show_eligible') %}
+          <form method="post" onsubmit="return confirm('Mark this patient as no-show? No refund will be recorded.');">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <input type="hidden" name="appointment_id" value="{{ item.get('appointment_id') }}">
+            <input type="hidden" name="action" value="NO_SHOW">
+            <button type="submit" class="danger-button">Mark NO-SHOW · 0% refund</button>
+          </form>
+          {% else %}<small class="no-show-wait">NO-SHOW becomes available 5 minutes after appointment start.</small>{% endif %}
+        </div>
+        {% endif %}
+      </article>
+    {% endfor %}
+    </div>
+  {% else %}<div class="appointments-empty-state"><h3>No appointments found</h3><p>Patient bookings will appear here.</p></div>{% endif %}
+</section>
+{% endblock %}
