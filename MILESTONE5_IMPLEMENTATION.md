@@ -5,7 +5,8 @@ This change set adds the first Milestone 5 implementation on top of the supplied
 ## Scope implemented
 
 - One `appointment_api` Lambda handles booking, caller-scoped appointment listing/detail, patient cancellation, individual doctor cancellation, doctor slot cancellation, appointment outcomes, refund history, and scheduled outbox dispatch.
-- Booking uses the canonical `doctorId` / `slotKey` Slots table and conditional updates on `bookedCount`, `heldCount`, `capacity`, `status`, and `version`.
+- Booking uses the canonical `doctorId` / `slotKey` Slots table and conditional updates on `bookedCount`, `capacity`, `status`, and `version`. MediSlot does not support temporary seat reservations.
+- Existing Slots items may still contain the retired `heldCount` attribute. Run `python scripts/remove_held_count_from_slots.py --table <slots-table>` for a dry run, then add `--apply` to remove that attribute from all matching items. The script does not change bookings, capacity, status, or version.
 - Patient appointment limit is three upcoming confirmed appointments per doctor.
 - `IdempotencyTable` is reused; completed requests replay the original appointment response.
 - RDS appointments are the system of record. A transactional `event_outbox` record is committed with the appointment/cancellation/refund transaction.

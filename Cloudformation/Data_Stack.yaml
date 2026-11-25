@@ -43,11 +43,6 @@ Parameters:
     Type: Number
     MinValue: 12
 
-  WaitlistHoldMinutes:
-    Type: Number
-    MinValue: 1
-
-
 # ============================================================
 # DEPLOYMENT CONDITIONS - ENABLE PRODUCTION-ONLY SETTINGS
 # IsProduction is true only when Environment is set to prod.
@@ -707,22 +702,6 @@ Resources:
 
       Value: !Sub '${BcryptWorkFactor}'
 
-
-  # ==========================================================
-  # 15. SSM PARAMETER STORE - CONFIGURE WAITLIST HOLD DURATION
-  # ==========================================================
-
-  WaitlistHoldMinutesParameter:
-    Type: AWS::SSM::Parameter
-
-    Properties:
-
-      Name: !Sub
-        '/medislot/${Environment}/waitlist/hold-minutes'
-
-      Type: String
-
-      Value: !Sub '${WaitlistHoldMinutes}'
 
   # Milestone 5 refund policy. Exact boundary semantics are implemented and tested in the Appointment API.
   AppointmentRefundPolicyParameter:

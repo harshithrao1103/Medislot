@@ -20,7 +20,7 @@
   function human(d,opts) { return d.toLocaleDateString('en-IN',opts); }
   function time12(hm) { const [h,m]=hm.split(':').map(Number); return `${h%12||12}:${String(m).padStart(2,'0')} ${h<12?'AM':'PM'}`; }
   function minute(hm) { const [h,m]=hm.split(':').map(Number); return h*60+m; }
-  function kind(s) { return s.bookedCount>=s.capacity && s.capacity>0 ? 'booked' : s.bookedCount>0 || s.heldCount>0 ? 'partial' : 'available'; }
+  function kind(s) { return s.bookedCount>=s.capacity && s.capacity>0 ? 'booked' : s.bookedCount>0 ? 'partial' : 'available'; }
   function typeName(s) { return names[s.consultationTypeId] || 'Consultation'; }
   function element(tag, cls, text) { const e=document.createElement(tag); if(cls)e.className=cls; if(text!==undefined)e.textContent=text; return e; }
   function datesForView() {
@@ -59,7 +59,7 @@
   function showDetails(s,day) {
     document.getElementById('slot-dialog-title').textContent=typeName(s);
     const content=document.getElementById('slot-dialog-content'); content.replaceChildren();
-    for(const [label,value] of [['Date',human(parseDay(day),{weekday:'long',day:'numeric',month:'long',year:'numeric'})],['Time (IST)',`${time12(s.start)} – ${time12(s.end)}`],['Capacity',String(s.capacity)],['Booked',String(s.bookedCount)],['Held',String(s.heldCount)],['Status',s.status]]) {
+    for(const [label,value] of [['Date',human(parseDay(day),{weekday:'long',day:'numeric',month:'long',year:'numeric'})],['Time (IST)',`${time12(s.start)} – ${time12(s.end)}`],['Capacity',String(s.capacity)],['Booked',String(s.bookedCount)],['Available',String(Math.max(0,s.capacity-s.bookedCount))],['Status',s.status]]) {
       const p=element('p'); const strong=element('strong','',`${label}: `); p.append(strong,document.createTextNode(value));content.append(p);
     }
     if(s.appointments.length){const h=element('strong','','Patients');const ul=element('ul');s.appointments.forEach(a=>ul.append(element('li','',`${a.patient_name} (${a.status})`)));content.append(h,ul);}

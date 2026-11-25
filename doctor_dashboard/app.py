@@ -687,7 +687,6 @@ def schedule():
                     'consultationTypeId': str(item.get('consultationTypeId', '')),
                     'capacity': int(item.get('capacity', 0)),
                     'bookedCount': int(item.get('bookedCount', 0)),
-                    'heldCount': int(item.get('heldCount', 0)),
                     'status': str(item.get('status', 'AVAILABLE')),
                     'appointments': [
                         {'patient_name': str(a.get('patient_name', '')),

@@ -34,7 +34,7 @@ class AtomicFakeSlots:
         self.item = {
             "doctorId": "12", "slotKey": "2026-12-01T10:00:00Z#slot-1",
             "slotId": "slot-1", "capacity": capacity, "bookedCount": 0,
-            "heldCount": 0, "version": 0, "status": "AVAILABLE",
+            "version": 0, "status": "AVAILABLE",
         }
         self.lock = threading.Lock()
 
@@ -49,9 +49,8 @@ class AtomicFakeSlots:
                 self.item["status"] == values[":available"]
                 and self.item["version"] == values[":version"]
                 and self.item["bookedCount"] == values[":booked"]
-                and self.item["heldCount"] == values[":held"]
                 and self.item["capacity"] == values[":capacity"]
-                and self.item["bookedCount"] < values[":max_booked"]
+                and self.item["bookedCount"] < values[":capacity"]
             )
             if not valid:
                 raise ClientError(
@@ -81,4 +80,4 @@ def test_20_concurrent_bookings_capacity_three_exactly_three_succeed(monkeypatch
 
     assert sum(results) == 3
     assert table.item["bookedCount"] == 3
-    assert table.item["bookedCount"] + table.item["heldCount"] <= table.item["capacity"]
+    assert table.item["bookedCount"] <= table.item["capacity"]

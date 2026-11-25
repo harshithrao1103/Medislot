@@ -2,7 +2,7 @@
 
 ## Objective
 
-For a slot with capacity `C`, confirmed bookings plus active holds must never exceed `C`, even when independent patient requests arrive concurrently. The design must allow requests to contend; it must not serialize all bookings behind a global lock.
+For a slot with capacity `C`, confirmed bookings must never exceed `C`, even when independent patient requests arrive concurrently. MediSlot does not create temporary reservations or hold seats. The design must allow requests to contend; it must not serialize all bookings behind a global lock.
 
 ## Slot record
 
@@ -10,7 +10,7 @@ The existing canonical DynamoDB Slots table is retained:
 
 - Partition key: `doctorId` (string)
 - Sort key: `slotKey` (`startTimeUTC#slotId`)
-- Capacity fields: `capacity`, `bookedCount`, `heldCount`
+- Capacity fields: `capacity`, `bookedCount`
 - Optimistic concurrency field: `version`
 - Availability field: `status`
 
@@ -19,18 +19,18 @@ No GSI or second Slots table is introduced.
 ## Reservation algorithm
 
 1. Read the current slot consistently.
-2. Reject if the record is missing, not `AVAILABLE`, or `bookedCount + heldCount >= capacity`.
-3. Capture the observed `bookedCount`, `heldCount`, `capacity`, and `version`.
+2. Reject if the record is missing, not `AVAILABLE`, or `bookedCount >= capacity`.
+3. Capture the observed `bookedCount`, `capacity`, and `version`.
 4. Issue one conditional DynamoDB update that increments `bookedCount` and `version` only if:
    - status remains `AVAILABLE`;
    - version still equals the observed version;
-   - booked count and held count still equal the observed values;
+   - booked count still equals the observed value;
    - capacity is unchanged; and
-   - booked count is less than `capacity - heldCount`.
+   - booked count is less than `capacity`.
 5. On conditional conflict, reread the record and retry with bounded exponential backoff plus jitter. The configured maximum is five retries after the initial attempt.
 6. If the slot is now full or inactive, return HTTP 409. If the retry budget is exhausted, return HTTP 409 with a retryable contention message.
 
-The condition uses observed counters and a computed `capacity - heldCount` threshold rather than relying on a non-atomic read/modify/write in application code. The update itself increments the counter and version atomically.
+The condition uses the observed booked count and capacity rather than relying on a non-atomic read/modify/write in application code. The update itself increments the counter and version atomically.
 
 ## Why this is not accidental serialization
 

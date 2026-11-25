@@ -490,8 +490,7 @@ jobs:
             ($d.DBBackupRetentionDays | type == "number" and . >= 0 and . <= 35) and
             ($d.JWTAccessTokenMinutes | type == "number" and . >= 1) and
             ($d.RefreshTokenDays | type == "number" and . >= 1) and
-            ($d.BcryptWorkFactor | type == "number" and . >= 12) and
-            ($d.WaitlistHoldMinutes | type == "number" and . >= 1)
+            ($d.BcryptWorkFactor | type == "number" and . >= 12)
           ' "$CONFIG" > /dev/null || {
             echo "::error::Invalid or missing data configuration"
             exit 1
@@ -595,7 +594,6 @@ jobs:
           ACCESS_MINUTES=$(jq -er '.data.JWTAccessTokenMinutes' "$CONFIG")
           REFRESH_DAYS=$(jq -er '.data.RefreshTokenDays' "$CONFIG")
           BCRYPT_FACTOR=$(jq -er '.data.BcryptWorkFactor' "$CONFIG")
-          WAITLIST_MINUTES=$(jq -er '.data.WaitlistHoldMinutes' "$CONFIG")
 
           aws cloudformation deploy \
             --template-file Cloudformation/Data_Stack.yaml \
@@ -608,7 +606,6 @@ jobs:
               JWTAccessTokenMinutes="$ACCESS_MINUTES" \
               RefreshTokenDays="$REFRESH_DAYS" \
               BcryptWorkFactor="$BCRYPT_FACTOR" \
-              WaitlistHoldMinutes="$WAITLIST_MINUTES" \
             --role-arn "$CFN_EXECUTION_ROLE_ARN" \
             --region "$AWS_REGION" \
             --no-fail-on-empty-changeset

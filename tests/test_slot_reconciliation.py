@@ -37,12 +37,12 @@ class Table:
     def update_item(self, Key, UpdateExpression, ConditionExpression, ExpressionAttributeNames, ExpressionAttributeValues):
         item = self.rows[(Key['doctorId'], Key['slotKey'])]
         if ':disabled' in UpdateExpression:
-            if item['status'] != 'AVAILABLE' or item['heldCount'] != 0:
+            if item['status'] != 'AVAILABLE':
                 fail()
             item['status'] = 'INACTIVE'
             item['version'] += 1
         else:
-            if item['status'] != 'INACTIVE' or item['bookedCount'] or item['heldCount']:
+            if item['status'] != 'INACTIVE' or item['bookedCount']:
                 fail()
             item['status'] = 'AVAILABLE'
             item['version'] += 1
@@ -113,7 +113,7 @@ def test_edit_reuses_matching_slot_and_disables_old_one():
     assert len(table.rows) == 3
 
 
-def test_active_hold_prevents_immediate_deactivation():
+def test_obsolete_unbooked_slot_is_deactivated_immediately():
     day = _next_monday()
     pattern = {'doctor_id': 5, 'consultation_type_id': 3, 'day_of_week': 0,
                'start_time': dt.time(9), 'end_time': dt.time(9, 30),
@@ -121,12 +121,13 @@ def test_active_hold_prevents_immediate_deactivation():
     table = Table()
     mod.materialise(day, 1, table=table, connection_factory=lambda: Conn([pattern]))
     old_id = next(iter(table.rows.values()))['slotId']
-    next(v for v in table.rows.values() if v['slotId'] == old_id)['heldCount'] = 1
+
+    # No temporary holds exist: once the slot is obsolete and unbooked,
+    # reconciliation can deactivate it immediately.
     mod.materialise(day, 1, table=table, connection_factory=lambda: Conn([]))
-    assert next(v for v in table.rows.values() if v['slotId'] == old_id)['status'] == 'AVAILABLE'
-    next(v for v in table.rows.values() if v['slotId'] == old_id)['heldCount'] = 0
-    mod.materialise(day, 1, table=table, connection_factory=lambda: Conn([]))
-    assert next(v for v in table.rows.values() if v['slotId'] == old_id)['status'] == 'INACTIVE'
+    slot = next(v for v in table.rows.values() if v['slotId'] == old_id)
+    assert slot['status'] == 'INACTIVE'
+    assert 'heldCount' not in slot
 
 
 def test_elapsed_slots_are_deactivated_during_live_window(monkeypatch):

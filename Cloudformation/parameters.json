@@ -20,8 +20,7 @@
     "DBBackupRetentionDays": 1,
     "JWTAccessTokenMinutes": 15,
     "RefreshTokenDays": 7,
-    "BcryptWorkFactor": 12,
-    "WaitlistHoldMinutes": 15
+    "BcryptWorkFactor": 12
   },
   "artifacts": {
     "bucketName": "medislot-dev-sam-artifacts-598886663370-us-east-1"

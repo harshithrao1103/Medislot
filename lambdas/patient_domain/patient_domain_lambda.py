@@ -622,8 +622,7 @@ def slots(doctor_id, event, correlation):
         # Calculate available capacity.
         capacity = int(slot.get("capacity", 0))
         booked_count = int(slot.get("bookedCount", 0))
-        held_count = int(slot.get("heldCount", 0))
-        free_seats = max(0, capacity - booked_count - held_count)
+        free_seats = max(0, capacity - booked_count)
 
         # Keep fully booked slots visible to patients. The UI marks them as
         # unavailable; the booking API remains the final capacity guard.
@@ -637,7 +636,6 @@ def slots(doctor_id, event, correlation):
                 "endTimeUTC": slot["endTimeUTC"],
                 "capacity": int(slot["capacity"]),
                 "bookedCount": booked_count,
-                "heldCount": held_count,
                 "freeSeats": free_seats,
             }
         )

@@ -182,10 +182,9 @@ def _reserve_seat(doctor_id, slot):
 
         capacity = int(current.get("capacity", 0))
         booked = int(current.get("bookedCount", 0))
-        held = int(current.get("heldCount", 0))
         version = int(current.get("version", 0))
 
-        if capacity < 1 or booked + held >= capacity:
+        if capacity < 1 or booked >= capacity:
             raise ApiError(409, "Slot is full")
 
         try:
@@ -198,9 +197,8 @@ def _reserve_seat(doctor_id, slot):
                 ConditionExpression=(
                     "#st = :available AND #v = :version "
                     "AND bookedCount = :booked "
-                    "AND heldCount = :held "
                     "AND #cap = :capacity "
-                    "AND bookedCount < :max_booked"
+                    "AND bookedCount < :capacity"
                 ),
                 ExpressionAttributeNames={
                     "#st": "status",
@@ -212,9 +210,7 @@ def _reserve_seat(doctor_id, slot):
                     ":available": "AVAILABLE",
                     ":version": version,
                     ":booked": booked,
-                    ":held": held,
                     ":capacity": capacity,
-                    ":max_booked": capacity - held,
                 },
             )
             return
@@ -862,12 +858,12 @@ def _deactivate_blackout_slot_if_empty(doctor_id, slot_key, appointment_id):
             return
 
         # Only the final cancellation can make the slot unavailable.
-        # Conditional expression protects against concurrent bookings/holds.
+        # Conditional expression protects against concurrent bookings.
         _slots.update_item(
             Key={"doctorId": str(doctor_id), "slotKey": slot_key},
             UpdateExpression="SET #st=:inactive ADD #v :one",
             ConditionExpression=(
-                "bookedCount=:zero AND heldCount=:zero AND #st=:available"
+                "bookedCount=:zero AND #st=:available"
             ),
             ExpressionAttributeNames={"#st": "status", "#v": "version"},
             ExpressionAttributeValues={

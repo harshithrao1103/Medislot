@@ -16,7 +16,7 @@ Responsibilities:
     8. Disable obsolete unbooked slots.
 
 The materialiser is designed to run repeatedly without
-resetting existing booking or hold counters.
+resetting existing booking counters.
 """
 
 # ============================================================
@@ -178,7 +178,6 @@ def make_slots(doctor, pattern, day):
             'timezone': 'Asia/Kolkata',
             'capacity': int(pattern['capacity']),
             'bookedCount': 0,
-            'heldCount': 0,
             'version': 0,
             'status': 'AVAILABLE'
         })
@@ -409,7 +408,7 @@ def materialise(
             # ------------------------------------------------
 
             # An existing inactive slot can be reactivated
-            # only when no appointments or holds exist.
+            # only when no appointments exist.
             #
             # Existing counters and version values are preserved.
 
@@ -423,8 +422,7 @@ def materialise(
                     UpdateExpression='SET #st=:active ADD #ver :one',
                     ConditionExpression=(
                         '#st=:inactive '
-                        'AND bookedCount=:zero '
-                        'AND heldCount=:zero'
+                        'AND bookedCount=:zero'
                     ),
                     ExpressionAttributeNames={
                         '#st': 'status',
@@ -460,9 +458,8 @@ def materialise(
     # previously generated slots may become obsolete.
     #
     # These slots are marked INACTIVE rather than deleted.
-    # Existing bookings remain attached to their slot, but the slot becomes
-    # INACTIVE for new bookings when no hold is in progress. Active holds are
-    # left untouched until their hold-expiry workflow completes.
+    # Existing bookings remain attached to their slot, and the slot becomes
+    # INACTIVE for new bookings when it has no confirmed bookings.
 
     for doctor in doctors:
 
@@ -495,7 +492,7 @@ def materialise(
                 )
             ),
 
-            'ProjectionExpression': 'doctorId,slotKey,slotId,#st,bookedCount,heldCount',
+            'ProjectionExpression': 'doctorId,slotKey,slotId,#st,bookedCount',
 
             'ExpressionAttributeNames': {
                 '#st': 'status'
@@ -527,8 +524,8 @@ def materialise(
                     try:
 
                         # Conditional update ensures the slot
-                        # is still available and has no active
-                        # holds at update time. Booked appointments stay stored.
+                        # is still available and has no confirmed
+                        # bookings at update time. Existing appointments stay stored.
 
                         table.update_item(
                             Key={
@@ -542,8 +539,7 @@ def materialise(
 
                             ConditionExpression=(
                                 '#st=:active '
-                                'AND bookedCount=:zero '
-                                'AND heldCount=:zero'
+                                'AND bookedCount=:zero'
                             ),
 
                             ExpressionAttributeNames={
