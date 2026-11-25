@@ -254,6 +254,98 @@ def _reserve_seat(doctor_id, slot):
 
     raise ApiError(409, "Booking contention; please retry")
 
+def _claim_idempotency(key, patient_id, request_hash):
+    """
+    Claim an idempotency key for a booking request.
+
+    Returns:
+        None: First request; key successfully claimed.
+        dict: Previously completed appointment response.
+
+    Raises:
+        ApiError: Key reused with different request or request still processing.
+    """
+    request_key = f"{patient_id}#{key}"
+
+    try:
+        _idempotency.put_item(
+            Item={
+                "idempotencyKey": request_key,
+                "patientId": int(patient_id),
+                "requestHash": request_hash,
+                "status": "PENDING",
+                "createdAt": int(time.time()),
+                "expiresAt": int(time.time()) + IDEMPOTENCY_TTL_SECONDS,
+            },
+            ConditionExpression="attribute_not_exists(idempotencyKey)",
+        )
+        return None
+
+    except ClientError as exc:
+        error_code = exc.response.get("Error", {}).get("Code")
+
+        if error_code != "ConditionalCheckFailedException":
+            raise
+
+    # The key already exists. Read its existing record consistently.
+    result = _idempotency.get_item(
+        Key={"idempotencyKey": request_key},
+        ConsistentRead=True,
+    )
+
+    existing = result.get("Item")
+
+    if not existing:
+        raise ApiError(409, "Booking request conflict. Please retry.")
+
+    # Prevent using the same key for a different booking.
+    if existing.get("requestHash") != request_hash:
+        raise ApiError(
+            409,
+            "Idempotency key already used for a different booking request."
+        )
+
+    status = existing.get("status")
+
+    # Return the original appointment for successful retries.
+    if status == "COMPLETED":
+        saved_response = existing.get("response")
+
+        if isinstance(saved_response, str):
+            return json.loads(saved_response)
+
+        return saved_response
+
+    if status == "PENDING":
+        # Recover a booking if RDS committed but the response was lost.
+        recovered = _recover_committed_booking(key, patient_id)
+
+        if recovered is not None:
+            return recovered
+
+        raise ApiError(
+            409,
+            "Booking request is already being processed. Please retry shortly."
+        )
+
+    if status == "FAILED":
+        # Allow a failed request to be retried using the same key.
+        _idempotency.update_item(
+            Key={"idempotencyKey": request_key},
+            UpdateExpression="SET #s = :pending, createdAt = :created, expiresAt = :expires",
+            ConditionExpression="#s = :failed AND requestHash = :hash",
+            ExpressionAttributeNames={"#s": "status"},
+            ExpressionAttributeValues={
+                ":pending": "PENDING",
+                ":failed": "FAILED",
+                ":hash": request_hash,
+                ":created": int(time.time()),
+                ":expires": int(time.time()) + IDEMPOTENCY_TTL_SECONDS,
+            },
+        )
+        return None
+
+    raise ApiError(409, "Booking request cannot be processed. Please retry.")
 
 # Save the successful appointment response against the patient's request key.
 def _complete_idempotency(key, patient_id, appointment):
