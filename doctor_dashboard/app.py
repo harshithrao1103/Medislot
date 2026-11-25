@@ -311,35 +311,98 @@ def page_post(method, path, payload):
         flash('API unavailable')
         return False
 
-
 # ====================================================================
 # DOCTOR APPOINTMENTS
 # ====================================================================
+
+# Register the /doctor/appointments URL.
+# GET  -> Display the doctor's appointments.
+# POST -> Process actions such as cancellation, completion and NO_SHOW.
 @app.route('/doctor/appointments', methods=['GET', 'POST'])
+
+# Ensure that only authenticated users can access this page.
 @protected
 def doctor_appointments_page():
     """List and manage the authenticated doctor's patient appointments."""
+
+    # Import ZoneInfo to support timezone conversion.
+    # Appointment timestamps are processed in UTC but displayed in IST.
     from zoneinfo import ZoneInfo
 
-    # Mutations are sent to the appointment API, which independently checks
-    # ownership, appointment state, and the relevant time-based eligibility.
+    # ---------------------------------------------------------------
+    # BLOCK 1: HANDLE DOCTOR ACTIONS (POST REQUEST)
+    # ---------------------------------------------------------------
+
+    # When the doctor submits an action from the appointments page,
+    # this block processes the submitted form data.
+    #
+    # Important:
+    # Actual appointment updates are performed by the Appointment API.
+    # The API independently validates doctor ownership, appointment
+    # status and time-based eligibility.
     if request.method == 'POST':
+
+        # Retrieve the appointment ID submitted through the form.
+        # strip() removes unnecessary spaces.
         appointment_id = (request.form.get('appointment_id') or '').strip()
+
+        # Retrieve the requested action and convert it to uppercase.
+        # Example: cancel becomes CANCEL.
         action = (request.form.get('action') or '').strip().upper()
+
+        # Validate that the appointment ID contains only digits.
         if not appointment_id.isdigit():
             flash('Invalid appointment ID')
+
+        # -----------------------------------------------------------
+        # BLOCK 2: DOCTOR CANCELS AN APPOINTMENT
+        # -----------------------------------------------------------
         elif action == 'CANCEL':
+
+            # Retrieve the cancellation reason submitted by the doctor.
             reason = (request.form.get('reason') or '').strip()
+
+            # A cancellation reason is mandatory.
             if not reason:
                 flash('Please provide a cancellation reason')
             else:
+
+                # Send a DELETE request to the Appointment API.
+                # The API handles the actual cancellation, refund
+                # calculation, database update and related events.
+                #
+                # Only the first 200 characters of the reason are sent.
                 page_post('DELETE', f'/doctors/me/appointments/{appointment_id}',
                           {'reason': reason[:200]})
+
+        # -----------------------------------------------------------
+        # BLOCK 3: DOCTOR UPDATES APPOINTMENT OUTCOME
+        # -----------------------------------------------------------
         elif action in ('COMPLETED', 'NO_SHOW'):
+
+            # Send a POST request to the Appointment API.
+            #
+            # COMPLETED -> Patient attended and completed the appointment.
+            # NO_SHOW   -> Patient did not attend the appointment.
+            #
+            # The backend independently checks whether the selected
+            # outcome is allowed at the current time.
             page_post('POST', f'/doctors/me/appointments/{appointment_id}/outcome',
                       {'outcome': action})
+
+        # If the doctor submits an unsupported action, display an error.
         else:
             flash('Invalid appointment action')
+
+        # -----------------------------------------------------------
+        # BLOCK 4: REDIRECT AFTER PROCESSING THE ACTION
+        # -----------------------------------------------------------
+
+        # Redirect back to the appointments page after POST processing.
+        #
+        # Preserve the existing filters and pagination so the doctor
+        # can return to the same view after cancelling or updating
+        # an appointment.
         return redirect(url_for('doctor_appointments_page',
                                 from_date=request.args.get('from_date', ''),
                                 to_date=request.args.get('to_date', ''),
@@ -348,113 +411,367 @@ def doctor_appointments_page():
                                 per_page=request.args.get('per_page', 10),
                                 page=request.args.get('page', 1)))
 
+    # ---------------------------------------------------------------
+    # BLOCK 5: INITIALIZE TIMEZONES AND CURRENT TIME
+    # ---------------------------------------------------------------
+
+    # Define Indian Standard Time for displaying appointment dates.
     ist = ZoneInfo('Asia/Kolkata')
+
+    # Get the current time in UTC.
+    # This is used to determine whether appointments are upcoming,
+    # past, eligible for completion or eligible for NO_SHOW.
     now_utc = datetime.now(timezone.utc)
+
+    # ---------------------------------------------------------------
+    # BLOCK 6: READ FILTERS FROM THE URL
+    # ---------------------------------------------------------------
+
+    # Retrieve the filters selected by the doctor.
+    #
+    # from_date -> Starting date of the appointment search.
+    # to_date   -> Ending date of the appointment search.
+    # status    -> Appointment status filter.
+    # period    -> Upcoming, past or all appointments.
     filters = {
         'from_date': (request.args.get('from_date') or '').strip(),
         'to_date': (request.args.get('to_date') or '').strip(),
         'status': (request.args.get('status') or '').strip().upper(),
         'period': (request.args.get('period') or 'upcoming').strip().lower(),
     }
+
+    # Accept only the supported appointment periods.
+    # If an invalid period is provided, default to upcoming.
     if filters['period'] not in ('upcoming', 'past', 'all'):
         filters['period'] = 'upcoming'
+
+    # Accept only the supported appointment status filters.
+    # An invalid status is replaced with an empty filter.
     if filters['status'] not in ('', 'CONFIRMED', 'COMPLETED', 'CANCELLED', 'NO_SHOW'):
         filters['status'] = ''
 
-    # The API accepts UTC boundaries and limits a response to 100 records.
+    # ---------------------------------------------------------------
+    # BLOCK 7: CONVERT SELECTED IST DATES INTO UTC
+    # ---------------------------------------------------------------
+
+    # Create a dictionary to hold the date parameters sent to the API.
     api_params = {}
+
     try:
+
+        # If the doctor selects a starting date, convert the beginning
+        # of that date from IST into UTC.
         if filters['from_date']:
+
+            # Create midnight (00:00:00) for the selected date in IST.
             local_from = datetime.combine(date.fromisoformat(filters['from_date']), datetime.min.time(), tzinfo=ist)
+
+            # Convert IST into UTC and format it as an ISO timestamp.
+            # Replace +00:00 with Z to represent UTC.
             api_params['from'] = local_from.astimezone(timezone.utc).isoformat().replace('+00:00', 'Z')
+
+        # If the doctor selects an ending date, convert the end of
+        # that date from IST into UTC.
         if filters['to_date']:
+
+            # Create the final time of the selected date in IST.
             local_to = datetime.combine(date.fromisoformat(filters['to_date']), datetime.max.time(), tzinfo=ist)
+
+            # Convert the ending date/time into UTC.
             api_params['to'] = local_to.astimezone(timezone.utc).isoformat().replace('+00:00', 'Z')
+
+        # Validate that the starting date is not after the ending date.
         if filters['from_date'] and filters['to_date'] and filters['from_date'] > filters['to_date']:
             raise ValueError
+
+    # Handle invalid date formats, missing/invalid date values
+    # and incorrect date ranges.
     except (ValueError, TypeError):
+
+        # Display an error message to the doctor.
         flash('Please select a valid date range')
+
+        # Clear both date filters because the selected range is invalid.
         filters['from_date'] = filters['to_date'] = ''
+
+        # Remove the API date parameters.
         api_params = {}
 
+    # ---------------------------------------------------------------
+    # BLOCK 8: FETCH APPOINTMENTS FROM THE APPOINTMENT API
+    # ---------------------------------------------------------------
+
+    # Call the doctor's appointments endpoint.
+    #
+    # urlencode() converts the UTC date parameters into URL query
+    # parameters.
+    #
+    # Example:
+    # /doctors/me/appointments?from=...&to=...
+    #
+    # The Appointment API Lambda retrieves the appointment records.
     payload = page_get('/doctors/me/appointments' + (('?' + urlencode(api_params)) if api_params else ''))
+
+    # If the API response is None, redirect the user to login.
     if payload is None:
         return redirect(url_for('login'))
+
+    # Ensure the API response is a dictionary before accessing it.
     if not isinstance(payload, dict):
         payload = {}
 
+    # ---------------------------------------------------------------
+    # BLOCK 9: PROCESS THE APPOINTMENT RECORDS
+    # ---------------------------------------------------------------
+
+    # Create an empty list to store the processed appointments.
     appointments = []
+
+    # Read every appointment returned by the API.
     for record in payload.get('appointments', []):
+
+        # Ignore records that are not dictionaries.
         if not isinstance(record, dict):
             continue
+
+        # Create a copy of the appointment record.
+        # Additional display-related fields will be added to this copy.
         item = dict(record)
+
+        # -----------------------------------------------------------
+        # BLOCK 10: CONVERT APPOINTMENT START TIME
+        # -----------------------------------------------------------
+
         try:
+
+            # Retrieve the appointment's UTC start time.
             start_raw = item.get('start_time_utc')
+
+            # Convert the ISO timestamp into a Python datetime object.
+            # Z is replaced with +00:00 for Python timezone parsing.
             start_dt = datetime.fromisoformat(str(start_raw).replace('Z', '+00:00'))
+
+            # If the timestamp has no timezone information,
+            # treat it as UTC.
             if start_dt.tzinfo is None:
                 start_dt = start_dt.replace(tzinfo=timezone.utc)
+
+            # Ensure the resulting datetime is converted to UTC.
             start_dt = start_dt.astimezone(timezone.utc)
+
+        # If the timestamp is missing or invalid, use None.
         except (TypeError, ValueError):
             start_dt = None
 
+        # -----------------------------------------------------------
+        # BLOCK 11: CONVERT APPOINTMENT END TIME
+        # -----------------------------------------------------------
+
         try:
+
+            # Retrieve the appointment's UTC end time.
             end_raw = item.get('end_time_utc')
+
+            # Convert the end timestamp into a datetime object.
+            # If no end time exists, use None.
             end_dt = datetime.fromisoformat(str(end_raw).replace('Z', '+00:00')) if end_raw else None
+
+            # If the timestamp has no timezone information,
+            # treat it as UTC.
             if end_dt and end_dt.tzinfo is None:
                 end_dt = end_dt.replace(tzinfo=timezone.utc)
+
+            # Convert the appointment end time into UTC.
             if end_dt:
                 end_dt = end_dt.astimezone(timezone.utc)
+
+        # Handle invalid or missing appointment end times.
         except (TypeError, ValueError):
             end_dt = None
 
+        # -----------------------------------------------------------
+        # BLOCK 12: PREPARE APPOINTMENT STATUS AND FEE
+        # -----------------------------------------------------------
+
+        # Retrieve the appointment status.
+        # If it is missing, use UNKNOWN.
         status_value = str(item.get('status') or 'UNKNOWN').upper()
+
+        # Store the normalized status.
         item['status'] = status_value
+
+        # Create a user-friendly status for display.
+        # Example: NO_SHOW becomes No Show.
         item['display_status'] = status_value.replace('_', ' ').title()
+
+        # Retrieve the appointment fee.
+        # If the fee is missing, display 0.
         item['fee'] = item.get('fee') if item.get('fee') is not None else '0'
+
+        # -----------------------------------------------------------
+        # BLOCK 13: PREPARE APPOINTMENT DATE AND TIME IN IST
+        # -----------------------------------------------------------
+
         if start_dt:
+
+            # Convert the appointment start time from UTC into IST.
             local_start = start_dt.astimezone(ist)
+
+            # Format the date for display in the dashboard.
+            # Example: Wednesday, 25 November 2026.
             item['appointment_date'] = local_start.strftime('%A, %d %B %Y')
+
+            # Format the time for display.
+            # Example: 10:30 AM.
             item['appointment_time'] = local_start.strftime('%I:%M %p')
+
+            # Store the appointment's local calendar date.
+            # This is used for date filtering.
             item['_local_date'] = local_start.date()
+
+            # Check whether the appointment start time is in the future.
             item['_is_future'] = start_dt > now_utc
+
+            # NO_SHOW becomes eligible after five minutes from
+            # the scheduled appointment start time.
             item['no_show_eligible'] = now_utc >= start_dt + timedelta(minutes=5)
+
         else:
+
+            # If the appointment start time is invalid or missing,
+            # provide safe default values.
             item['appointment_date'] = 'Date unavailable'
             item['appointment_time'] = ''
             item['_local_date'] = None
             item['_is_future'] = False
             item['no_show_eligible'] = False
 
+        # -----------------------------------------------------------
+        # BLOCK 14: CHECK COMPLETION ELIGIBILITY
+        # -----------------------------------------------------------
+
+        # Convert the appointment end time into an ISO UTC string.
+        # If the end time is unavailable, use an empty string.
         item['completion_at_utc'] = end_dt.isoformat().replace('+00:00', 'Z') if end_dt else ''
+
+        # Allow completion only when the scheduled end time has passed.
+        # The Appointment API independently validates this condition.
         item['completion_eligible'] = bool(end_dt and now_utc >= end_dt)
+
+        # -----------------------------------------------------------
+        # BLOCK 15: APPLY APPOINTMENT STATUS FILTER
+        # -----------------------------------------------------------
+
+        # Handle CANCELLED as a combined filter because the backend
+        # distinguishes patient cancellation and doctor cancellation.
         if filters['status'] == 'CANCELLED':
+
+            # Include only appointments cancelled by either party.
             if status_value not in ('CANCELLED_BY_PATIENT', 'CANCELLED_BY_DOCTOR'):
                 continue
+
+        # For other selected statuses, include only exact matches.
         elif filters['status'] and status_value != filters['status']:
             continue
+
+        # -----------------------------------------------------------
+        # BLOCK 16: APPLY UPCOMING / PAST / ALL FILTER
+        # -----------------------------------------------------------
+
+        # For upcoming appointments, skip appointments that have
+        # already started or are in the past.
         if filters['period'] == 'upcoming' and not item['_is_future']:
             continue
+
+        # For past appointments, skip appointments that are still
+        # in the future.
         if filters['period'] == 'past' and item['_is_future']:
             continue
+
+        # If period is all, neither of the above conditions removes
+        # an appointment.
+
+        # -----------------------------------------------------------
+        # BLOCK 17: APPLY SELECTED DATE RANGE
+        # -----------------------------------------------------------
+
+        # Skip appointments occurring before the selected start date.
         if filters['from_date'] and item['_local_date'] and item['_local_date'] < date.fromisoformat(filters['from_date']):
             continue
+
+        # Skip appointments occurring after the selected end date.
         if filters['to_date'] and item['_local_date'] and item['_local_date'] > date.fromisoformat(filters['to_date']):
             continue
+
+        # The appointment has passed all filters.
+        # Add it to the final processed appointment list.
         appointments.append(item)
 
+    # ---------------------------------------------------------------
+    # BLOCK 18: CONFIGURE PAGINATION
+    # ---------------------------------------------------------------
+
     try:
+
+        # Read how many appointments should be displayed per page.
+        # Default value is 10.
         per_page = int(request.args.get('per_page', 10))
+
+    # If the value is missing or invalid, default to 10.
     except (TypeError, ValueError):
         per_page = 10
+
+    # Only allow 10, 20 or 50 appointments per page.
     if per_page not in (10, 20, 50):
         per_page = 10
+
+    # Calculate the total number of appointments after filtering.
     total_appointments = len(appointments)
+
+    # Calculate the number of pages required.
+    # max(1, ...) ensures that at least one page is available.
     total_pages = max(1, (total_appointments + per_page - 1) // per_page)
+
+    # ---------------------------------------------------------------
+    # BLOCK 19: VALIDATE THE CURRENT PAGE NUMBER
+    # ---------------------------------------------------------------
+
     try:
+
+        # Read the requested page number.
+        # Keep it between 1 and the total number of pages.
         page = max(1, min(int(request.args.get('page', 1)), total_pages))
+
+    # If the page number is invalid, return to page 1.
     except (TypeError, ValueError):
         page = 1
+
+    # ---------------------------------------------------------------
+    # BLOCK 20: SELECT APPOINTMENTS FOR THE CURRENT PAGE
+    # ---------------------------------------------------------------
+
+    # Calculate which appointment records should appear on this page.
+    #
+    # Example:
+    # per_page = 10 and page = 2
+    # Selects appointment records 11 through 20.
     visible = appointments[(page - 1) * per_page:page * per_page]
+
+    # ---------------------------------------------------------------
+    # BLOCK 21: RENDER THE DOCTOR APPOINTMENTS HTML PAGE
+    # ---------------------------------------------------------------
+
+    # Send the processed appointment data and pagination details
+    # to the doctor_appointments.html template.
+    #
+    # appointments         -> Appointment records for the current page.
+    # filters              -> Selected date, status and period filters.
+    # page                 -> Current page number.
+    # per_page             -> Number of appointments per page.
+    # total_appointments   -> Total matching appointment count.
+    # total_pages          -> Total number of pages.
+    #
+    # Flask uses these values to display the doctor's appointments.
     return render_template('doctor_appointments.html', appointments=visible,
                            filters=filters, page=page, per_page=per_page,
                            total_appointments=total_appointments, total_pages=total_pages)
@@ -893,7 +1210,7 @@ def patient_appointments():
             cancelled = api('DELETE', f'/appointments/{appointment_id}', json={'reason': reason})
             if cancelled.ok:
                 result = cancelled.json()
-                flash(f"Appointment cancelled. Refund recorded: ₹{result.get('refundAmount', '0.00')} ({result.get('refundPercentage', '0')}%).")
+                flash(f"Appointment cancelled. Refund recorded: ₹{result.get('refundAmount  ', '0.00')} ({result.get('refundPercentage', '0')}%).")
             else:
                 flash(api_error(cancelled))
         except (requests.RequestException, ValueError):
@@ -918,7 +1235,7 @@ def patient_appointments():
     if filters['period'] not in {'upcoming', 'past', 'all'}:
         filters['period'] = 'upcoming'
     try:
-        page = max(1, int(request.args.get('page', '1')))
+        
     except (TypeError, ValueError):
         page = 1
     try:

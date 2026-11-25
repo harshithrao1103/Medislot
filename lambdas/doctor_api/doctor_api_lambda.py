@@ -664,6 +664,69 @@ def validate_availability_duration(start, end, duration_minutes):
 # All availability patterns are stored in RDS MySQL.
 # ============================================================
 
+def _availability_booking_conflicts(cur, uid, pattern, proposed=None):
+    """Return future confirmed appointments belonging to a weekly pattern
+    that would no longer fit inside the proposed pattern (or any pattern on
+    deletion). Appointment times are stored in UTC and weekly rules in IST.
+    """
+    import datetime as dt
+    from zoneinfo import ZoneInfo
+
+    cur.execute(
+        """SELECT duration_minutes FROM consultation_types
+           WHERE doctor_id=%s AND consultation_type_id=%s""",
+        (uid, pattern['consultation_type_id'])
+    )
+    consultation = cur.fetchone()
+    duration = int((consultation or {}).get('duration_minutes') or 0)
+    if duration <= 0:
+        raise ApiError(409, 'Cannot validate availability because its consultation duration is unavailable')
+
+    cur.execute(
+        """SELECT appointment_id, start_time_utc
+           FROM appointments
+           WHERE doctor_id=%s AND status='CONFIRMED'
+             AND start_time_utc >= UTC_TIMESTAMP()
+           ORDER BY start_time_utc""",
+        (uid,)
+    )
+    ist = ZoneInfo('Asia/Kolkata')
+    conflicts = []
+    for appointment in cur.fetchall():
+        raw = appointment['start_time_utc']
+        if raw.tzinfo is None:
+            raw = raw.replace(tzinfo=dt.timezone.utc)
+        local_start = raw.astimezone(ist)
+        if local_start.weekday() != int(pattern['day_of_week']):
+            continue
+        start_minutes = local_start.hour * 60 + local_start.minute
+        old_start = parse_db_time(pattern['start_time'])
+        old_end = parse_db_time(pattern['end_time'])
+        old_start_minutes = old_start.hour * 60 + old_start.minute
+        old_end_minutes = old_end.hour * 60 + old_end.minute
+        appointment_end = start_minutes + duration
+        # Only appointments that were generated inside this pattern belong
+        # to it. Do not block edits because of another pattern on the same day.
+        if not (old_start_minutes <= start_minutes and appointment_end <= old_end_minutes):
+            continue
+        if proposed is None:
+            conflicts.append(appointment['appointment_id'])
+            continue
+        # A booked slot keeps the consultation type/duration it was created
+        # with. Changing the pattern's type would generate a different slot
+        # shape over the same appointment, so require those bookings to be
+        # cancelled/completed before changing consultation type.
+        if proposed.get('consultation_type_id') != pattern['consultation_type_id']:
+            conflicts.append(appointment['appointment_id'])
+            continue
+        new_start = proposed['start'].hour * 60 + proposed['start'].minute
+        new_end = proposed['end'].hour * 60 + proposed['end'].minute
+        if (proposed['day'] != local_start.weekday()
+                or start_minutes < new_start or appointment_end > new_end):
+            conflicts.append(appointment['appointment_id'])
+    return conflicts
+
+
 def availability(event, uid, method, correlation, item_id=None):
 
     # ========================================================
@@ -711,32 +774,32 @@ def availability(event, uid, method, correlation, item_id=None):
 
             if method == 'DELETE':
 
-                # 3.1 Delete the specified availability entry.
                 cur.execute(
-                    """
-                    DELETE FROM doctor_availability
-                    WHERE doctor_id = %s
-                      AND availability_id = %s
-                    """,
+                    """SELECT availability_id, consultation_type_id, day_of_week,
+                              start_time, end_time
+                       FROM doctor_availability
+                       WHERE doctor_id=%s AND availability_id=%s
+                       FOR UPDATE""",
                     (uid, item_id)
                 )
-
-                # 3.2 Check whether the entry existed.
-                if not cur.rowcount:
-                    raise ApiError(
-                        404,
-                        'Availability entry not found'
-                    )
-
-                # 3.3 Commit the deletion to RDS.
-                conn.commit()
-
-                # 3.4 Return successful deletion response.
-                return respond(
-                    200,
-                    {'deleted': True},
-                    correlation
+                pattern = cur.fetchone()
+                if not pattern:
+                    raise ApiError(404, 'Availability entry not found')
+                conflicts = _availability_booking_conflicts(cur, uid, pattern)
+                if conflicts:
+                    raise ApiError(409, (
+                        'Cannot delete this availability because it has '
+                        f'{len(conflicts)} future confirmed appointment(s). '
+                        'Cancel or complete those appointments first.'
+                    ))
+                cur.execute(
+                    "DELETE FROM doctor_availability WHERE doctor_id=%s AND availability_id=%s",
+                    (uid, item_id)
                 )
+                conn.commit()
+                trigger_slot_reconciliation(__import__('datetime').datetime.now(
+                    __import__('zoneinfo').ZoneInfo('Asia/Kolkata')).date())
+                return respond(200, {'deleted': True}, correlation)
 
             # =================================================
             # 4. VALIDATE HTTP METHOD AND REQUEST BODY
@@ -812,6 +875,33 @@ def availability(event, uid, method, correlation, item_id=None):
                 end,
                 consultation['duration_minutes']
             )
+
+            # =================================================
+            # 11A. PROTECT FUTURE CONFIRMED APPOINTMENTS ON EDIT
+            # =================================================
+            if method == 'PUT':
+                cur.execute(
+                    """SELECT availability_id, consultation_type_id, day_of_week,
+                              start_time, end_time
+                       FROM doctor_availability
+                       WHERE doctor_id=%s AND availability_id=%s
+                       FOR UPDATE""",
+                    (uid, item_id)
+                )
+                old_pattern = cur.fetchone()
+                if not old_pattern:
+                    raise ApiError(404, 'Availability entry not found')
+                conflicts = _availability_booking_conflicts(
+                    cur, uid, old_pattern,
+                    {'day': day, 'start': start, 'end': end, 'consultation_type_id': typ}
+                )
+                if conflicts:
+                    raise ApiError(409, (
+                        'Cannot change this availability because the new '
+                        'timings would remove or move ' +
+                        f'{len(conflicts)} future confirmed appointment(s). '
+                        'Keep the booked time inside the availability or cancel the appointment first.'
+                    ))
 
             # =================================================
             # 12. CHECK EXISTING AVAILABILITY OVERLAPS
@@ -911,8 +1001,13 @@ def availability(event, uid, method, correlation, item_id=None):
             # 15.1 Save the INSERT or UPDATE in RDS MySQL.
             conn.commit()
 
+            # Reconcile immediately so every slot represented by the saved
+            # weekly pattern is generated/visible without waiting for cron.
+            import datetime as _dt
+            from zoneinfo import ZoneInfo as _ZoneInfo
+            trigger_slot_reconciliation(_dt.datetime.now(_ZoneInfo('Asia/Kolkata')).date())
+
             # 15.2 Return the availability ID.
-            # Slot materialisation happens separately.
             return respond(
                 201 if method == 'POST' else 200,
                 {
@@ -1273,7 +1368,6 @@ def schedule(event, uid, correlation):
         )
         if (
             slot['startTimeUTC'] < end.isoformat()
-            and slot.get('status') == 'AVAILABLE'
             and dt.datetime.fromisoformat(
                 slot['startTimeUTC'].replace('Z', '+00:00')
             ).astimezone(dt.timezone.utc) > now_utc
@@ -1363,6 +1457,15 @@ def schedule(event, uid, correlation):
             slot['slotId'],
             []
         )
+
+    # Show every active generated slot plus any slot carrying a confirmed
+    # appointment, even if reconciliation has marked it INACTIVE. This keeps
+    # booked appointments visible in the doctor's schedule after pattern edits.
+    items = [
+        slot for slot in items
+        if slot.get('status') == 'AVAILABLE'
+        or any(a.get('status') == 'CONFIRMED' for a in slot.get('appointments', []))
+    ]
 
     # On a blackout date, show only slots that still have a confirmed
     # appointment. Free slots must disappear, while booked appointments
