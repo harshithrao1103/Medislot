@@ -1235,6 +1235,7 @@ def patient_appointments():
     if filters['period'] not in {'upcoming', 'past', 'all'}:
         filters['period'] = 'upcoming'
     try:
+        page = int(request.args.get('page', '1'))
         
     except (TypeError, ValueError):
         page = 1
