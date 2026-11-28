@@ -180,6 +180,13 @@
           event.preventDefault();
           return;
         }
+        // Disabled submit buttons are omitted from the browser's form payload.
+        // Preserve the selected slot ID in a hidden field before disabling buttons.
+        const selectedSlot = document.createElement('input');
+        selectedSlot.type = 'hidden';
+        selectedSlot.name = 'slot_id';
+        selectedSlot.value = button.value;
+        form.appendChild(selectedSlot);
         cards.forEach(card => card.querySelector('button').disabled = true);
         button.textContent = 'Processing…';
       });
