@@ -1016,7 +1016,7 @@ jobs:
           export M6_TEST_LAMBDA_NAME="medislot-${DEPLOY_ENV}-milestone6"
           AWS_ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
           export M6_TEST_STATE_MACHINE_ARN="arn:aws:states:${AWS_REGION}:${AWS_ACCOUNT_ID}:stateMachine:medislot-${DEPLOY_ENV}-reschedule"
-          for NAME in M6_TEST_PATIENT_TOKENS_JSON M6_TEST_HEALTH_CAMP_SLOT_ID M6_TEST_DOCTOR_ID M6_TEST_IDEMPOTENCY_SLOT_ID M6_TEST_RESCHEDULE_TARGET_SLOT_ID M6_TEST_WAITLIST_SLOT_ID; do
+          for NAME in M6_TEST_PATIENT_TOKENS_JSON M6_TEST_DOCTOR_ID M6_TEST_IDEMPOTENCY_SLOT_ID M6_TEST_RESCHEDULE_TARGET_SLOT_ID M6_TEST_WAITLIST_SLOT_ID; do
             if [[ -z "${!NAME:-}" ]]; then echo "::error::Required deployed integration fixture $NAME is missing"; exit 1; fi
           done
           python -m pytest -q tests/integration/test_milestone6_aws.py

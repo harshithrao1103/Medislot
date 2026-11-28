@@ -8,6 +8,8 @@
 - Updated `docs/AWS_INTEGRATION_TEST_FIXTURES.md` to document the remaining slot/doctor repository Variables and the temporary account lifecycle.
 - Updated `MediSlot-GitHubActions-SSM-Policy.json` with the SSM permissions required by the EC2 dashboard deployment step.
 
+- Removed `M6_TEST_HEALTH_CAMP_SLOT_ID` from the workflow's mandatory-variable check. The concurrency test now accepts an explicit slot ID or discovers exactly one future, empty, AVAILABLE capacity-3 slot for the configured test doctor. It fails with a clear message if discovery is ambiguous or finds no safe candidate.
+
 ## Validation performed
 
 - Python compilation of the new setup script and modified integration test: passed.

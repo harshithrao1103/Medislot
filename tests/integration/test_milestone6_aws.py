@@ -55,6 +55,53 @@ def slot_item(slot_id):
     return table, rows[0]
 
 
+
+def health_camp_slot_id(doctor_id):
+    """Resolve the isolated capacity-3 test slot without requiring a repo variable.
+
+    An explicit M6_TEST_HEALTH_CAMP_SLOT_ID always wins. Otherwise discover exactly
+    one future, empty, AVAILABLE capacity-3 slot belonging to the configured test
+    doctor. Requiring uniqueness avoids guessing between multiple live slots.
+    """
+    configured = os.getenv('M6_TEST_HEALTH_CAMP_SLOT_ID')
+    if configured:
+        return configured
+
+    table = boto3.resource('dynamodb', region_name=REGION).Table(SLOTS_TABLE)
+    now = dt.datetime.now(dt.timezone.utc)
+    candidates = []
+    scan_kwargs = {}
+    while True:
+        page = table.scan(**scan_kwargs)
+        for item in page.get('Items', []):
+            if str(item.get('doctorId')) != str(doctor_id):
+                continue
+            if int(item.get('capacity', 0)) != 3:
+                continue
+            if int(item.get('bookedCount', 0)) != 0 or item.get('status') != 'AVAILABLE':
+                continue
+            try:
+                start = dt.datetime.fromisoformat(str(item['startTimeUTC']).replace('Z', '+00:00'))
+                if start.tzinfo is None:
+                    start = start.replace(tzinfo=dt.timezone.utc)
+            except (KeyError, TypeError, ValueError):
+                continue
+            if start > now:
+                candidates.append(str(item['slotId']))
+        last_key = page.get('LastEvaluatedKey')
+        if not last_key:
+            break
+        scan_kwargs['ExclusiveStartKey'] = last_key
+
+    if len(candidates) != 1:
+        raise AssertionError(
+            'M6_TEST_HEALTH_CAMP_SLOT_ID is not set and automatic discovery found '
+            f'{len(candidates)} future empty capacity-3 slots for doctor {doctor_id}. '
+            'Configure the repository variable explicitly, or ensure exactly one '
+            'isolated capacity-3 test slot exists for this doctor.'
+        )
+    return candidates[0]
+
 def wait_for(predicate, timeout=45, interval=1):
     deadline = time.time() + timeout
     while time.time() < deadline:
@@ -76,8 +123,8 @@ def test_01_concurrency_capacity_three_exactly_three_successes():
     assert API
     tokens = token_list('M6_TEST_PATIENT_TOKENS_JSON')
     assert len(tokens) >= 20 and len({patient_id(t) for t in tokens}) == len(tokens)
-    slot_id = os.environ['M6_TEST_HEALTH_CAMP_SLOT_ID']
     doctor_id = int(os.environ['M6_TEST_DOCTOR_ID'])
+    slot_id = health_camp_slot_id(doctor_id)
     table, slot = slot_item(slot_id)
     assert int(slot['capacity']) == 3 and int(slot.get('bookedCount', 0)) == 0
     created = []

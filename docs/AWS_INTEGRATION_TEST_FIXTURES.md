@@ -5,7 +5,7 @@ The merge-to-main deployment workflow runs four mandatory tests against the depl
 ## GitHub repository Variables
 
 - `M6_TEST_DOCTOR_ID`: numeric doctor ID that owns the test slots.
-- `M6_TEST_HEALTH_CAMP_SLOT_ID`: future, empty Health Camp slot with capacity exactly 3.
+- `M6_TEST_HEALTH_CAMP_SLOT_ID` (optional): future, empty, isolated Health Camp slot with capacity exactly 3. If omitted, the concurrency test scans the Slots table and automatically selects the only future, empty, AVAILABLE capacity-3 slot belonging to `M6_TEST_DOCTOR_ID`. If zero or multiple candidates are found, the test stops safely and asks you to configure this variable explicitly. Do not use a slot available to real patients.
 - `M6_TEST_IDEMPOTENCY_SLOT_ID`: future, empty capacity-1 slot. It is used by the idempotency test and as the original booking slot for the reschedule compensation test.
 - `M6_TEST_RESCHEDULE_TARGET_SLOT_ID`: future available slot for the same doctor, with no active hold.
 - `M6_TEST_WAITLIST_SLOT_ID`: full future slot with capacity at least 1 and no existing waitlist entries.
@@ -19,7 +19,7 @@ Patient JWTs are **not** configured as GitHub Secrets. Immediately before the in
 3. **Saga compensation:** creates a confirmed test appointment using a fresh patient and the idempotency fixture slot, starts the deployed state machine with an intentionally invalid original slot after a valid target claim, verifies compensation returns the target `bookedCount` to baseline and the original appointment remains confirmed, then cancels the test appointment.
 4. **Waitlist exclusivity:** uses three fresh patients, simulates a seat decrement, publishes `SlotSeatFreed`, verifies one live offer, expires it deterministically, and verifies the next FIFO patient receives the only live offer. It removes the test patients' waitlist entries and restores the fixture slot count.
 
-The fixture slots must be isolated from real users and available for automated mutation. The CI-created patient accounts are disposable test identities; this project currently has no patient-account deletion API, so each workflow run leaves those uniquely named accounts in the database. They contain synthetic data only.
+The fixture slots must be isolated from real users and available for automated mutation. The capacity-3 concurrency fixture may be discovered automatically only when exactly one matching future empty slot exists; all other fixtures remain explicitly configured. The CI-created patient accounts are disposable test identities; this project currently has no patient-account deletion API, so each workflow run leaves those uniquely named accounts in the database. They contain synthetic data only.
 
 ## GitHub Actions EC2 dashboard deployment permission
 
