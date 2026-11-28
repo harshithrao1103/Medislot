@@ -139,7 +139,7 @@ def promote(detail,cid='system'):
         offer=uuid.uuid4().hex; expiry=now()+dt.timedelta(seconds=hold_seconds); exp=expiry.isoformat(); stamp=now().isoformat()
         try:
             ddb.meta.client.transact_write_items(TransactItems=[
-              {'Update':{'TableName':slots.name,'Key':{'doctorId':{'S':str(detail['doctorId'])},'slotKey':{'S':detail['slotKey']}},'UpdateExpression':'SET holdOfferId=:o,holdPatientId=:p,holdExpiresAt=:e','ConditionExpression':'#st=:available AND bookedCount < capacity AND attribute_not_exists(holdOfferId)','ExpressionAttributeNames':{'#st':'status'},'ExpressionAttributeValues':{':o':{'S':offer},':p':{'S':entry['patientId']},':e':{'S':exp},':available':{'S':'AVAILABLE'}}}},
+              {'Update':{'TableName':slots.name,'Key':{'doctorId':{'S':str(detail['doctorId'])},'slotKey':{'S':detail['slotKey']}},'UpdateExpression':'SET holdOfferId=:o,holdPatientId=:p,holdExpiresAt=:e','ConditionExpression':'#st=:available AND bookedCount < #cap AND attribute_not_exists(holdOfferId)','ExpressionAttributeNames':{'#st':'status','#cap':'capacity'},'ExpressionAttributeValues':{':o':{'S':offer},':p':{'S':entry['patientId']},':e':{'S':exp},':available':{'S':'AVAILABLE'}}}},
               {'Update':{'TableName':waitlist.name,'Key':{'PK':{'S':entry['PK']},'SK':{'S':entry['SK']}},'UpdateExpression':'SET #s=:offered,offerId=:o,offerStatus=:pending,offeredAt=:now,offerExpiresAt=:exp,updatedAt=:now,notificationPending=:true,notificationEventId=:eventId','ConditionExpression':'#s=:waiting','ExpressionAttributeNames':{'#s':'status'},'ExpressionAttributeValues':{':offered':{'S':'OFFERED'},':waiting':{'S':'WAITING'},':o':{'S':offer},':pending':{'S':'PENDING'},':now':{'S':stamp},':exp':{'S':exp},':true':{'BOOL':True},':eventId':{'S':f'WaitlistHoldOfferIssued#{offer}'}}}}
             ])
             publish('WaitlistHoldOfferIssued',{'offerId':offer,'patientId':entry['patientId'],'slotId':entry['slotId'],'expiresAt':exp,'eventId':f'WaitlistHoldOfferIssued#{offer}'},cid)
@@ -189,7 +189,7 @@ def accept_offer(event,cid):
     if e.get('status')!='OFFERED': raise ApiError(409,'This offer is no longer active')
     if offer_is_expired(e['offerExpiresAt'],now()): raise ApiError(409,'Offer expired')
     try:
-        slots.update_item(Key={'doctorId':e['doctorId'],'slotKey':e['slotKey']},UpdateExpression='SET bookedCount=bookedCount+:one, #v=#v+:one REMOVE holdOfferId,holdPatientId,holdExpiresAt',ConditionExpression='#st=:available AND holdOfferId=:offer AND holdPatientId=:patient AND holdExpiresAt>:now AND bookedCount < capacity',ExpressionAttributeNames={'#v':'version','#st':'status'},ExpressionAttributeValues={':one':1,':offer':offer_id,':patient':patient,':now':now().isoformat(),':available':'AVAILABLE'})
+        slots.update_item(Key={'doctorId':e['doctorId'],'slotKey':e['slotKey']},UpdateExpression='SET bookedCount=bookedCount+:one, #v=#v+:one REMOVE holdOfferId,holdPatientId,holdExpiresAt',ConditionExpression='#st=:available AND holdOfferId=:offer AND holdPatientId=:patient AND holdExpiresAt>:now AND bookedCount < #cap',ExpressionAttributeNames={'#v':'version','#st':'status','#cap':'capacity'},ExpressionAttributeValues={':one':1,':offer':offer_id,':patient':patient,':now':now().isoformat(),':available':'AVAILABLE'})
     except ClientError: raise ApiError(409,'Offer is no longer available')
     conn=db(); appointment_id=None; committed=False
     try:
@@ -434,7 +434,7 @@ def saga_task(event,cid):
             metric('SlotUtilisationPercent',round((int(current.get('bookedCount',0))/int(current['capacity']))*100,2),unit='Percent')
     if op=='claim_target':
         t=slot(d['targetSlotId']); d['targetSlotKey']=t['slotKey']
-        atomic_slot_step('CLAIM_TARGET',{'doctorId':doctor,'slotKey':t['slotKey']},'SET bookedCount=bookedCount+:one,#v=#v+:one','#st=:available AND bookedCount < capacity AND attribute_not_exists(holdOfferId)',{'#v':'version','#st':'status'},{':one':{'N':'1'},':available':{'S':'AVAILABLE'}})
+        atomic_slot_step('CLAIM_TARGET',{'doctorId':doctor,'slotKey':t['slotKey']},'SET bookedCount=bookedCount+:one,#v=#v+:one','#st=:available AND bookedCount < #cap AND attribute_not_exists(holdOfferId)',{'#v':'version','#st':'status','#cap':'capacity'},{':one':{'N':'1'},':available':{'S':'AVAILABLE'}})
         d['targetClaimed']=True; return d
     if op=='release_original':
         orig=slot(d['originalSlotId']); d['originalSlotKey']=orig['slotKey']
