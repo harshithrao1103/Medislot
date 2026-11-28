@@ -341,6 +341,11 @@ Resources:
 
   WaitlistTable:
     Type: AWS::DynamoDB::Table
+    Metadata:
+      checkov:
+        skip:
+          - id: CKV_AWS_119
+            comment: DynamoDB server-side encryption at rest is enabled using the AWS-owned key; the project intentionally does not provision customer-managed KMS keys for DynamoDB tables.
     DeletionPolicy: Retain
     UpdateReplacePolicy: Retain
     Properties:
