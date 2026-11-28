@@ -2,7 +2,7 @@
 {% block content %}
 <section class="card patient-appointments-page reschedule-page">
   <div class="reschedule-heading">
-    <span class="reschedule-kicker">APPOINTMENT CHANGE</span>
+    <span class="reschedule-kicker">PATIENT PORTAL · APPOINTMENT CHANGE</span>
     <h2>Reschedule appointment</h2>
     <p>Choose a new available time with the same doctor. Your current appointment remains in place unless the reschedule is successful.</p>
   </div>
@@ -33,24 +33,61 @@
     {% set selectable_slots = slots|selectattr('free_seats', 'gt', 0)|list %}
     <form method="post" class="reschedule-form" id="reschedule-form">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <div class="reschedule-filter-panel">
+        <div class="reschedule-filter-heading">
+          <div><h3>Find your preferred slot</h3><p>Combine filters to narrow down available appointments.</p></div>
+          <button type="button" class="reschedule-clear-filters" id="clear-reschedule-filters">Clear filters</button>
+        </div>
+        <div class="reschedule-filters">
+          <label class="reschedule-filter-field"><span>Date from</span><input type="date" id="reschedule-date-from"></label>
+          <label class="reschedule-filter-field"><span>Date to</span><input type="date" id="reschedule-date-to"></label>
+          <label class="reschedule-filter-field"><span>Consultation type</span>
+            <select id="reschedule-consultation"><option value="">All consultation types</option>
+              {% for name in selectable_slots|map(attribute='consultation_type_name')|unique|sort %}
+                <option value="{{ name|lower }}">{{ name }}</option>
+              {% endfor %}
+            </select>
+          </label>
+          <label class="reschedule-filter-field"><span>Time from</span><input type="time" id="reschedule-time-from" aria-label="Time range start"></label>
+          <label class="reschedule-filter-field"><span>Time to</span><input type="time" id="reschedule-time-to" aria-label="Time range end"></label>
+        </div>
+        <p class="reschedule-filter-hint">Time filtering includes any slot that overlaps your selected time range, even when the slot starts before or ends after it. All times are IST.</p>
+      </div>
+
       <div class="reschedule-slots-header">
-        <div><h3>Select a new appointment slot</h3><p>All times are shown in India Standard Time (IST).</p></div>
-        <span class="reschedule-count">{{ selectable_slots|length }} available</span>
+        <div><h3>Select a new appointment slot</h3><p>Choose a slot below to claim it and submit your reschedule request.</p></div>
+        <span class="reschedule-count" id="reschedule-count">{{ selectable_slots|length }} available</span>
       </div>
       {% if selectable_slots %}
-        <div class="reschedule-slot-list">
+        <div class="reschedule-slot-list" id="reschedule-slot-list">
           {% for slot in selectable_slots %}
-          <label class="reschedule-slot-option" for="reschedule-slot-{{ loop.index }}">
-            <input id="reschedule-slot-{{ loop.index }}" type="radio" name="slot_id" value="{{ slot.get('slotId', slot.get('slot_id')) }}" required>
-            <span class="reschedule-radio-mark" aria-hidden="true"></span>
-            <span class="reschedule-slot-date"><span class="reschedule-field-label">DATE</span><strong>{{ slot.local_date_label }}</strong></span>
-            <span class="reschedule-slot-time"><span class="reschedule-field-label">START TIME</span><strong>{{ slot.local_time }}</strong></span>
-            <span class="reschedule-slot-consult"><span class="reschedule-field-label">CONSULTATION TYPE</span><strong>{{ slot.consultation_type_name }}</strong><small>{% if slot.consultation_duration %}{{ slot.consultation_duration }} min{% else %}Duration not specified{% endif %}{% if slot.consultation_fee is not none %} <span>·</span> ₹{{ slot.consultation_fee }}{% endif %}</small></span>
-            <span class="reschedule-slot-seats"><strong>{{ slot.free_seats }}</strong><small>seat{% if slot.free_seats != 1 %}s{% endif %} left</small></span>
-          </label>
+          {% set slot_start = slot.get('local_time', '') %}
+          {% set duration = slot.get('consultation_duration') or 0 %}
+          {% set start_minutes = 0 %}
+          {% if slot_start %}
+            {% set parsed_time = slot_start %}
+          {% endif %}
+          <article class="reschedule-slot-option"
+             data-date="{{ slot.local_date }}"
+             data-type="{{ slot.consultation_type_name|lower|e }}"
+             data-start="{{ slot.get('local_start_minutes', -1) }}"
+             data-end="{{ slot.get('local_end_minutes', -1) }}">
+            <div class="reschedule-slot-date"><span class="reschedule-field-label">DATE</span><strong>{{ slot.local_date_label }}</strong></div>
+            <div class="reschedule-slot-time"><span class="reschedule-field-label">START TIME</span><strong>{{ slot.local_time }}</strong>
+              {% if slot.consultation_duration %}<small>{{ slot.consultation_duration }} min duration</small>{% endif %}
+            </div>
+            <div class="reschedule-slot-consult"><span class="reschedule-field-label">CONSULTATION TYPE</span><strong>{{ slot.consultation_type_name }}</strong><small>{% if slot.consultation_duration %}{{ slot.consultation_duration }} min{% else %}Duration not specified{% endif %}{% if slot.consultation_fee is not none %} <span>·</span> ₹{{ slot.consultation_fee }}{% endif %}</small></div>
+            <div class="reschedule-slot-seats"><strong>{{ slot.free_seats }}</strong><small>seat{% if slot.free_seats != 1 %}s{% endif %} left</small></div>
+            <button type="submit" class="reschedule-claim-button" name="slot_id" value="{{ slot.get('slotId', slot.get('slot_id')) }}">Claim new seat <span aria-hidden="true">→</span></button>
+          </article>
           {% endfor %}
         </div>
-        <div class="reschedule-submit-row"><p><span>ⓘ</span> Select one slot to continue. Your existing booking is not changed until the reschedule completes.</p><button type="submit" id="reschedule-submit" disabled>Confirm new slot <span aria-hidden="true">→</span></button></div>
+        <div class="reschedule-no-filter-results" id="reschedule-no-results" hidden><strong>No slots match these filters</strong><p>Try changing the date, consultation type or time range.</p></div>
+        <nav class="reschedule-pagination" id="reschedule-pagination" aria-label="Available slots pagination">
+          <span id="reschedule-page-summary">Showing 1–8</span>
+          <div><button type="button" id="reschedule-prev" disabled>Previous</button><span id="reschedule-page-number">Page 1 of 1</span><button type="button" id="reschedule-next" disabled>Next</button></div>
+        </nav>
+        <p class="reschedule-safety-note"><span>ⓘ</span> Your existing booking is not changed unless the new reschedule request completes successfully.</p>
       {% else %}
         <div class="reschedule-empty"><span>◷</span><strong>No available slots right now</strong><p>There are currently no slots with seats remaining in the next 30 days. Please try again later.</p></div>
       {% endif %}
@@ -58,14 +95,95 @@
     <script>
     (() => {
       const form = document.getElementById('reschedule-form');
-      if (!form) return;
-      const submit = document.getElementById('reschedule-submit');
-      form.querySelectorAll('input[name="slot_id"]').forEach(input => input.addEventListener('change', () => {
-        form.querySelectorAll('.reschedule-slot-option').forEach(card => card.classList.remove('is-selected'));
-        input.closest('.reschedule-slot-option').classList.add('is-selected');
-        submit.disabled = false;
-      }));
-      form.addEventListener('submit', () => { submit.disabled = true; submit.textContent = 'Processing reschedule…'; });
+      const list = document.getElementById('reschedule-slot-list');
+      if (!form || !list) return;
+      const cards = Array.from(list.querySelectorAll('.reschedule-slot-option'));
+      const controls = {
+        from: document.getElementById('reschedule-date-from'),
+        to: document.getElementById('reschedule-date-to'),
+        type: document.getElementById('reschedule-consultation'),
+        timeFrom: document.getElementById('reschedule-time-from'),
+        timeTo: document.getElementById('reschedule-time-to')
+      };
+      const count = document.getElementById('reschedule-count');
+      const noResults = document.getElementById('reschedule-no-results');
+      const pagination = document.getElementById('reschedule-pagination');
+      const prev = document.getElementById('reschedule-prev');
+      const next = document.getElementById('reschedule-next');
+      const pageNumber = document.getElementById('reschedule-page-number');
+      const pageSummary = document.getElementById('reschedule-page-summary');
+      const pageSize = 8;
+      let page = 1;
+      let filtered = cards.slice();
+
+      const toMinutes = value => {
+        if (!value) return null;
+        const parts = value.split(':').map(Number);
+        return parts[0] * 60 + parts[1];
+      };
+      const applyFilters = () => {
+        const startDate = controls.from.value;
+        const endDate = controls.to.value;
+        const type = controls.type.value;
+        const timeFrom = toMinutes(controls.timeFrom.value);
+        const timeTo = toMinutes(controls.timeTo.value);
+        const validTimeRange = timeFrom === null || timeTo === null || timeFrom < timeTo;
+        filtered = cards.filter(card => {
+          const date = card.dataset.date || '';
+          const slotType = card.dataset.type || '';
+          const slotStart = Number(card.dataset.start);
+          const slotEnd = Number(card.dataset.end);
+          const dateMatch = (!startDate || date >= startDate) && (!endDate || date <= endDate);
+          const typeMatch = !type || slotType === type;
+          // Half-open interval overlap: slotStart < filterEnd && slotEnd > filterStart.
+          const timeMatch = !validTimeRange || timeFrom === null || timeTo === null ||
+            (Number.isFinite(slotStart) && Number.isFinite(slotEnd) && slotStart < timeTo && slotEnd > timeFrom);
+          return dateMatch && typeMatch && timeMatch;
+        });
+        page = 1;
+        renderPage();
+        if (!validTimeRange) {
+          controls.timeTo.setCustomValidity('End time must be later than start time.');
+          controls.timeTo.reportValidity();
+        } else {
+          controls.timeTo.setCustomValidity('');
+        }
+      };
+      const renderPage = () => {
+        const total = filtered.length;
+        const pages = Math.max(1, Math.ceil(total / pageSize));
+        page = Math.min(page, pages);
+        cards.forEach(card => { card.hidden = true; });
+        filtered.slice((page - 1) * pageSize, page * pageSize).forEach(card => { card.hidden = false; });
+        count.textContent = total + ' available';
+        noResults.hidden = total !== 0;
+        list.hidden = total === 0;
+        pagination.hidden = total === 0;
+        const first = total ? (page - 1) * pageSize + 1 : 0;
+        const last = Math.min(page * pageSize, total);
+        pageSummary.textContent = `Showing ${first}–${last} of ${total}`;
+        pageNumber.textContent = `Page ${page} of ${pages}`;
+        prev.disabled = page <= 1;
+        next.disabled = page >= pages;
+      };
+      Object.values(controls).forEach(control => control.addEventListener('change', applyFilters));
+      document.getElementById('clear-reschedule-filters').addEventListener('click', () => {
+        Object.values(controls).forEach(control => { control.value = ''; control.setCustomValidity(''); });
+        applyFilters();
+      });
+      prev.addEventListener('click', () => { if (page > 1) { page--; renderPage(); } });
+      next.addEventListener('click', () => { if (page * pageSize < filtered.length) { page++; renderPage(); } });
+      form.addEventListener('submit', event => {
+        const button = event.submitter;
+        if (!button || !button.name || button.name !== 'slot_id') return;
+        if (!window.confirm('Claim this slot and submit your reschedule request?')) {
+          event.preventDefault();
+          return;
+        }
+        cards.forEach(card => card.querySelector('button').disabled = true);
+        button.textContent = 'Processing…';
+      });
+      applyFilters();
     })();
     </script>
   {% endif %}

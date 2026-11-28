@@ -492,3 +492,33 @@ footer {
 .reschedule-pending p{margin:4px 0 0;font-size:13px}
 @media(max-width:760px){.reschedule-slot-option{grid-template-columns:20px 1fr 1fr;gap:12px}.reschedule-slot-consult{grid-column:2 / 3}.reschedule-slot-seats{grid-column:3;grid-row:2}.reschedule-submit-row{align-items:stretch;flex-direction:column}.reschedule-submit-row button{width:100%}}
 @media(max-width:460px){.reschedule-slot-option{grid-template-columns:18px minmax(0,1fr);gap:10px;padding:13px}.reschedule-slot-date,.reschedule-slot-time,.reschedule-slot-consult,.reschedule-slot-seats{grid-column:2;grid-row:auto;text-align:left}.reschedule-slot-seats{display:flex;align-items:center;gap:7px;padding:0;background:transparent}.reschedule-slot-seats strong{font-size:14px}.reschedule-slot-seats small{margin:0}.reschedule-slots-header{align-items:flex-start;flex-direction:column}}
+
+/* Reschedule filters, per-slot claim action and pagination */
+.reschedule-filter-panel{margin:0 0 22px;padding:18px;border:1px solid #e1ebef;border-radius:15px;background:#f8fbfc}
+.reschedule-filter-heading{display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:14px}
+.reschedule-filter-heading h3{margin:0 0 3px;color:#18384d;font-size:15px}
+.reschedule-filter-heading p{margin:0;font-size:12px;color:#718493}
+.reschedule-clear-filters{border:0;background:transparent;color:#07877c;font-size:12px;font-weight:800;cursor:pointer}
+.reschedule-filters{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:12px}
+.reschedule-filter-field{display:grid;gap:6px;color:#647987;font-size:11px;font-weight:750}
+.reschedule-filter-field input,.reschedule-filter-field select{width:100%;min-width:0;min-height:42px;padding:9px 10px;border:1px solid #d8e4e9;border-radius:9px;background:#fff;color:#1d3c50;font:inherit;font-size:12px}
+.reschedule-filter-hint{margin:11px 0 0;color:#748692;font-size:11px;line-height:1.5}
+.reschedule-slot-option{grid-template-columns:minmax(115px,1fr) minmax(105px,.8fr) minmax(155px,1.3fr) minmax(72px,.45fr) auto;cursor:default}
+.reschedule-slot-option[hidden]{display:none!important}
+.reschedule-slot-time small{display:block;margin-top:4px;color:#718493;font-size:10px}
+.reschedule-slot-seats{min-width:72px}
+.reschedule-claim-button{align-self:center;white-space:nowrap;padding:11px 14px;border:0;border-radius:9px;background:#078d80;color:#fff;font-size:11px;font-weight:800;cursor:pointer;transition:background .15s,transform .15s}
+.reschedule-claim-button:hover{background:#06766d;transform:translateY(-1px)}
+.reschedule-claim-button:disabled{opacity:.65;cursor:wait;transform:none}
+.reschedule-pagination{display:flex;justify-content:space-between;align-items:center;gap:14px;margin-top:16px;padding-top:14px;border-top:1px solid #e8eef1;color:#6d808d;font-size:11px}
+.reschedule-pagination>div{display:flex;align-items:center;gap:12px}
+.reschedule-pagination button{padding:8px 12px;border:1px solid #d8e4e9;border-radius:8px;background:#fff;color:#24465a;font-size:11px;font-weight:750;cursor:pointer}
+.reschedule-pagination button:disabled{opacity:.4;cursor:not-allowed}
+.reschedule-no-filter-results{padding:25px;text-align:center;border:1px dashed #d4e2e8;border-radius:13px;background:#fbfdfe}
+.reschedule-no-filter-results strong{color:#1d3c50}
+.reschedule-no-filter-results p{margin:5px 0 0;font-size:12px}
+.reschedule-safety-note{margin:14px 0 0;color:#748692;font-size:11px}
+.reschedule-safety-note span{color:#078d80;font-weight:900}
+@media(max-width:1000px){.reschedule-filters{grid-template-columns:repeat(3,minmax(0,1fr))}.reschedule-slot-option{grid-template-columns:1fr 1fr minmax(150px,1.2fr) 72px}.reschedule-claim-button{grid-column:1/-1;justify-self:end}}
+@media(max-width:700px){.reschedule-filters{grid-template-columns:repeat(2,minmax(0,1fr))}.reschedule-slot-option{grid-template-columns:1fr 1fr;gap:12px}.reschedule-slot-consult{grid-column:auto}.reschedule-slot-seats{grid-column:auto;grid-row:auto}.reschedule-claim-button{grid-column:1/-1;justify-self:stretch;width:100%}.reschedule-pagination{align-items:flex-start;flex-direction:column}.reschedule-pagination>div{width:100%;justify-content:space-between}}
+@media(max-width:420px){.reschedule-filters{grid-template-columns:1fr}.reschedule-filter-heading{align-items:flex-start}.reschedule-slot-option{padding:14px}}

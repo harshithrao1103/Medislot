@@ -1813,14 +1813,20 @@ def patient_reschedule(appointment_id):
                 slot['local_date_label'] = local_dt.strftime('%a, %d %b %Y')
                 slot['local_time'] = local_dt.strftime('%I:%M %p')
                 slot['local_date'] = local_dt.strftime('%Y-%m-%d')
+                slot['local_start_minutes'] = local_dt.hour * 60 + local_dt.minute
             except (TypeError, ValueError):
                 slot['local_date_label'] = 'Date unavailable'
                 slot['local_time'] = str(raw_start or 'Time unavailable')
                 slot['local_date'] = 'unknown'
+                slot['local_start_minutes'] = -1
             slot['free_seats'] = int(slot.get('freeSeats', slot.get('free_seats', 0)) or 0)
             consultation = consultation_types.get(str(slot.get('consultationTypeId', slot.get('consultation_type_id'))), {})
             slot['consultation_type_name'] = consultation.get('name') or slot.get('consultationTypeName') or slot.get('consultation_type_name') or 'Consultation'
             slot['consultation_duration'] = consultation.get('duration_minutes') or slot.get('consultation_duration')
+            slot['local_end_minutes'] = (
+                slot['local_start_minutes'] + int(slot['consultation_duration'])
+                if slot['local_start_minutes'] >= 0 and slot['consultation_duration'] else -1
+            )
             slot['consultation_fee'] = consultation.get('fee', slot.get('consultation_fee'))
 
         if request.method == 'POST':
