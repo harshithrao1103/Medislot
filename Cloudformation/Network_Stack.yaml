@@ -343,27 +343,6 @@ Resources:
         - Key: Environment
           Value: !Ref Environment
 
-  # =====================================================
-  # PRIVATE AWS API ENDPOINTS REQUIRED BY MILESTONE 6 (NO NAT ROUTE)
-  # =====================================================
-  SsmVPCEndpoint:
-    Type: AWS::EC2::VPCEndpoint
-    Properties:
-      VpcEndpointType: Interface
-      ServiceName: !Sub com.amazonaws.${AWS::Region}.ssm
-      VpcId: !Ref MediSlotVPC
-      SubnetIds: [!Ref PrivateSubnetA, !Ref PrivateSubnetB]
-      SecurityGroupIds: [!Ref SecretsManagerEndpointSecurityGroup]
-      PrivateDnsEnabled: true
-  EventBridgeVPCEndpoint:
-    Type: AWS::EC2::VPCEndpoint
-    Properties:
-      VpcEndpointType: Interface
-      ServiceName: !Sub com.amazonaws.${AWS::Region}.events
-      VpcId: !Ref MediSlotVPC
-      SubnetIds: [!Ref PrivateSubnetA, !Ref PrivateSubnetB]
-      SecurityGroupIds: [!Ref SecretsManagerEndpointSecurityGroup]
-      PrivateDnsEnabled: true
   StepFunctionsVPCEndpoint:
     Type: AWS::EC2::VPCEndpoint
     Properties:
