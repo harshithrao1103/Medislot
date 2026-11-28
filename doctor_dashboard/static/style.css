@@ -55,6 +55,11 @@
 .time-slot.is-booked .time-slot-time{color:#657786}
 .time-slot.is-booked .time-slot-state{color:#6d7c88;background:#e3e9ed}
 .time-slot.is-booked .time-slot-meta,.time-slot.is-booked .time-slot-seats{color:#84929c}
+.time-slot.is-booked-by-you{border-color:#9bd9c2;background:#edf9f3;color:#175b43}
+.time-slot.is-booked-by-you .time-slot-time{color:#175b43}
+.time-slot.is-booked-by-you .time-slot-state{color:#087b54;background:#d9f3e5}
+.time-slot.is-booked-by-you .time-slot-meta,.time-slot.is-booked-by-you .time-slot-seats{color:#39745f}
+.time-slot.is-booked-by-you .slot-book-unavailable{background:#dff3e8;color:#176747}
 .time-slot.is-selected{background:#078d80;border-color:#078d80;color:#fff;box-shadow:0 0 0 3px #078d8020}
 .time-slot.is-selected .time-slot-time,.time-slot.is-selected .time-slot-state,.time-slot.is-selected .time-slot-meta,.time-slot.is-selected .time-slot-seats{color:#fff}
 .time-slot.is-selected .time-slot-state{background:#087b70}

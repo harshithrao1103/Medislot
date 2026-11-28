@@ -61,8 +61,8 @@
         <div class="slot-grid">
           {% for slot in date_group.list %}
           <article
-            class="time-slot {% if slot.free_seats > 0 %}is-available{% else %}is-booked{% endif %}"
-            {% if slot.free_seats <= 0 %}aria-disabled="true"{% else %}
+            class="time-slot {% if slot.booked_by_current_patient %}is-booked is-booked-by-you{% elif slot.free_seats > 0 %}is-available{% else %}is-booked{% endif %}"
+            {% if slot.booked_by_current_patient or slot.free_seats <= 0 %}aria-disabled="true"{% else %}
             data-slot-id="{{ slot.get('slotId', '') }}"
             data-time="{{ slot.local_time }}"
             data-date="{{ slot.local_date_label }}"
@@ -72,7 +72,7 @@
           >
             <div class="time-slot-top">
               <span class="time-slot-time">{{ slot.local_time }}</span>
-              <span class="time-slot-state">{% if slot.free_seats > 0 %}✓ Available{% else %}Already booked{% endif %}</span>
+              <span class="time-slot-state">{% if slot.booked_by_current_patient %}✓ You have booked{% elif slot.free_seats > 0 %}✓ Available{% else %}Already booked{% endif %}</span>
             </div>
             <div class="time-slot-meta">
               {{ slot.consultation_type_name }}
@@ -80,9 +80,11 @@
               {% if slot.consultation_fee is not none %} · ₹{{ slot.consultation_fee }}{% endif %}
             </div>
             <div class="time-slot-seats">
-              {% if slot.free_seats > 0 %}{{ slot.free_seats }} seat{% if slot.free_seats != 1 %}s{% endif %} remaining{% else %}Booked by another patient · 0 seats remaining{% endif %}
+              {% if slot.booked_by_current_patient %}You have already booked this slot{% elif slot.free_seats > 0 %}{{ slot.free_seats }} seat{% if slot.free_seats != 1 %}s{% endif %} remaining{% else %}Booked by another patient · 0 seats remaining{% endif %}
             </div>
-            {% if slot.free_seats > 0 %}
+            {% if slot.booked_by_current_patient %}
+            <span class="slot-book-unavailable">Your appointment is confirmed · no need to book again</span>
+            {% elif slot.free_seats > 0 %}
             <button type="button" class="slot-book-button" data-book-slot aria-pressed="false">
               Book appointment <span aria-hidden="true">→</span>
             </button>
@@ -144,10 +146,18 @@
         const result = await response.json();
         if (!response.ok) throw new Error(result.error || `Booking failed (${response.status})`);
         delete card.dataset.idempotencyKey;
-        button.textContent = 'Appointment booked ✓';
-        button.setAttribute('aria-pressed', 'true');
+        button.remove();
+        card.classList.remove('is-available');
+        card.classList.add('is-booked', 'is-booked-by-you');
+        card.setAttribute('aria-disabled', 'true');
         const state = card.querySelector('.time-slot-state');
-        if (state) state.textContent = '✓ Booked';
+        if (state) state.textContent = '✓ You have booked';
+        const seats = card.querySelector('.time-slot-seats');
+        if (seats) seats.textContent = 'You have already booked this slot';
+        const notice = document.createElement('span');
+        notice.className = 'slot-book-unavailable';
+        notice.textContent = 'Your appointment is confirmed · no need to book again';
+        card.appendChild(notice);
       } catch (error) {
         button.disabled = false;
         button.textContent = error.message || 'Booking failed — try again';

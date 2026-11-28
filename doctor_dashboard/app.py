@@ -1577,6 +1577,48 @@ def patient_doctor(doctor_id):
             if slots_response.ok else []
         )
 
+        # ----------------------------------------------------
+        # 3A. IDENTIFY SLOTS ALREADY BOOKED BY THIS PATIENT
+        # ----------------------------------------------------
+        # The patient appointments endpoint returns the authenticated
+        # patient's own appointments. Match doctor_id + slot_id so a
+        # patient's own booking is not labelled as another patient's.
+        # Only CONFIRMED appointments count; cancelled/completed/no-show
+        # records must not block a new booking.
+        own_confirmed_slot_ids = set()
+        try:
+            patient_appointments_response = api('GET', '/appointments')
+            if patient_appointments_response.ok:
+                patient_appointments = patient_appointments_response.json().get(
+                    'appointments', []
+                )
+                for appointment in patient_appointments:
+                    appointment_status = str(
+                        appointment.get('status') or ''
+                    ).upper()
+                    appointment_doctor_id = appointment.get(
+                        'doctor_id', appointment.get('doctorId')
+                    )
+                    appointment_slot_id = appointment.get(
+                        'slot_id', appointment.get('slotId')
+                    )
+                    if (
+                        appointment_status == 'CONFIRMED'
+                        and str(appointment_doctor_id) == str(doctor_id)
+                        and appointment_slot_id is not None
+                    ):
+                        own_confirmed_slot_ids.add(str(appointment_slot_id))
+            else:
+                app.logger.warning(
+                    'Unable to load patient appointments while checking own bookings: %s',
+                    patient_appointments_response.status_code
+                )
+        except (requests.RequestException, ValueError, TypeError):
+            app.logger.exception(
+                'Unable to identify the current patient bookings for doctor %s',
+                doctor_id
+            )
+
         # Display the backend error if slot retrieval fails.
         if not slots_response.ok:
             flash(api_error(slots_response))
@@ -1641,6 +1683,13 @@ def patient_doctor(doctor_id):
             # Get the number of remaining seats for this slot.
             # If freeSeats is missing or empty, use 0.
             slot['free_seats'] = int(slot.get('freeSeats', 0) or 0)
+
+            # Distinguish this patient's own confirmed booking from a
+            # slot occupied by another patient. This also prevents a
+            # second booking when the slot has capacity greater than one.
+            slot['booked_by_current_patient'] = (
+                str(slot.get('slotId', '')) in own_confirmed_slot_ids
+            )
 
             # Find the consultation details corresponding
             # to this slot's consultationTypeId.
