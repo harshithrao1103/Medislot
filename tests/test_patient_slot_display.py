@@ -6,7 +6,10 @@ ROOT = Path(__file__).resolve().parents[1]
 
 def test_patient_doctor_page_uses_slot_cards_and_availability_states():
     template = (ROOT / "doctor_dashboard/templates/patient_doctor.html").read_text()
-    assert "class=\"time-slot {% if slot.free_seats > 0 %}is-available" in template
+    assert 'class="time-slot ' in template
+    assert "slot.booked_by_current_patient" in template
+    assert "is-booked-by-you" in template
+    assert "✓ You have booked" in template
     assert "is-booked" in template
     assert "slot.free_seats" in template
     assert "Fully booked" in template
