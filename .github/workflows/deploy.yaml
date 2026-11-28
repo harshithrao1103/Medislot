@@ -232,16 +232,16 @@ jobs:
           AZ_B=$(jq -r '.network.AvailabilityZoneB' "$CONFIG")
 
           aws cloudformation deploy \
-            --template-file Cloudformation/Application_Stack.yaml \
-            --s3-bucket "$ARTIFACT_BUCKET" \
-            --s3-prefix "cloudformation/application" \
+            --template-file Cloudformation/Network_Stack.yaml \
             --stack-name "$STACK_NAME" \
             --parameter-overrides \
               Environment="$DEPLOY_ENV" \
-              ArtifactBucketName="$ARTIFACT_BUCKET" \
-              CodeVersion="$GITHUB_SHA" \
-              ApiDeploymentVersion="$GITHUB_SHA" \
-            --capabilities CAPABILITY_IAM \
+              VpcCIDR="$VPC_CIDR" \
+              PublicSubnetCIDR="$PUBLIC_SUBNET_CIDR" \
+              PrivateSubnetACIDR="$PRIVATE_SUBNET_A_CIDR" \
+              PrivateSubnetBCIDR="$PRIVATE_SUBNET_B_CIDR" \
+              AvailabilityZoneA="$AZ_A" \
+              AvailabilityZoneB="$AZ_B" \
             --role-arn "$CFN_EXECUTION_ROLE_ARN" \
             --region "$AWS_REGION" \
             --no-fail-on-empty-changeset
@@ -839,6 +839,7 @@ jobs:
               ArtifactBucketName="$ARTIFACT_BUCKET" \
               CodeVersion="$GITHUB_SHA" \
               ApiDeploymentVersion="$GITHUB_SHA" \
+            --capabilities CAPABILITY_IAM \
             --role-arn "$CFN_EXECUTION_ROLE_ARN" \
             --region "$AWS_REGION" \
             --no-fail-on-empty-changeset
