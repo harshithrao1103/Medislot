@@ -1796,6 +1796,33 @@ def patient_reschedule(appointment_id):
         end = today + timedelta(days=30)
         slots_response = api('GET', f'/doctors/{doctor_id}/slots', params={'start_date': today.isoformat(), 'end_date': end.isoformat()})
         available_slots = slots_response.json().get('slots', []) if slots_response.ok else []
+
+        # Enrich reschedule choices with the same consultation details and
+        # India-local date/time shown on the patient booking page.
+        doctor_response = api('GET', f'/doctors/{doctor_id}')
+        doctor_profile = doctor_response.json() if doctor_response.ok else {}
+        consultation_types = {
+            str(item.get('consultation_type_id')): item
+            for item in doctor_profile.get('consultation_types', [])
+            if item.get('consultation_type_id') is not None
+        }
+        for slot in available_slots:
+            raw_start = slot.get('startTimeUTC') or slot.get('start_time_utc')
+            try:
+                local_dt = datetime.fromisoformat(str(raw_start).replace('Z', '+00:00')).astimezone(ZoneInfo('Asia/Kolkata'))
+                slot['local_date_label'] = local_dt.strftime('%a, %d %b %Y')
+                slot['local_time'] = local_dt.strftime('%I:%M %p')
+                slot['local_date'] = local_dt.strftime('%Y-%m-%d')
+            except (TypeError, ValueError):
+                slot['local_date_label'] = 'Date unavailable'
+                slot['local_time'] = str(raw_start or 'Time unavailable')
+                slot['local_date'] = 'unknown'
+            slot['free_seats'] = int(slot.get('freeSeats', slot.get('free_seats', 0)) or 0)
+            consultation = consultation_types.get(str(slot.get('consultationTypeId', slot.get('consultation_type_id'))), {})
+            slot['consultation_type_name'] = consultation.get('name') or slot.get('consultationTypeName') or slot.get('consultation_type_name') or 'Consultation'
+            slot['consultation_duration'] = consultation.get('duration_minutes') or slot.get('consultation_duration')
+            slot['consultation_fee'] = consultation.get('fee', slot.get('consultation_fee'))
+
         if request.method == 'POST':
             target_slot_id = request.form.get('slot_id', '').strip()
             result = api('PATCH', f'/appointments/{appointment_id}', json={'slotId': target_slot_id})

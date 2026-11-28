@@ -453,3 +453,42 @@ footer {
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { scroll-behavior: auto !important; transition-duration: .01ms !important; }
 }
+
+/* Clear, scannable patient reschedule slot picker */
+.reschedule-page{padding:clamp(20px,3vw,34px)}
+.reschedule-heading{margin-bottom:26px}
+.reschedule-kicker{display:inline-block;margin-bottom:8px;color:#078d80;font-size:10px;font-weight:850;letter-spacing:1.5px}
+.reschedule-heading h2{margin:0 0 8px;font-size:25px}
+.reschedule-heading p{max-width:760px;margin:0;font-size:14px}
+.reschedule-slots-header{display:flex;justify-content:space-between;align-items:center;gap:16px;margin:0 0 16px;padding-bottom:15px;border-bottom:1px solid #e8eef1}
+.reschedule-slots-header h3{margin:0 0 4px;font-size:17px}
+.reschedule-slots-header p{margin:0;font-size:12px}
+.reschedule-count{flex:none;padding:8px 12px;border:1px solid #ccebe3;border-radius:30px;background:#effaf6;color:#087b6e;font-size:12px;font-weight:800}
+.reschedule-slot-list{display:grid;gap:10px}
+.reschedule-slot-option{position:relative;display:grid;grid-template-columns:22px minmax(130px,1.1fr) minmax(105px,.8fr) minmax(160px,1.3fr) minmax(70px,.45fr);align-items:center;gap:14px;margin:0;padding:16px 17px;border:1px solid #dfe8ed;border-radius:13px;background:#fff;cursor:pointer;transition:border-color .15s,background .15s,box-shadow .15s}
+.reschedule-slot-option:hover{border-color:#8bcfc4;background:#fbfefd;box-shadow:0 4px 14px rgba(17,75,75,.06)}
+.reschedule-slot-option input{position:absolute;width:1px;height:1px;opacity:0;pointer-events:none}
+.reschedule-radio-mark{width:18px;height:18px;border:2px solid #a9bbc4;border-radius:50%;background:#fff}
+.reschedule-slot-option.is-selected{border-color:#078d80;background:#f0faf7;box-shadow:0 0 0 2px rgba(7,141,128,.11)}
+.reschedule-slot-option.is-selected .reschedule-radio-mark{border:5px solid #078d80}
+.reschedule-field-label{display:block;margin-bottom:5px;color:#8495a0;font-size:9px;font-weight:850;letter-spacing:1px}
+.reschedule-slot-option strong{display:block;color:#1d3c50;font-size:13px;line-height:1.35}
+.reschedule-slot-time strong{font-size:16px;color:#087e74}
+.reschedule-slot-consult small,.reschedule-slot-seats small{display:block;margin-top:4px;color:#718493;font-size:11px;font-weight:600}
+.reschedule-slot-seats{text-align:center;padding:8px 7px;border-radius:10px;background:#eff9f4}
+.reschedule-slot-seats strong{color:#138653;font-size:18px}
+.reschedule-slot-seats small{margin-top:1px;color:#328064}
+.reschedule-submit-row{display:flex;justify-content:space-between;align-items:center;gap:18px;margin-top:20px;padding-top:17px;border-top:1px solid #e8eef1}
+.reschedule-submit-row p{max-width:650px;margin:0;font-size:11px}
+.reschedule-submit-row p span{color:#078d80;font-weight:900}
+.reschedule-submit-row button{flex:none;background:#078d80}
+.reschedule-submit-row button:disabled{background:#9eafb7;cursor:not-allowed;box-shadow:none}
+.reschedule-empty{display:grid;justify-items:center;text-align:center;padding:38px 18px;border:1px dashed #d4e2e8;border-radius:13px;background:#fbfdfe}
+.reschedule-empty>span,.reschedule-pending-icon{display:grid;place-items:center;width:48px;height:48px;border-radius:15px;background:#eaf7f4;color:#078d80;font-size:25px}
+.reschedule-empty strong{margin-top:12px;color:#1d3c50}
+.reschedule-empty p{max-width:430px;margin:5px 0 0;font-size:12px}
+.reschedule-pending{display:flex;align-items:center;gap:16px;padding:20px;border:1px solid #ccebe3;border-radius:13px;background:#f1faf7}
+.reschedule-pending strong{color:#17695e}
+.reschedule-pending p{margin:4px 0 0;font-size:13px}
+@media(max-width:760px){.reschedule-slot-option{grid-template-columns:20px 1fr 1fr;gap:12px}.reschedule-slot-consult{grid-column:2 / 3}.reschedule-slot-seats{grid-column:3;grid-row:2}.reschedule-submit-row{align-items:stretch;flex-direction:column}.reschedule-submit-row button{width:100%}}
+@media(max-width:460px){.reschedule-slot-option{grid-template-columns:18px minmax(0,1fr);gap:10px;padding:13px}.reschedule-slot-date,.reschedule-slot-time,.reschedule-slot-consult,.reschedule-slot-seats{grid-column:2;grid-row:auto;text-align:left}.reschedule-slot-seats{display:flex;align-items:center;gap:7px;padding:0;background:transparent}.reschedule-slot-seats strong{font-size:14px}.reschedule-slot-seats small{margin:0}.reschedule-slots-header{align-items:flex-start;flex-direction:column}}

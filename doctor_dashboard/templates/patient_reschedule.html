@@ -1,11 +1,15 @@
 {% extends 'base.html' %}
 {% block content %}
-<section class="card patient-appointments-page">
-  <h2>Reschedule appointment</h2>
-  <p>Choose a new available slot. Your current appointment remains in place unless the reschedule Saga succeeds.</p>
+<section class="card patient-appointments-page reschedule-page">
+  <div class="reschedule-heading">
+    <span class="reschedule-kicker">APPOINTMENT CHANGE</span>
+    <h2>Reschedule appointment</h2>
+    <p>Choose a new available time with the same doctor. Your current appointment remains in place unless the reschedule is successful.</p>
+  </div>
   {% if pending %}
-    <div id="reschedule-status" data-execution-arn="{{ execution_arn }}" data-status-url="{{ url_for('patient_reschedule_status') }}">
-      <strong>Reschedule status: PENDING</strong><p>Please keep this page open while the request is processed.</p>
+    <div id="reschedule-status" class="reschedule-pending" data-execution-arn="{{ execution_arn }}" data-status-url="{{ url_for('patient_reschedule_status') }}">
+      <span class="reschedule-pending-icon">◷</span>
+      <div><strong>Reschedule status: PENDING</strong><p>Please keep this page open while your request is being processed.</p></div>
     </div>
     <script>
     (() => {
@@ -26,19 +30,44 @@
     })();
     </script>
   {% else %}
-    <form method="post" class="appointment-cancel-form">
+    {% set selectable_slots = slots|selectattr('free_seats', 'gt', 0)|list %}
+    <form method="post" class="reschedule-form" id="reschedule-form">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-      <label>Available target slot
-        <select name="slot_id" required>
-          {% for slot in slots %}
-            {% if slot.get('freeSeats', slot.get('free_seats', 0))|int > 0 %}
-              <option value="{{ slot.get('slotId', slot.get('slot_id')) }}">{{ slot.get('startTimeUTC', slot.get('start_time_utc')) }} — {{ slot.get('freeSeats', slot.get('free_seats')) }} seats</option>
-            {% endif %}
+      <div class="reschedule-slots-header">
+        <div><h3>Select a new appointment slot</h3><p>All times are shown in India Standard Time (IST).</p></div>
+        <span class="reschedule-count">{{ selectable_slots|length }} available</span>
+      </div>
+      {% if selectable_slots %}
+        <div class="reschedule-slot-list">
+          {% for slot in selectable_slots %}
+          <label class="reschedule-slot-option" for="reschedule-slot-{{ loop.index }}">
+            <input id="reschedule-slot-{{ loop.index }}" type="radio" name="slot_id" value="{{ slot.get('slotId', slot.get('slot_id')) }}" required>
+            <span class="reschedule-radio-mark" aria-hidden="true"></span>
+            <span class="reschedule-slot-date"><span class="reschedule-field-label">DATE</span><strong>{{ slot.local_date_label }}</strong></span>
+            <span class="reschedule-slot-time"><span class="reschedule-field-label">START TIME</span><strong>{{ slot.local_time }}</strong></span>
+            <span class="reschedule-slot-consult"><span class="reschedule-field-label">CONSULTATION TYPE</span><strong>{{ slot.consultation_type_name }}</strong><small>{% if slot.consultation_duration %}{{ slot.consultation_duration }} min{% else %}Duration not specified{% endif %}{% if slot.consultation_fee is not none %} <span>·</span> ₹{{ slot.consultation_fee }}{% endif %}</small></span>
+            <span class="reschedule-slot-seats"><strong>{{ slot.free_seats }}</strong><small>seat{% if slot.free_seats != 1 %}s{% endif %} left</small></span>
+          </label>
           {% endfor %}
-        </select>
-      </label>
-      <button type="submit">Start reschedule</button>
+        </div>
+        <div class="reschedule-submit-row"><p><span>ⓘ</span> Select one slot to continue. Your existing booking is not changed until the reschedule completes.</p><button type="submit" id="reschedule-submit" disabled>Confirm new slot <span aria-hidden="true">→</span></button></div>
+      {% else %}
+        <div class="reschedule-empty"><span>◷</span><strong>No available slots right now</strong><p>There are currently no slots with seats remaining in the next 30 days. Please try again later.</p></div>
+      {% endif %}
     </form>
+    <script>
+    (() => {
+      const form = document.getElementById('reschedule-form');
+      if (!form) return;
+      const submit = document.getElementById('reschedule-submit');
+      form.querySelectorAll('input[name="slot_id"]').forEach(input => input.addEventListener('change', () => {
+        form.querySelectorAll('.reschedule-slot-option').forEach(card => card.classList.remove('is-selected'));
+        input.closest('.reschedule-slot-option').classList.add('is-selected');
+        submit.disabled = false;
+      }));
+      form.addEventListener('submit', () => { submit.disabled = true; submit.textContent = 'Processing reschedule…'; });
+    })();
+    </script>
   {% endif %}
 </section>
 {% endblock %}
