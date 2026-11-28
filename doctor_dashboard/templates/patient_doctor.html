@@ -132,7 +132,7 @@
       button.textContent = 'Booking…';
       const idempotencyKey = card.dataset.idempotencyKey || ((window.crypto && crypto.randomUUID) ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(16).slice(2)}`);
       card.dataset.idempotencyKey = idempotencyKey;
-      try {c
+      try {
         const response = await fetch('/patient/appointments/book', {
           method: 'POST',
           headers: {
