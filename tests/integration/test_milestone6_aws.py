@@ -104,7 +104,7 @@ def test_01_concurrency_capacity_three_exactly_three_successes():
 
 
 def test_02_idempotency_replay_creates_one_appointment():
-    token = os.environ['M6_TEST_IDEMPOTENCY_PATIENT_TOKEN']
+    token = token_list('M6_TEST_PATIENT_TOKENS_JSON')[3]
     slot_id = os.environ['M6_TEST_IDEMPOTENCY_SLOT_ID']
     doctor_id = int(os.environ['M6_TEST_DOCTOR_ID'])
     key = f"m6-idempotency-{uuid.uuid4().hex}"
@@ -123,11 +123,20 @@ def test_02_idempotency_replay_creates_one_appointment():
 def test_03_reschedule_release_failure_compensates_target_seat():
     """Directly run the deployed Saga with an invalid original slot to force release failure."""
     assert STATE_MACHINE_ARN
-    token = os.environ['M6_TEST_RESCHEDULE_PATIENT_TOKEN']
-    appointment_id = int(os.environ['M6_TEST_RESCHEDULE_APPOINTMENT_ID'])
-    patient = int(os.environ['M6_TEST_RESCHEDULE_PATIENT_ID'])
+    token = token_list('M6_TEST_PATIENT_TOKENS_JSON')[4]
+    patient = int(patient_id(token))
     doctor = int(os.environ['M6_TEST_DOCTOR_ID'])
+    original_slot_id = os.environ['M6_TEST_IDEMPOTENCY_SLOT_ID']
+    original_table, original_slot = slot_item(original_slot_id)
+    wait_for(lambda: int(original_table.get_item(Key={'doctorId': str(original_slot['doctorId']), 'slotKey': original_slot['slotKey']}, ConsistentRead=True)['Item'].get('bookedCount', 0)) == 0, timeout=60)
     target_id = os.environ['M6_TEST_RESCHEDULE_TARGET_SLOT_ID']
+    # Create a fresh confirmed appointment owned by this run's temporary patient.
+    booking = call('POST', '/appointments', token,
+                   json={'doctorId': doctor, 'slotId': original_slot_id},
+                   headers={'Idempotency-Key': f"m6-reschedule-setup-{uuid.uuid4().hex}"})
+    assert booking.status_code == 201, booking.text
+    booking_body = booking.json()
+    appointment_id = int(booking_body.get('appointment_id') or booking_body.get('appointmentId'))
     before_appointment = call('GET', f'/appointments/{appointment_id}', token)
     assert before_appointment.status_code == 200, before_appointment.text
     original = before_appointment.json()['slot_id']
@@ -154,10 +163,11 @@ def test_03_reschedule_release_failure_compensates_target_seat():
     assert after_appointment.status_code == 200
     assert after_appointment.json()['slot_id'] == original
     assert after_appointment.json()['status'] == 'CONFIRMED'
+    cancel_if_created(token, appointment_id)
 
 
 def test_04_one_freed_seat_has_only_one_live_waitlist_offer():
-    tokens = token_list('M6_TEST_WAITLIST_PATIENT_TOKENS_JSON')
+    tokens = token_list('M6_TEST_PATIENT_TOKENS_JSON')[5:8]
     assert len(tokens) == 3
     slot_id = os.environ['M6_TEST_WAITLIST_SLOT_ID']
     table, slot = slot_item(slot_id)

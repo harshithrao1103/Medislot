@@ -1,31 +1,35 @@
-# Required deployed-AWS integration test fixtures
+# Deployed-AWS Milestone 6 integration fixtures
 
-The merge-to-main deployment workflow runs four mandatory tests against the deployed environment after the API smoke checks. Configure the following GitHub repository **Variables** and **Secrets** before enabling the deployment workflow. Use isolated test-only users and slots; never point these tests at real patient records.
+The merge-to-main deployment workflow runs four mandatory tests against the deployed environment after the API smoke checks. Use isolated test-only slots; never point these tests at real patient appointments.
 
-## Repository Variables
+## GitHub repository Variables
 
 - `M6_TEST_DOCTOR_ID`: numeric doctor ID that owns the test slots.
 - `M6_TEST_HEALTH_CAMP_SLOT_ID`: future, empty Health Camp slot with capacity exactly 3.
-- `M6_TEST_IDEMPOTENCY_SLOT_ID`: future, empty capacity-1 slot.
-- `M6_TEST_RESCHEDULE_PATIENT_ID`: numeric ID for the patient who owns the test appointment.
-- `M6_TEST_RESCHEDULE_APPOINTMENT_ID`: confirmed future appointment ID for that patient.
+- `M6_TEST_IDEMPOTENCY_SLOT_ID`: future, empty capacity-1 slot. It is used by the idempotency test and as the original booking slot for the reschedule compensation test.
 - `M6_TEST_RESCHEDULE_TARGET_SLOT_ID`: future available slot for the same doctor, with no active hold.
 - `M6_TEST_WAITLIST_SLOT_ID`: full future slot with capacity at least 1 and no existing waitlist entries.
 
-## Repository Secrets
-
-- `M6_TEST_PATIENT_TOKENS_JSON`: JSON array of at least 20 distinct patient JWTs for the concurrency test.
-- `M6_TEST_IDEMPOTENCY_PATIENT_TOKEN`: JWT for a separate patient with no booking on the idempotency test slot.
-- `M6_TEST_RESCHEDULE_PATIENT_TOKEN`: JWT for the patient owning the reschedule test appointment.
-- `M6_TEST_WAITLIST_PATIENT_TOKENS_JSON`: JSON array of exactly three distinct patient JWTs, each with fewer than five active waitlists.
-
-Tokens must be current when the workflow runs. Rotate them before expiry. These are test identities only.
+Patient JWTs are **not** configured as GitHub Secrets. Immediately before the integration tests, `tests/integration/setup_milestone6_patients.py` registers 20 disposable patients through `POST /auth/patients/register`, logs each in through `POST /auth/patients/login`, and writes the fresh access tokens only to the current GitHub Actions job environment. The tokens are never printed or committed. Each run gets new accounts and tokens, so the 15-minute JWT expiry does not require manual rotation.
 
 ## Test behavior and cleanup
 
-1. Concurrency: submits 20+ simultaneous booking requests to the capacity-3 slot, expects exactly three successes and 409 for the rest, then cancels successful test appointments.
-2. Idempotency: replays one client key twice and verifies the same appointment ID, then cancels the test appointment.
-3. Saga compensation: directly starts the deployed state machine with an intentionally invalid original slot after a valid target claim. The release step fails, compensation must return the target `bookedCount` to its baseline, and the patient's original appointment remains unchanged.
-4. Waitlist exclusivity: registers three patients, simulates a seat decrement, publishes `SlotSeatFreed`, verifies one live offer, expires it deterministically, and verifies the next FIFO patient receives the only live offer. The test leaves active waitlists and restores the fixture slot count.
+1. **Concurrency:** submits 20 simultaneous booking requests to the capacity-3 slot, expects exactly three bookings and 409 for the rest, then cancels successful test appointments.
+2. **Idempotency:** replays one client key twice using a fresh patient, verifies the same appointment ID, then cancels the test appointment.
+3. **Saga compensation:** creates a confirmed test appointment using a fresh patient and the idempotency fixture slot, starts the deployed state machine with an intentionally invalid original slot after a valid target claim, verifies compensation returns the target `bookedCount` to baseline and the original appointment remains confirmed, then cancels the test appointment.
+4. **Waitlist exclusivity:** uses three fresh patients, simulates a seat decrement, publishes `SlotSeatFreed`, verifies one live offer, expires it deterministically, and verifies the next FIFO patient receives the only live offer. It removes the test patients' waitlist entries and restores the fixture slot count.
 
-The concurrency and idempotency tests require fresh, dedicated slots on every run. The reschedule test requires a confirmed appointment that remains available for the test. The waitlist test temporarily changes a dedicated slot's `bookedCount`; do not share its fixture with real users.
+The fixture slots must be isolated from real users and available for automated mutation. The CI-created patient accounts are disposable test identities; this project currently has no patient-account deletion API, so each workflow run leaves those uniquely named accounts in the database. They contain synthetic data only.
+
+## GitHub Actions EC2 dashboard deployment permission
+
+The workflow also sends an SSM Run Command to the existing doctor-dashboard EC2 instance. The GitHub OIDC role `medislot_github_connection` must have the permissions in `MediSlot-GitHubActions-SSM-Policy.json`. If the role's inline policy is named `systemManager`, apply the updated policy document from the repository root with:
+
+```powershell
+aws iam put-role-policy `
+  --role-name medislot_github_connection `
+  --policy-name systemManager `
+  --policy-document file://MediSlot-GitHubActions-SSM-Policy.json
+```
+
+This IAM update is separate from the ZIP and must be applied by an AWS identity allowed to update that role. It grants `ssm:SendCommand` only for the configured doctor-dashboard instance and `AWS-RunShellScript`, plus command-result read access.
