@@ -2,7 +2,7 @@
 
 ## Waitlist table
 
-Physical name: `medislot-${Environment}-waitlist`.
+Physical name: `medislot-${Environment}-waitlist-m6`.
 
 - PK `SLOT#slotId`, SK `ENTRY#joinedAt#entryId`: FIFO registration queue.
 - GSI `PatientWaitlistIndex`: GSI1PK `PATIENT#patientId`, GSI1SK `JOINED#joinedAt#entryId`.

@@ -1007,7 +1007,7 @@ jobs:
           export AWS_DEFAULT_REGION="$AWS_REGION"
           export M6_TEST_ENVIRONMENT="$DEPLOY_ENV"
           export M6_TEST_SLOTS_TABLE="medislot-${DEPLOY_ENV}-slots"
-          export M6_TEST_WAITLIST_TABLE="medislot-${DEPLOY_ENV}-waitlist"
+          export M6_TEST_WAITLIST_TABLE="medislot-${DEPLOY_ENV}-waitlist-m6"
           export M6_TEST_EVENT_BUS="medislot-${DEPLOY_ENV}-appointments"
           export M6_TEST_LAMBDA_NAME="medislot-${DEPLOY_ENV}-milestone6"
           AWS_ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
@@ -1050,7 +1050,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          WAITLIST_TABLE="medislot-${DEPLOY_ENV}-waitlist"
+          WAITLIST_TABLE="medislot-${DEPLOY_ENV}-waitlist-m6"
           NOTIFICATION_TABLE="medislot-${DEPLOY_ENV}-notification-dispatch"
           WAITLIST_INFO=$(aws dynamodb describe-table --table-name "$WAITLIST_TABLE" --region "$AWS_REGION" --output json)
           echo "$WAITLIST_INFO" | jq -e '

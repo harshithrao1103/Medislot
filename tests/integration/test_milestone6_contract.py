@@ -26,7 +26,7 @@ def template(name):
 
 def test_waitlist_table_has_final_key_gsi_and_ttl():
     resource = template('Data_Stack.yaml')['Resources']['WaitlistTable']['Properties']
-    assert resource['TableName'] == "medislot-${Environment}-waitlist"
+    assert resource['TableName'] == "medislot-${Environment}-waitlist-m6"
     assert resource['KeySchema'] == [
         {'AttributeName': 'PK', 'KeyType': 'HASH'},
         {'AttributeName': 'SK', 'KeyType': 'RANGE'},

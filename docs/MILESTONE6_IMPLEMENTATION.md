@@ -4,7 +4,7 @@
 
 - RDS MySQL remains the appointment system of record.
 - DynamoDB remains the concurrency authority for slots, waitlist entries, waitlist holds and notification dispatch claims.
-- The Waitlist table keeps the physical name `medislot-${Environment}-waitlist` and uses `PK` / `SK` with the `PatientWaitlistIndex` GSI. The same table also stores patient metadata, per-patient/per-slot duplicate guards and short-lived saga step markers.
+- The Waitlist table keeps the physical name `medislot-${Environment}-waitlist-m6` and uses `PK` / `SK` with the `PatientWaitlistIndex` GSI. The same table also stores patient metadata, per-patient/per-slot duplicate guards and short-lived saga step markers.
 - Notification delivery is EventBridge → Lambda → SES. No SQS or SNS notification pipeline was added.
 - The existing NotificationDispatch table is reused. A conditional put claims each deterministic dispatch key. If SES returns an uncertain outcome, the dispatch becomes `UNKNOWN` and is never automatically resent.
 - No NAT Gateway, NAT instance or NAT route is created. The network stack adds interface endpoints for SSM, EventBridge, Step Functions and the SES API. Existing DynamoDB Gateway and Secrets Manager interface endpoints remain.
@@ -46,7 +46,7 @@ The reminder dispatcher runs every five minutes and selects only still-CONFIRMED
 
 ## Deployment sequence
 
-1. Back up the existing CloudFormation stacks and confirm the old Waitlist physical table is absent (the project owner reported deleting it manually). The table key schema change is a replacement-level DynamoDB change; do not deploy against a still-existing old-key table with the same physical name.
+1. Back up the existing CloudFormation stacks and confirm the previous Waitlist physical table is absent (the project owner reported deleting it manually). The table key schema change requires a new physical table name (`medislot-${Environment}-waitlist-m6`) because DynamoDB cannot change a table's primary key in place.
 2. Run `database/MIGRATE_MILESTONE6_RESCHEDULE_LOCK.sql` against the existing RDS database before deploying the new Lambda/API code. The fresh schema also creates `reschedule_locks`. This table serializes reschedule starts against patient/doctor cancellation without changing the existing `reschedule_count` column.
 3. After verifying an email address or domain identity in SES `us-east-1`, set `data.M6SesSenderEmail` in `Cloudformation/parameters.json` to that verified sender and redeploy the Data Stack. The CloudFormation-managed SSM parameter is `/medislot/${Environment}/milestone6/ses-sender-email`. Until then, the placeholder prevents send attempts without claiming a notification dispatch.
 4. If the SES account is in the sandbox, verify recipient identities too or request SES production access.

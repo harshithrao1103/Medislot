@@ -349,7 +349,7 @@ Resources:
     DeletionPolicy: Retain
     UpdateReplacePolicy: Retain
     Properties:
-      TableName: !Sub 'medislot-${Environment}-waitlist'
+      TableName: !Sub 'medislot-${Environment}-waitlist-m6'
       BillingMode: PAY_PER_REQUEST
       PointInTimeRecoverySpecification:
         PointInTimeRecoveryEnabled: true
