@@ -850,7 +850,7 @@ Resources:
                 Resource: '*'
               - Effect: Allow
                 Action: [logs:CreateLogStream, logs:PutLogEvents]
-                Resource: !Sub ${RescheduleLogGroup.Arn}:*
+                Resource: !Sub arn:${AWS::Partition}:logs:${AWS::Region}:${AWS::AccountId}:log-group:${RescheduleLogGroup}:log-stream:*
 
   RescheduleStateMachine:
     Type: AWS::StepFunctions::StateMachine
@@ -862,7 +862,7 @@ Resources:
       LoggingConfiguration:
         Destinations:
           - CloudWatchLogsLogGroup:
-              LogGroupArn: !Sub ${RescheduleLogGroup.Arn}:*
+              LogGroupArn: !GetAtt RescheduleLogGroup.Arn
         IncludeExecutionData: false
         Level: ALL
       DefinitionString: !Sub |
