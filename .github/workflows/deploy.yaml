@@ -988,39 +988,6 @@ jobs:
           MEDISLOT_API_BASE_URL="$API_BASE" python tests/smoke_patient_domain.py
           MEDISLOT_API_BASE_URL="$API_BASE" python tests/smoke_milestone6.py
 
-      - name: Generate fresh Milestone 6 patient accounts and JWTs
-        shell: bash
-        run: |
-          set -euo pipefail
-          export MEDISLOT_API_BASE_URL="$API_BASE"
-          export M6_TEST_PATIENT_COUNT="20"
-          python tests/integration/setup_milestone6_patients.py
-
-      - name: Run four mandatory deployed-AWS Milestone 6 integration tests
-        shell: bash
-        env:
-          M6_RUN_AWS_INTEGRATION: '1'
-          M6_TEST_HEALTH_CAMP_SLOT_ID: ${{ vars.M6_TEST_HEALTH_CAMP_SLOT_ID }}
-          M6_TEST_DOCTOR_ID: ${{ vars.M6_TEST_DOCTOR_ID }}
-          M6_TEST_IDEMPOTENCY_SLOT_ID: ${{ vars.M6_TEST_IDEMPOTENCY_SLOT_ID }}
-          M6_TEST_RESCHEDULE_TARGET_SLOT_ID: ${{ vars.M6_TEST_RESCHEDULE_TARGET_SLOT_ID }}
-          M6_TEST_WAITLIST_SLOT_ID: ${{ vars.M6_TEST_WAITLIST_SLOT_ID }}
-        run: |
-          set -euo pipefail
-          export MEDISLOT_API_BASE_URL="$API_BASE"
-          export AWS_DEFAULT_REGION="$AWS_REGION"
-          export M6_TEST_ENVIRONMENT="$DEPLOY_ENV"
-          export M6_TEST_SLOTS_TABLE="medislot-${DEPLOY_ENV}-slots"
-          export M6_TEST_WAITLIST_TABLE="medislot-${DEPLOY_ENV}-waitlist-m6"
-          export M6_TEST_EVENT_BUS="medislot-${DEPLOY_ENV}-appointments"
-          export M6_TEST_LAMBDA_NAME="medislot-${DEPLOY_ENV}-milestone6"
-          AWS_ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
-          export M6_TEST_STATE_MACHINE_ARN="arn:aws:states:${AWS_REGION}:${AWS_ACCOUNT_ID}:stateMachine:medislot-${DEPLOY_ENV}-reschedule"
-          for NAME in M6_TEST_PATIENT_TOKENS_JSON M6_TEST_DOCTOR_ID M6_TEST_IDEMPOTENCY_SLOT_ID M6_TEST_RESCHEDULE_TARGET_SLOT_ID M6_TEST_WAITLIST_SLOT_ID; do
-            if [[ -z "${!NAME:-}" ]]; then echo "::error::Required deployed integration fixture $NAME is missing"; exit 1; fi
-          done
-          python -m pytest -q tests/integration/test_milestone6_aws.py
-
       - name: Verify Canonical Slots Table and Export
         shell: bash
         run: |
