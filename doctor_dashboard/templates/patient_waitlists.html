@@ -1,0 +1,48 @@
+{% extends 'base.html' %}
+{% block content %}
+<section class="card patient-appointments-page">
+  <h2>My Waitlists</h2>
+  <p>Join a full slot, track your place, and accept an exclusive offer before it expires.</p>
+  <form method="post" class="appointment-cancel-form">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <input type="hidden" name="action" value="join">
+    <label>Slot ID <input name="slot_id" required maxlength="255"></label>
+    <button type="submit">Join waitlist</button>
+  </form>
+  {% if waitlists %}
+    <div class="patient-appointment-list">
+    {% for item in waitlists %}
+      <article class="patient-appointment-card">
+        <h3>Slot {{ item.slotId }}</h3>
+        <p>Doctor: {{ item.doctorName or ('Doctor #' ~ item.doctorId) }}</p>
+        {% if item.hospitalName %}<p>{{ item.hospitalName }}</p>{% endif %}
+        {% if item.startTimeUTC %}<p>Slot time (UTC): {{ item.startTimeUTC }}</p>{% endif %}
+        <p>Joined: {{ item.joinedAt }}</p>
+        <p>Status: <strong>{{ item.status }}</strong></p>
+        {% if item.status == 'OFFERED' %}
+          <p>Offer expires: {{ item.offerExpiresAt }}</p>
+          <p class="waitlist-countdown" data-expires-at="{{ item.offerExpiresAt }}">Time remaining: calculating…</p>
+          <form method="post"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="action" value="accept"><input type="hidden" name="offer_id" value="{{ item.offerId }}"><button type="submit">Accept offer</button></form>
+        {% endif %}
+        {% if item.status in ('WAITING','OFFERED') %}
+          <form method="post"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="action" value="leave"><input type="hidden" name="slot_id" value="{{ item.slotId }}"><button type="submit" class="secondary-button">Leave waitlist</button></form>
+        {% endif %}
+      </article>
+    {% endfor %}
+    </div>
+  {% else %}<p>You have no active or past waitlist entries.</p>{% endif %}
+  <script>
+  (() => {
+    const nodes = document.querySelectorAll('.waitlist-countdown');
+    const update = () => nodes.forEach(node => {
+      const expiry = Date.parse(node.dataset.expiresAt);
+      const seconds = Math.max(0, Math.floor((expiry - Date.now()) / 1000));
+      const mins = Math.floor(seconds / 60);
+      const secs = seconds % 60;
+      node.textContent = seconds ? `Time remaining: ${mins}m ${secs}s` : 'Offer expired — refresh to see the next status';
+    });
+    update(); window.setInterval(update, 1000);
+  })();
+  </script>
+</section>
+{% endblock %}

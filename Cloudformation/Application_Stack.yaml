@@ -119,6 +119,7 @@ Resources:
       Environment:
         Variables:
           AUTH_SSM_PREFIX: !Sub /medislot/${Environment}/auth
+          ENVIRONMENT: !Ref Environment
           REFRESH_TABLE: !Sub medislot-${Environment}-refresh-tokens
           REVOKED_TABLE: !Sub medislot-${Environment}-revoked-jwts
           DB_HOST:
@@ -179,6 +180,7 @@ Resources:
       Environment:
         Variables:
           AUTH_SSM_PREFIX: !Sub /medislot/${Environment}/auth
+          ENVIRONMENT: !Ref Environment
           REFRESH_TABLE: !Sub medislot-${Environment}-refresh-tokens
           REVOKED_TABLE: !Sub medislot-${Environment}-revoked-jwts
           DB_HOST:
@@ -745,6 +747,373 @@ Resources:
       Action: lambda:InvokeFunction
       Principal: apigateway.amazonaws.com
       SourceArn: !Sub arn:${AWS::Partition}:execute-api:${AWS::Region}:${AWS::AccountId}:${AuthRestApi}/*/GET/*
+
+  # =====================================================
+  # MILESTONE 6: WAITLIST, RESCHEDULE SAGA AND EVENT CONSUMERS
+  # =====================================================
+  Milestone6LogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub /aws/lambda/medislot-${Environment}-milestone6
+      RetentionInDays: 14
+
+  Milestone6Lambda:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Sub medislot-${Environment}-milestone6
+      Runtime: python3.12
+      Handler: milestone6_lambda.lambda_handler
+      Role:
+        Fn::ImportValue: !Sub medislot-${Environment}-AppointmentApiLambdaRoleArn
+      Code:
+        S3Bucket: !Ref ArtifactBucketName
+        S3Key: !Sub lambda/milestone6/${CodeVersion}.zip
+      Timeout: 60
+      MemorySize: 512
+      TracingConfig: { Mode: Active }
+      VpcConfig:
+        SecurityGroupIds:
+          - Fn::ImportValue: !Sub medislot-${Environment}-LambdaSecurityGroupId
+        SubnetIds:
+          - Fn::ImportValue: !Sub medislot-${Environment}-PrivateSubnetAId
+          - Fn::ImportValue: !Sub medislot-${Environment}-PrivateSubnetBId
+      Environment:
+        Variables:
+          WAITLIST_TABLE: !Sub medislot-${Environment}-waitlist
+          SLOTS_TABLE: !Sub medislot-${Environment}-slots
+          IDEMPOTENCY_TABLE: !Sub medislot-${Environment}-idempotency
+          NOTIFICATION_TABLE: !Sub medislot-${Environment}-notification-dispatch
+          EVENT_BUS_NAME: !Sub medislot-${Environment}-appointments
+          RESCHEDULE_STATE_MACHINE_ARN: !Sub arn:${AWS::Partition}:states:${AWS::Region}:${AWS::AccountId}:stateMachine:medislot-${Environment}-reschedule
+          SSM_PREFIX: !Sub /medislot/${Environment}/milestone6
+          ENVIRONMENT: !Ref Environment
+          DB_HOST:
+            Fn::ImportValue: !Sub medislot-${Environment}-DBEndpoint
+          DB_PORT:
+            Fn::ImportValue: !Sub medislot-${Environment}-DBPort
+          DB_NAME:
+            Fn::ImportValue: !Sub medislot-${Environment}-DBName
+          DB_SECRET_ARN:
+            Fn::ImportValue: !Sub medislot-${Environment}-DBMasterSecretArn
+      Tags:
+        - Key: Project
+          Value: MediSlot
+        - Key: Environment
+          Value: !Ref Environment
+
+  RescheduleLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub /aws/vendedlogs/states/medislot-${Environment}-reschedule
+      RetentionInDays: 30
+
+  RescheduleStateMachineRole:
+    Type: AWS::IAM::Role
+    Metadata:
+      checkov:
+        skip:
+          - id: CKV_AWS_111
+            comment: X-Ray trace write APIs do not support resource-level authorization; only PutTraceSegments and PutTelemetryRecords are granted.
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal: { Service: states.amazonaws.com }
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: InvokeMilestone6Steps
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action: [lambda:InvokeFunction]
+                Resource: !GetAtt Milestone6Lambda.Arn
+              - Effect: Allow
+                Action: [xray:PutTraceSegments, xray:PutTelemetryRecords]
+                Resource: '*'
+              - Effect: Allow
+                Action: [logs:CreateLogDelivery, logs:GetLogDelivery, logs:UpdateLogDelivery, logs:DeleteLogDelivery, logs:ListLogDeliveries, logs:PutResourcePolicy, logs:DescribeResourcePolicies, logs:DescribeLogGroups]
+                Resource: '*'
+              - Effect: Allow
+                Action: [logs:CreateLogStream, logs:PutLogEvents]
+                Resource: !Sub ${RescheduleLogGroup.Arn}:*
+
+  RescheduleStateMachine:
+    Type: AWS::StepFunctions::StateMachine
+    Properties:
+      StateMachineName: !Sub medislot-${Environment}-reschedule
+      StateMachineType: STANDARD
+      RoleArn: !GetAtt RescheduleStateMachineRole.Arn
+      TracingConfiguration: { Enabled: true }
+      LoggingConfiguration:
+        Destinations:
+          - CloudWatchLogsLogGroup:
+              LogGroupArn: !Sub ${RescheduleLogGroup.Arn}:*
+        IncludeExecutionData: false
+        Level: ALL
+      DefinitionString: !Sub |
+        {
+          "Comment": "MediSlot reschedule Saga with compensating seat operations",
+          "StartAt": "ClaimTarget",
+          "States": {
+            "ClaimTarget": {"Type":"Task","Resource":"arn:${AWS::Partition}:states:::lambda:invoke","Parameters":{"FunctionName":"${Milestone6Lambda.Arn}","Payload":{"operation":"claim_target","detail.$":"$"}},"OutputPath":"$.Payload","Next":"ReleaseOriginal","Catch":[{"ErrorEquals":["States.ALL"],"ResultPath":"$.failure","Next":"Compensate"}],"Retry":[{"ErrorEquals":["States.ALL"],"IntervalSeconds":1,"BackoffRate":2,"MaxAttempts":2}]},
+            "ReleaseOriginal": {"Type":"Task","Resource":"arn:${AWS::Partition}:states:::lambda:invoke","Parameters":{"FunctionName":"${Milestone6Lambda.Arn}","Payload":{"operation":"release_original","detail.$":"$"}},"OutputPath":"$.Payload","Next":"CommitAppointment","Catch":[{"ErrorEquals":["States.ALL"],"ResultPath":"$.failure","Next":"Compensate"}],"Retry":[{"ErrorEquals":["States.ALL"],"IntervalSeconds":1,"BackoffRate":2,"MaxAttempts":2}]},
+            "CommitAppointment": {"Type":"Task","Resource":"arn:${AWS::Partition}:states:::lambda:invoke","Parameters":{"FunctionName":"${Milestone6Lambda.Arn}","Payload":{"operation":"commit_appointment","detail.$":"$"}},"OutputPath":"$.Payload","End":true,"Catch":[{"ErrorEquals":["States.ALL"],"ResultPath":"$.failure","Next":"Compensate"}],"Retry":[{"ErrorEquals":["States.ALL"],"IntervalSeconds":1,"BackoffRate":2,"MaxAttempts":2}]},
+            "Compensate": {"Type":"Task","Resource":"arn:${AWS::Partition}:states:::lambda:invoke","Parameters":{"FunctionName":"${Milestone6Lambda.Arn}","Payload":{"operation":"compensate","detail.$":"$"}},"OutputPath":"$.Payload","Next":"Failed","Retry":[{"ErrorEquals":["States.ALL"],"IntervalSeconds":1,"BackoffRate":2,"MaxAttempts":2}]},
+            "Failed": {"Type":"Fail","Error":"RescheduleFailed","Cause":"Reschedule failed; compensation was attempted where required"}
+          }
+        }
+
+  Milestone6WaitlistJoinInvokePermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref Milestone6Lambda
+      Action: lambda:InvokeFunction
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub arn:${AWS::Partition}:execute-api:${AWS::Region}:${AWS::AccountId}:${AuthRestApi}/*/POST/slots/*/waitlist
+  Milestone6WaitlistLeaveInvokePermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref Milestone6Lambda
+      Action: lambda:InvokeFunction
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub arn:${AWS::Partition}:execute-api:${AWS::Region}:${AWS::AccountId}:${AuthRestApi}/*/DELETE/slots/*/waitlist
+  Milestone6PatientWaitlistsInvokePermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref Milestone6Lambda
+      Action: lambda:InvokeFunction
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub arn:${AWS::Partition}:execute-api:${AWS::Region}:${AWS::AccountId}:${AuthRestApi}/*/GET/patients/me/waitlists
+  Milestone6AcceptOfferInvokePermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref Milestone6Lambda
+      Action: lambda:InvokeFunction
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub arn:${AWS::Partition}:execute-api:${AWS::Region}:${AWS::AccountId}:${AuthRestApi}/*/POST/waitlist-offers/*/accept
+  Milestone6RescheduleInvokePermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref Milestone6Lambda
+      Action: lambda:InvokeFunction
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub arn:${AWS::Partition}:execute-api:${AWS::Region}:${AWS::AccountId}:${AuthRestApi}/*/PATCH/appointments/*
+  Milestone6RescheduleStatusInvokePermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref Milestone6Lambda
+      Action: lambda:InvokeFunction
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub arn:${AWS::Partition}:execute-api:${AWS::Region}:${AWS::AccountId}:${AuthRestApi}/*/GET/reschedule-executions
+
+  WaitlistSlotsResource:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      RestApiId: !Ref AuthRestApi
+      ParentId: !GetAtt AuthRestApi.RootResourceId
+      PathPart: slots
+  WaitlistSlotIdResource:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      RestApiId: !Ref AuthRestApi
+      ParentId: !Ref WaitlistSlotsResource
+      PathPart: '{slotId}'
+  WaitlistSlotCollectionResource:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      RestApiId: !Ref AuthRestApi
+      ParentId: !Ref WaitlistSlotIdResource
+      PathPart: waitlist
+  PatientWaitlistsResource:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      RestApiId: !Ref AuthRestApi
+      ParentId: !Ref PatientMeResource
+      PathPart: waitlists
+  WaitlistOffersResource:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      RestApiId: !Ref AuthRestApi
+      ParentId: !GetAtt AuthRestApi.RootResourceId
+      PathPart: waitlist-offers
+  WaitlistOfferIdResource:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      RestApiId: !Ref AuthRestApi
+      ParentId: !Ref WaitlistOffersResource
+      PathPart: '{offerId}'
+  WaitlistOfferAcceptResource:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      RestApiId: !Ref AuthRestApi
+      ParentId: !Ref WaitlistOfferIdResource
+      PathPart: accept
+  RescheduleExecutionsResource:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      RestApiId: !Ref AuthRestApi
+      ParentId: !GetAtt AuthRestApi.RootResourceId
+      PathPart: reschedule-executions
+
+
+  AppointmentRescheduleMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref AuthRestApi
+      ResourceId: !Ref AppointmentIdResource
+      HttpMethod: PATCH
+      AuthorizationType: CUSTOM
+      AuthorizerId: !Ref JwtAuthorizer
+      Integration:
+        Type: AWS_PROXY
+        IntegrationHttpMethod: POST
+        Uri: !Sub arn:${AWS::Partition}:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${Milestone6Lambda.Arn}/invocations
+  RescheduleExecutionStatusMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref AuthRestApi
+      ResourceId: !Ref RescheduleExecutionsResource
+      HttpMethod: GET
+      AuthorizationType: CUSTOM
+      AuthorizerId: !Ref JwtAuthorizer
+      Integration:
+        Type: AWS_PROXY
+        IntegrationHttpMethod: POST
+        Uri: !Sub arn:${AWS::Partition}:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${Milestone6Lambda.Arn}/invocations
+  WaitlistJoinMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref AuthRestApi
+      ResourceId: !Ref WaitlistSlotCollectionResource
+      HttpMethod: POST
+      AuthorizationType: CUSTOM
+      AuthorizerId: !Ref JwtAuthorizer
+      Integration:
+        Type: AWS_PROXY
+        IntegrationHttpMethod: POST
+        Uri: !Sub arn:${AWS::Partition}:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${Milestone6Lambda.Arn}/invocations
+  WaitlistLeaveMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref AuthRestApi
+      ResourceId: !Ref WaitlistSlotCollectionResource
+      HttpMethod: DELETE
+      AuthorizationType: CUSTOM
+      AuthorizerId: !Ref JwtAuthorizer
+      Integration:
+        Type: AWS_PROXY
+        IntegrationHttpMethod: POST
+        Uri: !Sub arn:${AWS::Partition}:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${Milestone6Lambda.Arn}/invocations
+  PatientWaitlistsMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref AuthRestApi
+      ResourceId: !Ref PatientWaitlistsResource
+      HttpMethod: GET
+      AuthorizationType: CUSTOM
+      AuthorizerId: !Ref JwtAuthorizer
+      Integration:
+        Type: AWS_PROXY
+        IntegrationHttpMethod: POST
+        Uri: !Sub arn:${AWS::Partition}:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${Milestone6Lambda.Arn}/invocations
+  WaitlistOfferAcceptMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref AuthRestApi
+      ResourceId: !Ref WaitlistOfferAcceptResource
+      HttpMethod: POST
+      AuthorizationType: CUSTOM
+      AuthorizerId: !Ref JwtAuthorizer
+      Integration:
+        Type: AWS_PROXY
+        IntegrationHttpMethod: POST
+        Uri: !Sub arn:${AWS::Partition}:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${Milestone6Lambda.Arn}/invocations
+
+  WaitlistSeatFreedRule:
+    Type: AWS::Events::Rule
+    Properties:
+      EventBusName: !Sub medislot-${Environment}-appointments
+      EventPattern: { source: [medislot.appointments], detail-type: [SlotSeatFreed] }
+      Targets:
+        - Id: WaitlistPromoter
+          Arn: !GetAtt Milestone6Lambda.Arn
+          InputTransformer:
+            InputPathsMap: { detail: '$.detail', correlation: '$.detail.correlationId' }
+            InputTemplate: '{"operation":"SlotSeatFreed","detail":<detail>,"correlationId":<correlation>}'
+  Milestone6NotificationRule:
+    Type: AWS::Events::Rule
+    Properties:
+      EventBusName: !Sub medislot-${Environment}-appointments
+      EventPattern:
+        source: [medislot.appointments, medislot.milestone6]
+        detail-type: [AppointmentBooked, AppointmentRescheduled, AppointmentCancelled, WaitlistHoldOfferIssued, WaitlistHoldOfferExpired]
+      Targets:
+        - Id: Milestone6NotificationDispatcher
+          Arn: !GetAtt Milestone6Lambda.Arn
+          InputTransformer:
+            InputPathsMap: { detail: '$.detail', eventType: '$.detail-type', correlation: '$.detail.correlationId', eventId: '$.id' }
+            InputTemplate: '{"operation":"notify","detail":<detail>,"detail-type":<eventType>,"eventId":<eventId>,"correlationId":<correlation>}'
+  Milestone6NotificationInvokePermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref Milestone6Lambda
+      Action: lambda:InvokeFunction
+      Principal: events.amazonaws.com
+      SourceArn: !GetAtt Milestone6NotificationRule.Arn
+
+  ReminderScheduleRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement: [{ Effect: Allow, Principal: { Service: scheduler.amazonaws.com }, Action: sts:AssumeRole }]
+      Policies:
+        - PolicyName: InvokeReminderDispatcher
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement: [{ Effect: Allow, Action: [lambda:InvokeFunction], Resource: !GetAtt Milestone6Lambda.Arn }]
+  ReminderSchedule:
+    Type: AWS::Scheduler::Schedule
+    Properties:
+      Name: !Sub medislot-${Environment}-appointment-reminders
+      FlexibleTimeWindow: { Mode: 'OFF' }
+      ScheduleExpression: rate(5 minutes)
+      Target:
+        Arn: !GetAtt Milestone6Lambda.Arn
+        RoleArn: !GetAtt ReminderScheduleRole.Arn
+        Input: '{"operation":"reminder_dispatch"}'
+
+  WaitlistSeatFreedInvokePermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref Milestone6Lambda
+      Action: lambda:InvokeFunction
+      Principal: events.amazonaws.com
+      SourceArn: !GetAtt WaitlistSeatFreedRule.Arn
+
+  WaitlistExpiryScheduleRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement: [{ Effect: Allow, Principal: { Service: scheduler.amazonaws.com }, Action: sts:AssumeRole }]
+      Policies:
+        - PolicyName: InvokeWaitlistExpiry
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement: [{ Effect: Allow, Action: [lambda:InvokeFunction], Resource: !GetAtt Milestone6Lambda.Arn }]
+  WaitlistExpirySchedule:
+    Type: AWS::Scheduler::Schedule
+    Properties:
+      Name: !Sub medislot-${Environment}-waitlist-expiry
+      FlexibleTimeWindow: { Mode: 'OFF' }
+      ScheduleExpression: rate(1 minute)
+      Target:
+        Arn: !GetAtt Milestone6Lambda.Arn
+        RoleArn: !GetAtt WaitlistExpiryScheduleRole.Arn
+        Input: '{"operation":"expire_offers"}'
 
   # =====================================================
   # 5. API DEPLOYMENT AND LOGGING
@@ -1697,12 +2066,12 @@ Resources:
       RestApiId: !Ref AuthRestApi
       Description: !Sub Authentication API deployment ${CodeVersion}
 
-  # --- DoctorDomainDeploymentMilestone5V2: Deploys doctor, patient, public discovery and appointment API methods ---
+  # --- DoctorDomainDeploymentMilestone6V1: Deploys doctor, patient, public discovery and appointment API methods ---
   # IMPORTANT: CloudFormation only snapshots API Gateway methods into a NEW deployment when this
   # logical ID changes (changing Description alone just edits the old snapshot, so new routes such as
   # POST /appointments never reach the stage and callers get a misleading 403).
   # Rename this ID (e.g. ...Milestone5V2) whenever API methods/resources are added or changed.
-  DoctorDomainDeploymentMilestone5V2:
+  DoctorDomainDeploymentMilestone6V1:
     Type: AWS::ApiGateway::Deployment
     DependsOn:
       - AuthDeployment
@@ -1739,6 +2108,12 @@ Resources:
       - DoctorAppointmentsGet
       - DoctorAppointmentOutcomePost
       - DoctorAppointmentCancelDelete
+      - AppointmentRescheduleMethod
+      - RescheduleExecutionStatusMethod
+      - WaitlistJoinMethod
+      - WaitlistLeaveMethod
+      - PatientWaitlistsMethod
+      - WaitlistOfferAcceptMethod
     Properties:
       RestApiId: !Ref AuthRestApi
       Description: !Sub Doctor domain API deployment ${ApiDeploymentVersion}
@@ -1769,7 +2144,7 @@ Resources:
             comment: Authentication and token responses must not be cached; throttling and logging are enabled.
     Properties:
       RestApiId: !Ref AuthRestApi
-      DeploymentId: !Ref DoctorDomainDeploymentMilestone5V2
+      DeploymentId: !Ref DoctorDomainDeploymentMilestone6V1
       StageName: !Ref Environment
       TracingEnabled: true
       AccessLogSetting:
@@ -1794,6 +2169,240 @@ Resources:
 # =====================================================
 # OUTPUTS
 # =====================================================
+
+  # Milestone 6 operational dashboard and alarms; all resources remain in CloudFormation.
+  MediSlotOperationsDashboard:
+    Type: AWS::CloudWatch::Dashboard
+    Properties:
+      DashboardName: medislot-operations
+      DashboardBody: !Sub |
+        {
+          "widgets": [
+            {"type":"metric","x":0,"y":0,"width":12,"height":6,"properties":{"title":"API Gateway requests and errors","view":"timeSeries","region":"${AWS::Region}","metrics":[["AWS/ApiGateway","Count","ApiName","medislot-${Environment}-auth-api","Stage","${Environment}",{"id":"m1","visible":false}],["AWS/ApiGateway","4XXError","ApiName","medislot-${Environment}-auth-api","Stage","${Environment}",{"id":"m2","visible":false}],["AWS/ApiGateway","5XXError","ApiName","medislot-${Environment}-auth-api","Stage","${Environment}",{"id":"m3","visible":false}],[{"expression":"IF(m1>0,m2/m1*100,0)","label":"4xx rate (%)","id":"e1"}],[{"expression":"IF(m1>0,m3/m1*100,0)","label":"5xx rate (%)","id":"e2"}]] }},
+            {"type":"metric","x":12,"y":0,"width":12,"height":6,"properties":{"title":"API latency p50 / p99","view":"timeSeries","region":"${AWS::Region}","metrics":[["AWS/ApiGateway","Latency","ApiName","medislot-${Environment}-auth-api","Stage","${Environment}",{"stat":"p50"}],["AWS/ApiGateway","Latency","ApiName","medislot-${Environment}-auth-api","Stage","${Environment}",{"stat":"p99"}]]}},
+            {"type":"metric","x":0,"y":6,"width":12,"height":6,"properties":{"title":"Lambda invocations, errors, duration and throttles","view":"timeSeries","region":"${AWS::Region}","metrics":[["AWS/Lambda","Invocations","FunctionName","medislot-${Environment}-appointment-api"],["AWS/Lambda","Errors","FunctionName","medislot-${Environment}-appointment-api"],["AWS/Lambda","Duration","FunctionName","medislot-${Environment}-appointment-api",{"stat":"p50"}],["AWS/Lambda","Duration","FunctionName","medislot-${Environment}-appointment-api",{"stat":"p99"}],["AWS/Lambda","Throttles","FunctionName","medislot-${Environment}-appointment-api"],["AWS/Lambda","Invocations","FunctionName","medislot-${Environment}-milestone6"],["AWS/Lambda","Errors","FunctionName","medislot-${Environment}-milestone6"],["AWS/Lambda","Duration","FunctionName","medislot-${Environment}-milestone6",{"stat":"p50"}],["AWS/Lambda","Duration","FunctionName","medislot-${Environment}-milestone6",{"stat":"p99"}],["AWS/Lambda","Throttles","FunctionName","medislot-${Environment}-milestone6"]]}},
+            {"type":"metric","x":12,"y":6,"width":12,"height":6,"properties":{"title":"DynamoDB slot and waitlist capacity","view":"timeSeries","region":"${AWS::Region}","metrics":[["AWS/DynamoDB","ConsumedReadCapacityUnits","TableName","medislot-${Environment}-slots"],["AWS/DynamoDB","ConsumedWriteCapacityUnits","TableName","medislot-${Environment}-slots"],["AWS/DynamoDB","ConditionalCheckFailedRequests","TableName","medislot-${Environment}-slots"],["AWS/DynamoDB","ReadThrottleEvents","TableName","medislot-${Environment}-slots"],["AWS/DynamoDB","WriteThrottleEvents","TableName","medislot-${Environment}-slots"],["AWS/DynamoDB","ConsumedReadCapacityUnits","TableName","medislot-${Environment}-waitlist"],["AWS/DynamoDB","ConsumedWriteCapacityUnits","TableName","medislot-${Environment}-waitlist"]]}},
+            {"type":"metric","x":0,"y":12,"width":12,"height":6,"properties":{"title":"Step Functions reschedule executions","view":"timeSeries","region":"${AWS::Region}","metrics":[["AWS/States","ExecutionsStarted","StateMachineArn","${RescheduleStateMachine.Arn}"],["AWS/States","ExecutionsSucceeded","StateMachineArn","${RescheduleStateMachine.Arn}"],["AWS/States","ExecutionsFailed","StateMachineArn","${RescheduleStateMachine.Arn}"],["AWS/States","ExecutionsTimedOut","StateMachineArn","${RescheduleStateMachine.Arn}"]]}},
+            {"type":"metric","x":12,"y":12,"width":12,"height":6,"properties":{"title":"RDS health","view":"timeSeries","region":"${AWS::Region}","metrics":[["AWS/RDS","CPUUtilization","DBInstanceIdentifier","medislot-${Environment}-mysql"],["AWS/RDS","DatabaseConnections","DBInstanceIdentifier","medislot-${Environment}-mysql"],["AWS/RDS","FreeStorageSpace","DBInstanceIdentifier","medislot-${Environment}-mysql"]]}},
+            {"type":"metric","x":0,"y":18,"width":12,"height":6,"properties":{"title":"MediSlot business metrics","view":"timeSeries","region":"${AWS::Region}","metrics":[["medislot","AppointmentsBooked","Environment","${Environment}"],["medislot","BookingsRejectedFull","Environment","${Environment}"],["medislot","BookingConflictRetries","Environment","${Environment}"],["medislot","ReschedulesSucceeded","Environment","${Environment}"],["medislot","ReschedulesCompensated","Environment","${Environment}"],["medislot","CancellationsByTier","Environment","${Environment}","Tier","MORE_THAN_24_HOURS"],["medislot","CancellationsByTier","Environment","${Environment}","Tier","12_TO_24_HOURS"],["medislot","CancellationsByTier","Environment","${Environment}","Tier","3_TO_12_HOURS"],["medislot","CancellationsByTier","Environment","${Environment}","Tier","LESS_THAN_3_HOURS"],["medislot","CancellationsByTier","Environment","${Environment}","Tier","DOCTOR_CANCELLED"],["medislot","RefundAmountTotal","Environment","${Environment}"],["medislot","WaitlistPromotions","Environment","${Environment}"],["medislot","OffersExpired","Environment","${Environment}"],["medislot","SlotUtilisationPercent","Environment","${Environment}"],["medislot","NoShowRate","Environment","${Environment}"],["medislot","NotificationsDispatched","Environment","${Environment}"],["medislot","NotificationSendUnknown","Environment","${Environment}"],["medislot","AuthenticationSuccesses","Environment","${Environment}"],["medislot","AuthenticationFailures","Environment","${Environment}"],["medislot","TokenValidationSuccesses","Environment","${Environment}"],["medislot","TokenValidationRejections","Environment","${Environment}"]] }},
+            {"type":"metric","x":12,"y":18,"width":12,"height":6,"properties":{"title":"Appointment API dead-letter queue","view":"timeSeries","region":"${AWS::Region}","metrics":[["AWS/SQS","ApproximateNumberOfMessagesVisible","QueueName","medislot-${Environment}-appointment-api-dlq"]]}}
+          ]
+        }
+
+  AppointmentApi5xxAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub medislot-${Environment}-api-5xx
+      Namespace: AWS/ApiGateway
+      MetricName: 5XXError
+      Dimensions:
+        - Name: ApiName
+          Value: !Sub medislot-${Environment}-auth-api
+        - Name: Stage
+          Value: !Ref Environment
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 5
+      ComparisonOperator: GreaterThanThreshold
+      TreatMissingData: notBreaching
+  ApiLatencyP99Alarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub medislot-${Environment}-api-latency-p99
+      Namespace: AWS/ApiGateway
+      MetricName: Latency
+      Dimensions:
+        - Name: ApiName
+          Value: !Sub medislot-${Environment}-auth-api
+        - Name: Stage
+          Value: !Ref Environment
+      ExtendedStatistic: p99
+      Period: 300
+      EvaluationPeriods: 2
+      Threshold: 3000
+      ComparisonOperator: GreaterThanThreshold
+      TreatMissingData: notBreaching
+  AuthValidationRejectionAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub medislot-${Environment}-auth-validation-rejections
+      Namespace: medislot
+      MetricName: TokenValidationRejections
+      Dimensions:
+        - Name: Environment
+          Value: !Ref Environment
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 20
+      ComparisonOperator: GreaterThanThreshold
+      TreatMissingData: notBreaching
+  DynamoDbThrottleAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub medislot-${Environment}-dynamodb-throttles
+      Namespace: AWS/DynamoDB
+      MetricName: ReadThrottleEvents
+      Dimensions:
+        - Name: TableName
+          Value: !Sub medislot-${Environment}-slots
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 0
+      ComparisonOperator: GreaterThanThreshold
+      TreatMissingData: notBreaching
+  AppointmentLambdaErrorAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub medislot-${Environment}-appointment-lambda-errors
+      Namespace: AWS/Lambda
+      MetricName: Errors
+      Dimensions:
+        - Name: FunctionName
+          Value: !Sub medislot-${Environment}-appointment-api
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 3
+      ComparisonOperator: GreaterThanThreshold
+      TreatMissingData: notBreaching
+  DynamoDbWriteThrottleAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub medislot-${Environment}-dynamodb-write-throttles
+      Namespace: AWS/DynamoDB
+      MetricName: WriteThrottleEvents
+      Dimensions:
+        - Name: TableName
+          Value: !Sub medislot-${Environment}-slots
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 0
+      ComparisonOperator: GreaterThanThreshold
+      TreatMissingData: notBreaching
+  RdsFreeStorageAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub medislot-${Environment}-rds-free-storage
+      Namespace: AWS/RDS
+      MetricName: FreeStorageSpace
+      Dimensions:
+        - Name: DBInstanceIdentifier
+          Value: !Sub medislot-${Environment}-mysql
+      Statistic: Minimum
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 2147483648
+      ComparisonOperator: LessThanThreshold
+      TreatMissingData: notBreaching
+  Milestone6LambdaErrorAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub medislot-${Environment}-milestone6-lambda-errors
+      Namespace: AWS/Lambda
+      MetricName: Errors
+      Dimensions:
+        - Name: FunctionName
+          Value: !Sub medislot-${Environment}-milestone6
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 3
+      ComparisonOperator: GreaterThanThreshold
+      TreatMissingData: notBreaching
+  StepFunctionsFailureAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub medislot-${Environment}-reschedule-failures
+      Namespace: AWS/States
+      MetricName: ExecutionsFailed
+      Dimensions:
+        - Name: StateMachineArn
+          Value: !GetAtt RescheduleStateMachine.Arn
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 0
+      ComparisonOperator: GreaterThanThreshold
+      TreatMissingData: notBreaching
+  RescheduleCompensationAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub medislot-${Environment}-reschedule-compensation
+      Namespace: medislot
+      MetricName: ReschedulesCompensated
+      Dimensions:
+        - Name: Environment
+          Value: !Ref Environment
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 0
+      ComparisonOperator: GreaterThanThreshold
+      TreatMissingData: notBreaching
+  SlotConditionalFailureAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub medislot-${Environment}-slot-conditional-failures
+      Namespace: AWS/DynamoDB
+      MetricName: ConditionalCheckFailedRequests
+      Dimensions:
+        - Name: TableName
+          Value: !Sub medislot-${Environment}-slots
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 10
+      ComparisonOperator: GreaterThanThreshold
+      TreatMissingData: notBreaching
+  NotificationSendUnknownAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub medislot-${Environment}-notification-send-unknown
+      Namespace: medislot
+      MetricName: NotificationSendUnknown
+      Dimensions:
+        - Name: Environment
+          Value: !Ref Environment
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 0
+      ComparisonOperator: GreaterThanThreshold
+      TreatMissingData: notBreaching
+  AppointmentDlqAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub medislot-${Environment}-appointment-dlq-depth
+      Namespace: AWS/SQS
+      MetricName: ApproximateNumberOfMessagesVisible
+      Dimensions:
+        - Name: QueueName
+          Value: !Sub medislot-${Environment}-appointment-api-dlq
+      Statistic: Maximum
+      Period: 60
+      EvaluationPeriods: 1
+      Threshold: 0
+      ComparisonOperator: GreaterThanThreshold
+      TreatMissingData: notBreaching
+  RdsCpuAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub medislot-${Environment}-rds-cpu
+      Namespace: AWS/RDS
+      MetricName: CPUUtilization
+      Dimensions:
+        - Name: DBInstanceIdentifier
+          Value: !Sub medislot-${Environment}-mysql
+      Statistic: Average
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 70
+      ComparisonOperator: GreaterThanThreshold
+      TreatMissingData: notBreaching
 
 Outputs:
 

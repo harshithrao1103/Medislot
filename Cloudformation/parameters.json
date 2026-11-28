@@ -1,4 +1,3 @@
-
 {
   "project": "medislot",
   "environment": "dev",
@@ -20,7 +19,8 @@
     "DBBackupRetentionDays": 1,
     "JWTAccessTokenMinutes": 15,
     "RefreshTokenDays": 7,
-    "BcryptWorkFactor": 12
+    "BcryptWorkFactor": 12,
+    "M6SesSenderEmail": "CONFIGURE_VERIFIED_SES_SENDER_BEFORE_EMAIL"
   },
   "artifacts": {
     "bucketName": "medislot-dev-sam-artifacts-598886663370-us-east-1"

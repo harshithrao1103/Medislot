@@ -1,0 +1,44 @@
+{% extends 'base.html' %}
+{% block content %}
+<section class="card patient-appointments-page">
+  <h2>Reschedule appointment</h2>
+  <p>Choose a new available slot. Your current appointment remains in place unless the reschedule Saga succeeds.</p>
+  {% if pending %}
+    <div id="reschedule-status" data-execution-arn="{{ execution_arn }}" data-status-url="{{ url_for('patient_reschedule_status') }}">
+      <strong>Reschedule status: PENDING</strong><p>Please keep this page open while the request is processed.</p>
+    </div>
+    <script>
+    (() => {
+      const el = document.getElementById('reschedule-status');
+      const arn = el.dataset.executionArn;
+      const url = el.dataset.statusUrl + '?executionArn=' + encodeURIComponent(arn);
+      const poll = async () => {
+        try {
+          const response = await fetch(url, {headers: {'Accept':'application/json'}});
+          const data = await response.json();
+          el.querySelector('strong').textContent = 'Reschedule status: ' + data.status;
+          if (data.status === 'SUCCEEDED') { el.querySelector('p').textContent = 'Reschedule completed. Refreshing appointments…'; window.location.href = '{{ url_for("patient_appointments") }}'; }
+          else if (['FAILED','TIMED_OUT','ABORTED'].includes(data.status)) { el.querySelector('p').textContent = 'Reschedule failed. Your original appointment is retained if compensation succeeded.'; }
+          else { window.setTimeout(poll, 2500); }
+        } catch (_) { window.setTimeout(poll, 4000); }
+      };
+      window.setTimeout(poll, 1500);
+    })();
+    </script>
+  {% else %}
+    <form method="post" class="appointment-cancel-form">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <label>Available target slot
+        <select name="slot_id" required>
+          {% for slot in slots %}
+            {% if slot.get('freeSeats', slot.get('free_seats', 0))|int > 0 %}
+              <option value="{{ slot.get('slotId', slot.get('slot_id')) }}">{{ slot.get('startTimeUTC', slot.get('start_time_utc')) }} — {{ slot.get('freeSeats', slot.get('free_seats')) }} seats</option>
+            {% endif %}
+          {% endfor %}
+        </select>
+      </label>
+      <button type="submit">Start reschedule</button>
+    </form>
+  {% endif %}
+</section>
+{% endblock %}

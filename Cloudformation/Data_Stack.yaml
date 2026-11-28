@@ -43,6 +43,11 @@ Parameters:
     Type: Number
     MinValue: 12
 
+  M6SesSenderEmail:
+    Type: String
+    Default: CONFIGURE_VERIFIED_SES_SENDER_BEFORE_EMAIL
+    Description: Verified SES sender identity for Milestone 6 notifications; configure before enabling email.
+
 # ============================================================
 # DEPLOYMENT CONDITIONS - ENABLE PRODUCTION-ONLY SETTINGS
 # IsProduction is true only when Environment is set to prod.
@@ -336,44 +341,40 @@ Resources:
 
   WaitlistTable:
     Type: AWS::DynamoDB::Table
-    Metadata:
-      checkov:
-        skip:
-          - id: CKV_AWS_119
-            comment: Project encryption policy uses AWS-managed encryption rather than customer-managed KMS keys; encryption at rest remains enabled.
-
     DeletionPolicy: Retain
     UpdateReplacePolicy: Retain
-
     Properties:
-
       TableName: !Sub 'medislot-${Environment}-waitlist'
-
+      BillingMode: PAY_PER_REQUEST
       PointInTimeRecoverySpecification:
         PointInTimeRecoveryEnabled: true
-      BillingMode: PAY_PER_REQUEST
-
       SSESpecification:
         SSEEnabled: true
-
       AttributeDefinitions:
-
-        - AttributeName: slotId
+        - AttributeName: PK
           AttributeType: S
-
-        - AttributeName: entryId
+        - AttributeName: SK
           AttributeType: S
-
+        - AttributeName: GSI1PK
+          AttributeType: S
+        - AttributeName: GSI1SK
+          AttributeType: S
       KeySchema:
-
-        - AttributeName: slotId
+        - AttributeName: PK
           KeyType: HASH
-
-        - AttributeName: entryId
+        - AttributeName: SK
           KeyType: RANGE
-
+      GlobalSecondaryIndexes:
+        - IndexName: PatientWaitlistIndex
+          KeySchema:
+            - AttributeName: GSI1PK
+              KeyType: HASH
+            - AttributeName: GSI1SK
+              KeyType: RANGE
+          Projection:
+            ProjectionType: ALL
       TimeToLiveSpecification:
-        AttributeName: expiresAt
+        AttributeName: ttlExpiresAt
         Enabled: true
 
 
@@ -719,6 +720,52 @@ Resources:
       Name: !Sub /medislot/${Environment}/auth/password-min-length
       Type: String
       Value: '10'
+
+
+  # Milestone 6 business controls (all thresholds are environment parameters).
+  M6MaxReschedulesParameter:
+    Type: AWS::SSM::Parameter
+    Properties:
+      Name: !Sub /medislot/${Environment}/milestone6/max-reschedules
+      Type: String
+      Value: '2'
+  M6RescheduleCutoffParameter:
+    Type: AWS::SSM::Parameter
+    Properties:
+      Name: !Sub /medislot/${Environment}/milestone6/reschedule-cutoff-hours
+      Type: String
+      Value: '6'
+  M6MaxActiveWaitlistsParameter:
+    Type: AWS::SSM::Parameter
+    Properties:
+      Name: !Sub /medislot/${Environment}/milestone6/max-active-waitlists
+      Type: String
+      Value: '5'
+  M6WaitlistHoldDurationParameter:
+    Type: AWS::SSM::Parameter
+    Properties:
+      Name: !Sub /medislot/${Environment}/milestone6/hold-duration-seconds
+      Type: String
+      Value: '900'
+  M6Reminder24HoursParameter:
+    Type: AWS::SSM::Parameter
+    Properties:
+      Name: !Sub /medislot/${Environment}/milestone6/reminder-24h-hours
+      Type: String
+      Value: '24'
+  M6Reminder2HoursParameter:
+    Type: AWS::SSM::Parameter
+    Properties:
+      Name: !Sub /medislot/${Environment}/milestone6/reminder-2h-hours
+      Type: String
+      Value: '2'
+  M6SesSenderParameter:
+    Type: AWS::SSM::Parameter
+    Properties:
+      Name: !Sub /medislot/${Environment}/milestone6/ses-sender-email
+      Type: String
+      Value: !Ref M6SesSenderEmail
+      Description: Replace with a verified SES sender identity before enabling email delivery.
 
 
 # ============================================================

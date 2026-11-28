@@ -4,7 +4,14 @@
 
 import time
 import jwt
+import json
+import logging
+import os
 from auth_common import *
+
+
+def _auth_metric(name):
+    logging.getLogger().info(json.dumps({'_aws':{'Timestamp':int(time.time()*1000),'CloudWatchMetrics':[{'Namespace':'medislot','Dimensions':[['Environment']],'Metrics':[{'Name':name,'Unit':'Count'}]}]},name:1,'Environment':os.environ.get('ENVIRONMENT','unknown')}))
 
 
 # ============================================================
@@ -57,6 +64,7 @@ def lambda_handler(event, context):
     # --------------------------------------------------------
 
     except (jwt.InvalidTokenError, ValueError):
+        _auth_metric('TokenValidationRejections')
         raise Exception('Unauthorized')
 
     # --------------------------------------------------------
@@ -65,6 +73,7 @@ def lambda_handler(event, context):
 
     # IAM Allow for valid JWT; the protected handler
     # performs role check to return HTTP 403.
+    _auth_metric('TokenValidationSuccesses')
 
     return {
         'principalId': claims['sub'],

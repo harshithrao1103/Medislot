@@ -61,7 +61,7 @@ jobs:
 
       - name: Compile and unit test
         run: |
-          python -m compileall -q lambdas tests
+          python -m compileall -q lambdas tests doctor_dashboard
           python -m pytest -q tests
 
       - name: IaC scan
@@ -594,6 +594,7 @@ jobs:
           ACCESS_MINUTES=$(jq -er '.data.JWTAccessTokenMinutes' "$CONFIG")
           REFRESH_DAYS=$(jq -er '.data.RefreshTokenDays' "$CONFIG")
           BCRYPT_FACTOR=$(jq -er '.data.BcryptWorkFactor' "$CONFIG")
+          M6_SES_SENDER=$(jq -er '.data.M6SesSenderEmail' "$CONFIG")
 
           aws cloudformation deploy \
             --template-file Cloudformation/Data_Stack.yaml \
@@ -606,6 +607,7 @@ jobs:
               JWTAccessTokenMinutes="$ACCESS_MINUTES" \
               RefreshTokenDays="$REFRESH_DAYS" \
               BcryptWorkFactor="$BCRYPT_FACTOR" \
+              M6SesSenderEmail="$M6_SES_SENDER" \
             --role-arn "$CFN_EXECUTION_ROLE_ARN" \
             --region "$AWS_REGION" \
             --no-fail-on-empty-changeset
@@ -667,6 +669,8 @@ jobs:
           echo "AWS_REGION=$AWS_REGION" >> "$GITHUB_ENV"
 
           echo "STACK_NAME=${PROJECT}-${DEPLOY_ENV}-application" >> "$GITHUB_ENV"
+          echo "NETWORK_STACK_NAME=${PROJECT}-${DEPLOY_ENV}-network" >> "$GITHUB_ENV"
+          echo "DATA_STACK_NAME=${PROJECT}-${DEPLOY_ENV}-data" >> "$GITHUB_ENV"
 
       # =====================================================
       # 3. CONFIGURE AWS CREDENTIALS
@@ -744,6 +748,9 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: "3.12"
+
+      - name: Install test and smoke dependencies
+        run: python -m pip install -r tests/requirements.txt
 
       # =====================================================
       # 6. PACKAGE LAMBDA FUNCTIONS
@@ -974,9 +981,41 @@ jobs:
             echo "::error::Missing authentication API output"
             exit 1
           fi
+          echo "API_BASE=$API_BASE" >> "$GITHUB_ENV"
 
           MEDISLOT_API_BASE_URL="$API_BASE" python tests/smoke_auth.py
           MEDISLOT_API_BASE_URL="$API_BASE" python tests/smoke_patient_domain.py
+          MEDISLOT_API_BASE_URL="$API_BASE" python tests/smoke_milestone6.py
+
+      - name: Run four mandatory deployed-AWS Milestone 6 integration tests
+        env:
+          M6_RUN_AWS_INTEGRATION: '1'
+          M6_TEST_PATIENT_TOKENS_JSON: ${{ secrets.M6_TEST_PATIENT_TOKENS_JSON }}
+          M6_TEST_HEALTH_CAMP_SLOT_ID: ${{ vars.M6_TEST_HEALTH_CAMP_SLOT_ID }}
+          M6_TEST_DOCTOR_ID: ${{ vars.M6_TEST_DOCTOR_ID }}
+          M6_TEST_IDEMPOTENCY_PATIENT_TOKEN: ${{ secrets.M6_TEST_IDEMPOTENCY_PATIENT_TOKEN }}
+          M6_TEST_IDEMPOTENCY_SLOT_ID: ${{ vars.M6_TEST_IDEMPOTENCY_SLOT_ID }}
+          M6_TEST_RESCHEDULE_PATIENT_TOKEN: ${{ secrets.M6_TEST_RESCHEDULE_PATIENT_TOKEN }}
+          M6_TEST_RESCHEDULE_PATIENT_ID: ${{ vars.M6_TEST_RESCHEDULE_PATIENT_ID }}
+          M6_TEST_RESCHEDULE_APPOINTMENT_ID: ${{ vars.M6_TEST_RESCHEDULE_APPOINTMENT_ID }}
+          M6_TEST_RESCHEDULE_TARGET_SLOT_ID: ${{ vars.M6_TEST_RESCHEDULE_TARGET_SLOT_ID }}
+          M6_TEST_WAITLIST_PATIENT_TOKENS_JSON: ${{ secrets.M6_TEST_WAITLIST_PATIENT_TOKENS_JSON }}
+          M6_TEST_WAITLIST_SLOT_ID: ${{ vars.M6_TEST_WAITLIST_SLOT_ID }}
+        run: |
+          set -euo pipefail
+          export MEDISLOT_API_BASE_URL="$API_BASE"
+          export AWS_DEFAULT_REGION="$AWS_REGION"
+          export M6_TEST_ENVIRONMENT="$DEPLOY_ENV"
+          export M6_TEST_SLOTS_TABLE="medislot-${DEPLOY_ENV}-slots"
+          export M6_TEST_WAITLIST_TABLE="medislot-${DEPLOY_ENV}-waitlist"
+          export M6_TEST_EVENT_BUS="medislot-${DEPLOY_ENV}-appointments"
+          export M6_TEST_LAMBDA_NAME="medislot-${DEPLOY_ENV}-milestone6"
+          AWS_ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
+          export M6_TEST_STATE_MACHINE_ARN="arn:aws:states:${AWS_REGION}:${AWS_ACCOUNT_ID}:stateMachine:medislot-${DEPLOY_ENV}-reschedule"
+          for NAME in M6_TEST_PATIENT_TOKENS_JSON M6_TEST_HEALTH_CAMP_SLOT_ID M6_TEST_DOCTOR_ID M6_TEST_IDEMPOTENCY_PATIENT_TOKEN M6_TEST_IDEMPOTENCY_SLOT_ID M6_TEST_RESCHEDULE_PATIENT_TOKEN M6_TEST_RESCHEDULE_PATIENT_ID M6_TEST_RESCHEDULE_APPOINTMENT_ID M6_TEST_RESCHEDULE_TARGET_SLOT_ID M6_TEST_WAITLIST_PATIENT_TOKENS_JSON M6_TEST_WAITLIST_SLOT_ID; do
+            if [[ -z "${!NAME}" ]]; then echo "::error::Required deployed integration fixture $NAME is missing"; exit 1; fi
+          done
+          python -m pytest -q tests/integration/test_milestone6_aws.py
 
       - name: Verify Canonical Slots Table and Export
         shell: bash
@@ -1006,3 +1045,41 @@ jobs:
             echo "::error::Canonical Slots export does not point to ${TABLE_NAME}; found ${EXPORT_VALUE}"
             exit 1
           fi
+
+      - name: Verify Milestone 6 infrastructure and no-NAT architecture
+        shell: bash
+        run: |
+          set -euo pipefail
+          WAITLIST_TABLE="medislot-${DEPLOY_ENV}-waitlist"
+          NOTIFICATION_TABLE="medislot-${DEPLOY_ENV}-notification-dispatch"
+          WAITLIST_INFO=$(aws dynamodb describe-table --table-name "$WAITLIST_TABLE" --region "$AWS_REGION" --output json)
+          echo "$WAITLIST_INFO" | jq -e '
+            .Table.TableStatus == "ACTIVE" and
+            ([.Table.KeySchema[] | select(.AttributeName == "PK" and .KeyType == "HASH")] | length) == 1 and
+            ([.Table.KeySchema[] | select(.AttributeName == "SK" and .KeyType == "RANGE")] | length) == 1 and
+            ([.Table.GlobalSecondaryIndexes[]? | select(.IndexName == "PatientWaitlistIndex")] | length) == 1
+          ' > /dev/null
+          TTL_STATUS=$(aws dynamodb describe-time-to-live --table-name "$WAITLIST_TABLE" --region "$AWS_REGION" --query 'TimeToLiveDescription.TimeToLiveStatus' --output text)
+          if [[ "$TTL_STATUS" != "ENABLED" && "$TTL_STATUS" != "ENABLING" ]]; then
+            echo "::error::Waitlist TTL is not enabled: $TTL_STATUS"; exit 1
+          fi
+          aws dynamodb describe-table --table-name "$NOTIFICATION_TABLE" --region "$AWS_REGION" --query 'Table.TableStatus' --output text | grep -qx ACTIVE
+          aws stepfunctions describe-state-machine --state-machine-arn "arn:aws:states:${AWS_REGION}:$(aws sts get-caller-identity --query Account --output text):stateMachine:medislot-${DEPLOY_ENV}-reschedule" --region "$AWS_REGION" --query 'status' --output text | grep -qx ACTIVE
+          aws scheduler get-schedule --name "medislot-${DEPLOY_ENV}-waitlist-expiry" --region "$AWS_REGION" --query 'State' --output text | grep -qx ENABLED
+          aws scheduler get-schedule --name "medislot-${DEPLOY_ENV}-appointment-reminders" --region "$AWS_REGION" --query 'State' --output text | grep -qx ENABLED
+
+          VPC_ID=$(aws cloudformation describe-stacks --stack-name "$NETWORK_STACK_NAME" --region "$AWS_REGION" --query "Stacks[0].Outputs[?OutputKey=='VpcId'].OutputValue | [0]" --output text)
+          PRIVATE_RT=$(aws cloudformation describe-stacks --stack-name "$NETWORK_STACK_NAME" --region "$AWS_REGION" --query "Stacks[0].Outputs[?OutputKey=='PrivateRouteTableId'].OutputValue | [0]" --output text)
+          NAT_COUNT=$(aws ec2 describe-nat-gateways --filter "Name=vpc-id,Values=$VPC_ID" --region "$AWS_REGION" --query 'length(NatGateways[?State!=`deleted`])' --output text)
+          if [[ "$NAT_COUNT" != "0" ]]; then echo "::error::A NAT Gateway exists in the MediSlot VPC"; exit 1; fi
+          NAT_ROUTES=$(aws ec2 describe-route-tables --route-table-ids "$PRIVATE_RT" --region "$AWS_REGION" --query 'length(RouteTables[].Routes[?NatGatewayId!=null][])' --output text)
+          if [[ "$NAT_ROUTES" != "0" ]]; then echo "::error::A private route table contains a NAT route"; exit 1; fi
+          for SERVICE in ssm events states email; do
+            ENDPOINT_STATE=$(aws ec2 describe-vpc-endpoints \
+              --filters "Name=vpc-id,Values=$VPC_ID" "Name=service-name,Values=com.amazonaws.${AWS_REGION}.${SERVICE}" \
+              --region "$AWS_REGION" --query 'VpcEndpoints[0].State' --output text)
+            if [[ "$ENDPOINT_STATE" != "available" ]]; then
+              echo "::error::Private VPC endpoint for ${SERVICE} is not available: ${ENDPOINT_STATE}"; exit 1
+            fi
+          done
+          echo "Milestone 6 tables, state machine, schedules, private endpoints and no-NAT checks passed"

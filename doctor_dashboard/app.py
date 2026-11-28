@@ -1,3 +1,12 @@
+# ============================================================================
+# MEDISLOT FLASK APPLICATION - COMMENTED READING COPY
+# This file is an explanatory copy of the uploaded app.py.
+# Comments describe the purpose of functions and major application flows.
+# Executable statements and their order are preserved; comments do not change
+# how Python runs the application. Keep your original app.py as the deployable
+# source until you have reviewed and tested this commented copy.
+# ============================================================================
+
 # Standard library, HTTP client, Flask, and server-side session imports.
 """MediSlot doctor portal. All business data is fetched from API Gateway."""
 import os
@@ -32,6 +41,7 @@ API = os.environ['MEDISLOT_API_BASE_URL'].rstrip('/')
 # Calls the Token Lambda through API Gateway and updates the session with the new JWT and expiry.
 # If the refresh token is invalid or expired, clears the session and returns False.
 
+# PURPOSE: Exchange the refresh token stored in the Flask session for a new access token. Update token expiry values; clear the session when the refresh token is rejected.
 def refresh_access():
     """Exchange the session refresh token for a new access token and update expiry timestamps."""
     token = session.get('refresh_token')
@@ -61,6 +71,7 @@ def refresh_access():
 # Automatically refreshes the access token if it is missing or expires within 60 seconds.
 # If the API returns HTTP 401, attempts token refresh and retries the request once.
 
+# PURPOSE: Central API client for this Flask app. Adds the user's Bearer access token, refreshes it near expiry, sends the request to API Gateway, and retries once after a 401.
 def api(method, path, **kwargs):
     """Attach the access token, refresh it near expiry, and retry once after HTTP 401."""
     headers = kwargs.pop('headers', {}).copy()
@@ -81,6 +92,7 @@ def api(method, path, **kwargs):
 # DOCTOR ROUTE GUARD
 # ====================================================================
 # Protects doctor dashboard pages by validating the user's session.
+# PURPOSE: Decorator that allows only an authenticated doctor to open a doctor-only page.
 def protected(fn):
     """Require a doctor session with a non-expired refresh token before loading a protected page."""
 
@@ -106,6 +118,7 @@ def protected(fn):
 # CSRF TOKEN GENERATION(Cross-Site Request Forgery)
 # ====================================================================
 # Generate a random CSRF token once per session to protect HTML forms.
+# PURPOSE: Create or return the per-session CSRF token used to protect form submissions.
 def csrf():
     """Create one random CSRF token per session for use in HTML forms."""
     if not session.get('csrf'):
@@ -121,6 +134,7 @@ app.jinja_env.globals['csrf_token'] = csrf
 # ====================================================================
 # Validate CSRF tokens before processing incoming POST form requests.
 @app.before_request
+# PURPOSE: Runs before Flask handles a request. For POST requests, compare the submitted CSRF token with the session token and reject mismatches.
 def check_csrf():
     """Reject POST form submissions when their CSRF token does not match the session token."""
 
@@ -139,6 +153,7 @@ def check_csrf():
 # ROOT REDIRECT
 # ====================================================================
 @app.route('/')
+# PURPOSE: Choose the correct landing page based on the signed-in user's role; otherwise show the public welcome page.
 def index():
     """Send signed-in doctors to their profile and visitors to the welcome page."""
     return redirect(url_for('profile') if session.get('role')=='doctor' and session.get('refresh_token') else url_for('patient_profile') if session.get('role')=='patient' and session.get('refresh_token') else url_for('welcome'))
@@ -148,6 +163,7 @@ def index():
 # WELCOME PAGE
 # ====================================================================
 @app.route('/doctor/welcome')
+# PURPOSE: Render the public welcome page, unless the visitor already has a doctor or patient session.
 def welcome():
     """Display the public welcome page or redirect an authenticated doctor."""
     if session.get('role') == 'doctor' and session.get('refresh_token'):
@@ -157,6 +173,7 @@ def welcome():
     return render_template('welcome.html')
 
 
+# PURPOSE: Fetch the current specialization list from the public API for registration and search dropdowns.
 def load_specializations():
     """Load the authoritative dropdown choices from the public API."""
     try:
@@ -173,6 +190,7 @@ def load_specializations():
 # ====================================================================
 # Displays the doctor registration form and processes submitted details.
 @app.route('/doctor/register', methods=['GET', 'POST'])
+# PURPOSE: Handle the doctor registration form: collect fields, convert numeric/list values, call the doctor registration API, and show success or validation errors.
 def register():
     """Collect registration form data and submit it to the doctor registration API."""
 
@@ -209,6 +227,7 @@ def register():
 # ====================================================================
 # Display the doctor login page and authenticate submitted credentials.
 @app.route('/doctor/login', methods=['GET','POST'])
+# PURPOSE: Authenticate a doctor and store the returned access token, refresh token, role, and expiry times in the server-side Flask session.
 def login():
     """Authenticate doctor credentials and save access and refresh tokens in the session."""
     if request.method=='POST':
@@ -242,6 +261,7 @@ def login():
 # DOCTOR LOGOUT
 # ====================================================================
 @app.route('/doctor/logout', methods=['POST'])
+# PURPOSE: End the current doctor session and invalidate/logout the refresh token through the authentication API.
 def logout():
     """Request token revocation, clear the local session, and return to login."""
     try:
@@ -254,6 +274,7 @@ def logout():
 # ====================================================================
 # API ERROR MESSAGES
 # ====================================================================
+# PURPOSE: Extract a readable error message from an API response, with a safe fallback when the response is not JSON or has no message.
 def api_error(r):
     """Extract an API error or message, falling back to its HTTP status."""
     try:
@@ -269,6 +290,7 @@ def api_error(r):
 # PAGE DATA FETCHING
 # ====================================================================
 # Fetch data from protected backend APIs and handle authentication or API errors.
+# PURPOSE: Helper for doctor dashboard GET requests. It calls the backend API and handles authentication/session failures consistently.
 def page_get(path):
     """Fetch JSON for a page and display errors using Flask flash messages."""
     try:
@@ -297,6 +319,7 @@ def page_get(path):
 # ====================================================================
 # PAGE DATA MODIFICATIONS
 # ====================================================================
+# PURPOSE: Helper for doctor dashboard write requests. It forwards POST/PUT/DELETE actions to the backend and includes the required CSRF/session handling.
 def page_post(method, path, payload):
     """Send a JSON update request and display a success or error message."""
     try:
@@ -322,6 +345,7 @@ def page_post(method, path, payload):
 
 # Ensure that only authenticated users can access this page.
 @protected
+# PURPOSE: Main doctor appointments page. Reads filters and pagination, retrieves appointments, processes doctor actions (cancel, complete, no-show), and prepares data for the template.
 def doctor_appointments_page():
     """List and manage the authenticated doctor's patient appointments."""
 
@@ -782,6 +806,7 @@ def doctor_appointments_page():
 # Display the doctor's profile and process profile updates.
 @app.route('/doctor/profile',methods=['GET','POST'])
 @protected
+# PURPOSE: Display the doctor's profile and process profile updates by calling the doctor profile API.
 def profile():
     """Display doctor profile data and submit edited professional details."""
 
@@ -825,6 +850,7 @@ def profile():
 # ====================================================================
 @app.route('/doctor/consultations',methods=['GET','POST'])
 @protected
+# PURPOSE: List, create, update, or delete the doctor's consultation types. The HTTP method and optional ID determine the operation.
 def consultations():
     """List, create, update, or delete predefined consultation types."""
     if request.method=='POST':
@@ -868,6 +894,7 @@ def consultations():
     data=page_get('/doctors/me/consultation-types')
     return render_template('consultations.html',items=(data or {}).get('items',[]))
 
+# PURPOSE: Ask the backend/materialiser workflow to reconcile the doctor's generated slots after scheduling settings change.
 def request_slot_reconciliation():
     """Queue a 30-day reconciliation after a successful dashboard availability change.
 
@@ -895,6 +922,7 @@ def request_slot_reconciliation():
 # ====================================================================
 @app.route('/doctor/availability',methods=['GET','POST'])
 @protected
+# PURPOSE: Display or modify the doctor's weekly availability rules. Form data is validated/converted before being sent to the availability API.
 def availability():
     """List and manage the doctor weekly availability rules."""
     if request.method == 'POST':
@@ -939,6 +967,7 @@ def availability():
 # ====================================================================
 @app.route('/doctor/blackouts',methods=['GET','POST'])
 @protected
+# PURPOSE: List, add, or remove blackout dates when the doctor is unavailable.
 def blackouts():
     """List, add, or remove dates when the doctor is unavailable."""
     if request.method=='POST':
@@ -967,6 +996,7 @@ def blackouts():
 # ====================================================================
 @app.route('/doctor/schedule')
 @protected
+# PURPOSE: Fetch and display the doctor's schedule for the requested date, including appointments and slot information.
 def schedule():
     """Calendar UI and authenticated, per-day slot data for lazy calendar loading."""
     from flask import jsonify
@@ -1029,6 +1059,7 @@ def schedule():
 # ====================================================================
 @app.route('/doctor/photo', methods=['POST'])
 @protected
+# PURPOSE: Create a presigned S3 upload request for the doctor's profile photo and pass the upload details to the browser.
 def upload_photo():
     """Validate an uploaded image and send it using a presigned upload form."""
 
@@ -1071,6 +1102,7 @@ def upload_photo():
 
 @app.route('/doctor/photo/view')
 @protected
+# PURPOSE: Retrieve the doctor's profile-photo URL or photo metadata from the backend.
 def view_photo():
     """Fetch a doctor photo using its signed URL and return it as an image response."""
 
@@ -1104,6 +1136,7 @@ def view_photo():
 # MILESTONE 4: PATIENT PORTAL ON THE SAME EC2 FLASK APPLICATION
 # ====================================================================
 
+# PURPOSE: Decorator that allows only an authenticated patient to open a patient-only page.
 def patient_protected(fn):
     @wraps(fn)
     def inner(*args, **kwargs):
@@ -1117,6 +1150,7 @@ def patient_protected(fn):
     return inner
 
 @app.route('/patient/register',methods=['GET','POST'])
+# PURPOSE: Handle patient registration by collecting form fields and forwarding them to the patient registration API.
 def patient_register():
     if request.method=='POST':
         fields=('first_name','last_name','email','password','date_of_birth','gender','phone','city','emergency_contact','notes')
@@ -1132,6 +1166,7 @@ def patient_register():
     return render_template('patient_register.html')
 
 @app.route('/patient/login',methods=['GET','POST'])
+# PURPOSE: Authenticate a patient and store patient tokens and expiry values in the Flask session.
 def patient_login():
     if request.method=='POST':
         try:
@@ -1151,6 +1186,7 @@ def patient_login():
 
 @app.route('/patient/profile',methods=['GET','POST'])
 @patient_protected
+# PURPOSE: Display the patient's profile, update profile details, or delete the profile using the patient APIs.
 def patient_profile():
     if request.method=='POST':
         if request.form.get('delete_profile'):
@@ -1174,6 +1210,7 @@ def patient_profile():
 
 @app.route('/patient/appointments/book', methods=['POST'])
 @patient_protected
+# PURPOSE: Receive a patient's selected doctor/slot, forward the booking request to the appointment API, and preserve the idempotency key to prevent duplicate bookings.
 def patient_book_appointment():
     """Forward a patient booking request and its idempotency key to the Appointment API."""
     payload = request.get_json(silent=True) or {}
@@ -1198,6 +1235,7 @@ def patient_book_appointment():
 
 @app.route('/patient/appointments', methods=['GET', 'POST'])
 @patient_protected
+# PURPOSE: Show the patient's appointments. Load appointment data, apply active/past filters, format display values, and process cancellation actions.
 def patient_appointments():
     """Show patient appointments with composable date, status, period and doctor filters."""
     if request.method == 'POST':
@@ -1400,6 +1438,7 @@ def patient_appointments():
 # Route used by patients to search for doctors.
 @app.route('/patient/doctors')
 @patient_protected
+# PURPOSE: Search doctors using submitted filters and pagination, then render the matching doctors and specialization options.
 def patient_search():
 
     # Get search filters from URL query parameters.
@@ -1471,6 +1510,7 @@ def patient_search():
 # <int:doctor_id> dynamically receives the doctor's ID.
 @app.route('/patient/doctors/<int:doctor_id>')
 @patient_protected
+# PURPOSE: Show one doctor's public details and fetch available slots for a date range. Enrich slots with consultation details before rendering the booking page.
 def patient_doctor(doctor_id):
 
     try:
@@ -1654,3 +1694,83 @@ def patient_doctor(doctor_id):
         # Display an error message and redirect to doctor search.
         flash('Doctor details unavailable')
         return redirect(url_for('patient_search'))
+
+
+@app.route('/patient/waitlists', methods=['GET', 'POST'])
+@patient_protected
+def patient_waitlists():
+    """API-client page for joining, leaving and accepting waitlist offers."""
+    if request.method == 'POST':
+        action = request.form.get('action', '')
+        try:
+            if action == 'join':
+                slot_id = request.form.get('slot_id', '').strip()
+                upstream = api('POST', f'/slots/{slot_id}/waitlist')
+            elif action == 'leave':
+                slot_id = request.form.get('slot_id', '').strip()
+                upstream = api('DELETE', f'/slots/{slot_id}/waitlist')
+            elif action == 'accept':
+                offer_id = request.form.get('offer_id', '').strip()
+                upstream = api('POST', f'/waitlist-offers/{offer_id}/accept')
+            else:
+                flash('Invalid waitlist action')
+                return redirect(url_for('patient_waitlists'))
+            flash('Waitlist action completed' if upstream.ok else api_error(upstream))
+        except requests.RequestException:
+            flash('Waitlist service is temporarily unavailable')
+        return redirect(url_for('patient_waitlists'))
+    try:
+        upstream = api('GET', '/patients/me/waitlists')
+        if not upstream.ok:
+            flash(api_error(upstream)); items = []
+        else:
+            items = upstream.json().get('waitlists', [])
+    except (requests.RequestException, ValueError):
+        flash('Unable to load waitlists right now'); items = []
+    return render_template('patient_waitlists.html', waitlists=items)
+
+
+@app.route('/patient/appointments/<int:appointment_id>/reschedule', methods=['GET', 'POST'])
+@patient_protected
+def patient_reschedule(appointment_id):
+    """Select an available slot and start the asynchronous reschedule Saga."""
+    try:
+        detail_response = api('GET', f'/appointments/{appointment_id}')
+        if not detail_response.ok:
+            flash(api_error(detail_response)); return redirect(url_for('patient_appointments'))
+        detail = detail_response.json().get('appointment', detail_response.json())
+        doctor_id = detail.get('doctor_id') or detail.get('doctorId')
+        if not doctor_id:
+            flash('Appointment details did not include its doctor'); return redirect(url_for('patient_appointments'))
+        from zoneinfo import ZoneInfo
+        today = datetime.now(ZoneInfo('Asia/Kolkata')).date()
+        end = today + timedelta(days=30)
+        slots_response = api('GET', f'/doctors/{doctor_id}/slots', params={'start_date': today.isoformat(), 'end_date': end.isoformat()})
+        available_slots = slots_response.json().get('slots', []) if slots_response.ok else []
+        if request.method == 'POST':
+            target_slot_id = request.form.get('slot_id', '').strip()
+            result = api('PATCH', f'/appointments/{appointment_id}', json={'slotId': target_slot_id})
+            if result.status_code == 202:
+                payload = result.json()
+                return render_template('patient_reschedule.html', appointment=detail, slots=available_slots,
+                                       execution_arn=payload.get('executionArn'), pending=True)
+            flash(api_error(result)); return redirect(url_for('patient_reschedule', appointment_id=appointment_id))
+        return render_template('patient_reschedule.html', appointment=detail, slots=available_slots,
+                               execution_arn=None, pending=False)
+    except requests.RequestException:
+        flash('Unable to load rescheduling options right now')
+        return redirect(url_for('patient_appointments'))
+
+
+@app.route('/patient/reschedule-status')
+@patient_protected
+def patient_reschedule_status():
+    """Poll Step Functions execution status through the authenticated API."""
+    arn = request.args.get('executionArn', '').strip()
+    if not arn:
+        return jsonify({'error': 'executionArn is required'}), 400
+    try:
+        upstream = api('GET', '/reschedule-executions', params={'executionArn': arn})
+        return (upstream.text, upstream.status_code, {'Content-Type': 'application/json'})
+    except requests.RequestException:
+        return jsonify({'error': 'Reschedule status unavailable'}), 502

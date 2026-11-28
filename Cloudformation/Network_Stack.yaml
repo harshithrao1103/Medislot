@@ -321,7 +321,61 @@ Resources:
           Value: !Ref Environment
 
   # =====================================================
-  # 16. LAMBDA INTERFACE VPC ENDPOINT
+  # 16. AMAZON SES API INTERFACE ENDPOINT (PRIVATE EMAIL DELIVERY; NO NAT)
+  # =====================================================
+  SesApiVPCEndpoint:
+    Type: AWS::EC2::VPCEndpoint
+    Properties:
+      VpcEndpointType: Interface
+      ServiceName: !Sub com.amazonaws.${AWS::Region}.email
+      VpcId: !Ref MediSlotVPC
+      SubnetIds:
+        - !Ref PrivateSubnetA
+        - !Ref PrivateSubnetB
+      SecurityGroupIds:
+        - !Ref SecretsManagerEndpointSecurityGroup
+      PrivateDnsEnabled: true
+      Tags:
+        - Key: Name
+          Value: !Sub medislot-${Environment}-ses-api-endpoint
+        - Key: Project
+          Value: MediSlot
+        - Key: Environment
+          Value: !Ref Environment
+
+  # =====================================================
+  # PRIVATE AWS API ENDPOINTS REQUIRED BY MILESTONE 6 (NO NAT ROUTE)
+  # =====================================================
+  SsmVPCEndpoint:
+    Type: AWS::EC2::VPCEndpoint
+    Properties:
+      VpcEndpointType: Interface
+      ServiceName: !Sub com.amazonaws.${AWS::Region}.ssm
+      VpcId: !Ref MediSlotVPC
+      SubnetIds: [!Ref PrivateSubnetA, !Ref PrivateSubnetB]
+      SecurityGroupIds: [!Ref SecretsManagerEndpointSecurityGroup]
+      PrivateDnsEnabled: true
+  EventBridgeVPCEndpoint:
+    Type: AWS::EC2::VPCEndpoint
+    Properties:
+      VpcEndpointType: Interface
+      ServiceName: !Sub com.amazonaws.${AWS::Region}.events
+      VpcId: !Ref MediSlotVPC
+      SubnetIds: [!Ref PrivateSubnetA, !Ref PrivateSubnetB]
+      SecurityGroupIds: [!Ref SecretsManagerEndpointSecurityGroup]
+      PrivateDnsEnabled: true
+  StepFunctionsVPCEndpoint:
+    Type: AWS::EC2::VPCEndpoint
+    Properties:
+      VpcEndpointType: Interface
+      ServiceName: !Sub com.amazonaws.${AWS::Region}.states
+      VpcId: !Ref MediSlotVPC
+      SubnetIds: [!Ref PrivateSubnetA, !Ref PrivateSubnetB]
+      SecurityGroupIds: [!Ref SecretsManagerEndpointSecurityGroup]
+      PrivateDnsEnabled: true
+
+  # =====================================================
+  # 20. LAMBDA INTERFACE VPC ENDPOINT
   # =====================================================
 
   LambdaVPCEndpoint:
@@ -408,3 +462,8 @@ Outputs:
     Value: !Ref LambdaVPCEndpoint
     Export:
       Name: !Sub medislot-${Environment}-LambdaVPCEndpointId
+  SesApiVPCEndpointId:
+    Description: Amazon SES API Interface VPC Endpoint ID
+    Value: !Ref SesApiVPCEndpoint
+    Export:
+      Name: !Sub medislot-${Environment}-SesApiVPCEndpointId

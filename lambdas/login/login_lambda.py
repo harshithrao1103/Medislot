@@ -14,6 +14,11 @@ JWT_SIGNING_SECRET = signing_secret()
 # LAMBDA HANDLER — DOCTOR / PATIENT LOGIN
 # ============================================================
 
+def _auth_metric(name):
+    import json, logging, os, time
+    logging.getLogger().info(json.dumps({'_aws':{'Timestamp':int(time.time()*1000),'CloudWatchMetrics':[{'Namespace':'medislot','Dimensions':[['Environment']],'Metrics':[{'Name':name,'Unit':'Count'}]}]},name:1,'Environment':os.environ.get('ENVIRONMENT','unknown')}))
+
+
 def lambda_handler(event, context):
     correlation = cid(event)
 
@@ -94,6 +99,7 @@ def lambda_handler(event, context):
                 user["password_hash"].encode()
             )
         ):
+            _auth_metric("AuthenticationFailures")
             audit(
                 "login_denied",
                 correlation,
@@ -128,6 +134,7 @@ def lambda_handler(event, context):
         # 8. AUDIT SUCCESSFUL LOGIN
         # ----------------------------------------------------
 
+        _auth_metric("AuthenticationSuccesses")
         audit(
             "login_success",
             correlation,
@@ -167,6 +174,7 @@ def lambda_handler(event, context):
     # --------------------------------------------------------
 
     except Exception:
+        _auth_metric("AuthenticationFailures")
         audit(
             "login_failure",
             correlation,

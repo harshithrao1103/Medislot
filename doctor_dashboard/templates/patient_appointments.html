@@ -9,6 +9,7 @@
     </div>
   </div>
 
+  <p><a class="secondary-button" href="{{ url_for('patient_waitlists') }}">My Waitlists</a></p>
   <form method="get" action="{{ url_for('patient_appointments') }}" class="appointment-filters" aria-label="Filter my appointments">
     <div class="appointment-filter-field">
       <label for="patient-from-date">From date</label>
@@ -114,6 +115,7 @@
               <i></i>{{ appointment.get('display_status') }}
             </span>
             {% if appointment.get('is_active') %}
+              <a class="secondary-button" href="{{ url_for('patient_reschedule', appointment_id=appointment.get('appointment_id')) }}">Reschedule</a>
               <form method="post" class="appointment-cancel-form" onsubmit="return confirm('Cancel this appointment? The refund will follow MediSlot policy.');">
                 <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                 <input type="hidden" name="appointment_id" value="{{ appointment.get('appointment_id') }}">

@@ -1,13 +1,4 @@
-# Its purpose is to automatically validate your MediSlot project whenever code is pushed to GitHub or a pull request is created against main.
-
-# It checks whether:
-# 1. Python code has syntax errors.
-# 2. Unit tests pass.
-# 3. CloudFormation templates are valid.
-# 4. CloudFormation configurations have security issues.
-# 5. Secrets or credentials are accidentally exposed in the repository.
-
-name: Milestone 2 Required CI
+name: MediSlot CI
 
 on:
   pull_request:
@@ -20,41 +11,54 @@ permissions:
   contents: read
 
 jobs:
-  validate-and-test:
-    name: Validate and Test
+  lint:
+    name: Lint and IaC validation
     runs-on: ubuntu-latest
-    env:
-      AWS_DEFAULT_REGION: us-east-1
-      AWS_EC2_METADATA_DISABLED: "true"
-
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-
-      - name: Setup Python
-        uses: actions/setup-python@v5
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-
-      - name: Install test and scan dependencies
-        run: |
-          python -m pip install --upgrade pip
-          python -m pip install -r tests/requirements.txt
-
-      - name: Compile Python source
-        run: python -m compileall -q lambdas tests
-
-      - name: Unit tests
-        run: python -m pytest -q tests
-
-      - name: CloudFormation syntax and security scanning
+      - name: Install validation tools
+        run: python -m pip install -r tests/requirements.txt
+      - name: Compile Python
+        run: python -m compileall -q lambdas tests doctor_dashboard
+      - name: CloudFormation lint and security scan
         run: |
           cfn-lint Cloudformation/*.yaml
           checkov -d Cloudformation --framework cloudformation --quiet
-
       - name: Secret scanning
         uses: gitleaks/gitleaks-action@v2
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  unit-tests:
+    name: Unit and regression tests
+    runs-on: ubuntu-latest
+    needs: [lint]
+    env:
+      AWS_DEFAULT_REGION: us-east-1
+      AWS_EC2_METADATA_DISABLED: 'true'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install test dependencies
+        run: python -m pip install -r tests/requirements.txt
+      - name: Run unit and regression tests
+        run: python -m pytest -q tests/test_*.py
+
+  integration-contract-tests:
+    name: Integration contract tests
+    runs-on: ubuntu-latest
+    needs: [unit-tests]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install test dependencies
+        run: python -m pip install -r tests/requirements.txt
+      - name: Validate cross-component Milestone 6 contracts
+        run: python -m pytest -q tests/integration

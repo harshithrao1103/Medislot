@@ -118,8 +118,20 @@ CREATE TABLE IF NOT EXISTS appointments (
   CONSTRAINT chk_reschedule_count CHECK (reschedule_count <= 2),
   INDEX idx_appointment_patient_doctor_upcoming (patient_id,doctor_id,status,start_time_utc),
   INDEX idx_appointment_slot (slot_id),
+  INDEX idx_appointment_status_start_time (status,start_time_utc),
   UNIQUE KEY uq_appointment_idempotency (idempotency_key),
   UNIQUE KEY uq_active_patient_slot (patient_id,slot_id,active_booking_guard)
+) ENGINE=InnoDB;
+
+CREATE TABLE IF NOT EXISTS reschedule_locks (
+  appointment_id BIGINT PRIMARY KEY,
+  saga_id VARCHAR(64) NOT NULL,
+  patient_id BIGINT NOT NULL,
+  execution_arn VARCHAR(256) NULL,
+  status ENUM('PENDING','COMPLETED','FAILED') NOT NULL DEFAULT 'PENDING',
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  INDEX idx_reschedule_lock_patient (patient_id,status)
 ) ENGINE=InnoDB;
 
 CREATE TABLE IF NOT EXISTS refund_ledger (

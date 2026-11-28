@@ -748,9 +748,7 @@ Resources:
         skip:
           - id: CKV_AWS_111
             comment: >-
-              The only remaining wildcard resource is ec2:DescribeNetworkInterfaces, which is a read-only
-              EC2 API action requiring Resource '*'. ENI creation is separately constrained to the two
-              application private subnets, the Lambda security group, and lambda.amazonaws.com.
+              Wildcards are limited to Lambda VPC ENI management, which requires Resource '*', and X-Ray trace write APIs, which do not support resource-level authorization. ENI creation is separately constrained to the two application private subnets, the Lambda security group, and lambda.amazonaws.com.
     Properties:
       RoleName: !Sub medislot-${Environment}-appointment-api-role
       AssumeRolePolicyDocument:
@@ -782,7 +780,7 @@ Resources:
                 Resource: !GetAtt CloudWatchLogsKmsKey.Arn
               - Sid: SlotInventory
                 Effect: Allow
-                Action: [dynamodb:GetItem, dynamodb:Query, dynamodb:UpdateItem]
+                Action: [dynamodb:GetItem, dynamodb:Query, dynamodb:Scan, dynamodb:UpdateItem, dynamodb:TransactWriteItems]
                 Resource: !Sub arn:${AWS::Partition}:dynamodb:${AWS::Region}:${AWS::AccountId}:table/medislot-${Environment}-slots
               - Sid: IdempotencyStore
                 Effect: Allow
@@ -796,6 +794,31 @@ Resources:
                 Effect: Allow
                 Action: [events:PutEvents]
                 Resource: !Sub arn:${AWS::Partition}:events:${AWS::Region}:${AWS::AccountId}:event-bus/medislot-${Environment}-appointments
+              - Sid: Milestone6WaitlistAndNotificationData
+                Effect: Allow
+                Action: [dynamodb:GetItem, dynamodb:PutItem, dynamodb:UpdateItem, dynamodb:DeleteItem, dynamodb:Query, dynamodb:Scan, dynamodb:TransactWriteItems]
+                Resource:
+                  - !Sub arn:${AWS::Partition}:dynamodb:${AWS::Region}:${AWS::AccountId}:table/medislot-${Environment}-waitlist
+                  - !Sub arn:${AWS::Partition}:dynamodb:${AWS::Region}:${AWS::AccountId}:table/medislot-${Environment}-waitlist/index/PatientWaitlistIndex
+                  - !Sub arn:${AWS::Partition}:dynamodb:${AWS::Region}:${AWS::AccountId}:table/medislot-${Environment}-notification-dispatch
+              - Sid: Milestone6Configuration
+                Effect: Allow
+                Action: [ssm:GetParameter]
+                Resource: !Sub arn:${AWS::Partition}:ssm:${AWS::Region}:${AWS::AccountId}:parameter/medislot/${Environment}/milestone6/*
+              - Sid: Milestone6XRay
+                Effect: Allow
+                Action: [xray:PutTraceSegments, xray:PutTelemetryRecords]
+                Resource: '*'
+              - Sid: Milestone6SendEmail
+                Effect: Allow
+                Action: [ses:SendEmail]
+                Resource: !Sub arn:${AWS::Partition}:ses:${AWS::Region}:${AWS::AccountId}:identity/*
+              - Sid: StartAndInspectRescheduleSaga
+                Effect: Allow
+                Action: [states:StartExecution, states:DescribeExecution]
+                Resource:
+                  - !Sub arn:${AWS::Partition}:states:${AWS::Region}:${AWS::AccountId}:stateMachine:medislot-${Environment}-reschedule
+                  - !Sub arn:${AWS::Partition}:states:${AWS::Region}:${AWS::AccountId}:execution:medislot-${Environment}-reschedule:*
               - Sid: SendAppointmentApiFailuresToDLQ
                 Effect: Allow
                 Action: [sqs:SendMessage]
@@ -803,7 +826,9 @@ Resources:
               - Sid: LambdaLogs
                 Effect: Allow
                 Action: [logs:CreateLogStream, logs:PutLogEvents]
-                Resource: !Sub arn:${AWS::Partition}:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/medislot-${Environment}-appointment-api:*
+                Resource:
+                  - !Sub arn:${AWS::Partition}:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/medislot-${Environment}-appointment-api:*
+                  - !Sub arn:${AWS::Partition}:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/medislot-${Environment}-milestone6:*
               - Sid: LambdaVpcEni
                 Effect: Allow
                 Action: [ec2:CreateNetworkInterface, ec2:DescribeNetworkInterfaces, ec2:DeleteNetworkInterface, ec2:AssignPrivateIpAddresses, ec2:UnassignPrivateIpAddresses]

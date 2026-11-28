@@ -1,3 +1,25 @@
+# -----------------------------------------------------------------------------
+# MEDISLOT APPOINTMENT API — ANNOTATED LEARNING COPY
+# -----------------------------------------------------------------------------
+# This Lambda handles patient bookings, appointment queries/cancellations,
+# doctor cancellation/outcome actions, refund history, and the internal outbox.
+#
+# DATA RESPONSIBILITIES:
+#   * RDS/MySQL: appointments, refund_ledger, and event_outbox (transactional data).
+#   * DynamoDB: materialized doctor slots, bookedCount, and idempotency markers.
+#   * Secrets Manager: database credentials; SSM: refund policy; EventBridge: events.
+#
+# IMPORTANT BOOKING FLOW:
+#   1. Validate patient identity, request body, slot, and idempotency key.
+#   2. Reserve a seat conditionally in DynamoDB to prevent overbooking.
+#   3. Insert the appointment and outbox event in one RDS transaction.
+#   4. If RDS did not commit, release the DynamoDB seat as compensation.
+#   5. The outbox dispatcher retries side effects and event publication.
+#
+# This is a comments-only learning copy: executable statements are preserved.
+# Review and test it before replacing the deployed Lambda source.
+# -----------------------------------------------------------------------------
+
 """MediSlot Milestone 5 appointment API and transactional outbox dispatcher."""
 import hashlib
 import json
@@ -18,6 +40,7 @@ import pymysql
 _sm = boto3.client("secretsmanager")
 
 # Parse the incoming API request body and ensure it is a JSON object.
+# PURPOSE: Decode API Gateway's body and reject malformed JSON or non-object JSON values.
 def body_json(event):
     try:
         value = json.loads(event.get("body") or "{}")
@@ -28,16 +51,19 @@ def body_json(event):
         raise ApiError(400, "Invalid JSON request body")
 
 # Get a valid correlation ID for tracing this request across logs; create one if absent.
+# PURPOSE: Reuse a valid caller-supplied correlation ID, or generate one for request tracing.
 def cid(event):
     headers = {str(k).lower(): v for k, v in (event.get("headers") or {}).items()}
     candidate = headers.get("x-correlation-id")
     return candidate if isinstance(candidate, str) and 1 <= len(candidate) <= 80 else str(uuid.uuid4())
 
 # Build a standard JSON HTTP response with cache prevention and correlation headers.
+# PURPOSE: Standardize HTTP responses, JSON serialization, cache prevention, and correlation headers.
 def response(status, body, correlation=None):
     return {"statusCode": status, "headers": {"Content-Type": "application/json", "Cache-Control": "no-store", "X-Correlation-ID": correlation or ""}, "body": json.dumps(body, default=_json_safe)}
 
 # Retrieve RDS credentials securely from Secrets Manager and open a MySQL connection.
+# PURPOSE: Fetch database credentials from Secrets Manager and create a transactional MySQL connection.
 def db_connection():
     secret = json.loads(_sm.get_secret_value(SecretId=os.environ["DB_SECRET_ARN"])["SecretString"])
     return pymysql.connect(host=os.environ["DB_HOST"], port=int(os.environ["DB_PORT"]), user=secret["username"], password=secret["password"], database=os.environ["DB_NAME"], connect_timeout=8, read_timeout=8, write_timeout=8, autocommit=False, cursorclass=pymysql.cursors.DictCursor)
@@ -71,7 +97,8 @@ class ApiError(Exception):
 
 
 # Write a CloudWatch Embedded Metric Format log entry.
-def _metric(name, value=1, dimensions=None):
+# PURPOSE: Emit a CloudWatch Embedded Metric Format record for operational monitoring.
+def _metric(name, value=1, dimensions=None, unit="Count"):
     dimensions = dimensions or {}
     log.info(json.dumps({
         "_aws": {
@@ -79,7 +106,7 @@ def _metric(name, value=1, dimensions=None):
             "CloudWatchMetrics": [{
                 "Namespace": "medislot",
                 "Dimensions": [list(dimensions.keys())],
-                "Metrics": [{"Name": name, "Unit": "Count"}],
+                "Metrics": [{"Name": name, "Unit": unit}],
             }],
         },
         name: value,
@@ -88,6 +115,7 @@ def _metric(name, value=1, dimensions=None):
 
 
 # Read the authenticated user's ID and role from API Gateway authorizer context.
+# PURPOSE: Read the authenticated user ID/role from the API Gateway authorizer and enforce role access.
 def _identity(event, required_role=None):
     ctx = (event.get("requestContext") or {}).get("authorizer") or {}
     role = str(ctx.get("role", "")).upper()
@@ -99,7 +127,16 @@ def _identity(event, required_role=None):
     return int(raw), role
 
 
+def _assert_not_rescheduling(cur, appointment_id):
+    """Reject cancellation/outcome changes while the asynchronous reschedule Saga owns the appointment."""
+    cur.execute("SELECT status FROM reschedule_locks WHERE appointment_id=%s FOR UPDATE", (int(appointment_id),))
+    lock = cur.fetchone()
+    if lock and lock.get("status") == "PENDING":
+        raise ApiError(409, "A reschedule is in progress for this appointment")
+
+
 # Convert Decimal/date-time values into formats that JSON can serialize.
+# PURPOSE: Convert Decimal and date/time values into JSON-compatible values.
 def _json_safe(value):
     if isinstance(value, Decimal):
         return float(value)
@@ -109,6 +146,7 @@ def _json_safe(value):
 
 
 # Load and validate refund percentage/time-window rules from SSM Parameter Store.
+# PURPOSE: Load the configured refund tiers from SSM and verify that all expected tiers exist.
 def _refund_policy():
     name = os.environ["REFUND_POLICY_PARAM"]
     value = _ssm.get_parameter(Name=name)["Parameter"]["Value"]
@@ -121,6 +159,7 @@ def _refund_policy():
 
 
 # Calculate the refund tier based on the cancellation actor and time remaining.
+# PURPOSE: Decide the refund tier and percentage using the cancellation actor and time before the appointment.
 def _refund_tier(start_time, now, actor, policy=None):
     if actor == "DOCTOR":
         return "DOCTOR_CANCELLED", Decimal("100.00")
@@ -147,6 +186,7 @@ def _refund_tier(start_time, now, actor, policy=None):
 
 
 # Check whether at least five minutes have passed since the appointment started.
+# PURPOSE: Enforce the five-minute waiting period after the scheduled appointment start.
 def _no_show_eligible(start_time, now=None):
     """Return True once five full minutes have elapsed after appointment start."""
     now = now or datetime.now(timezone.utc)
@@ -163,6 +203,7 @@ def _no_show_eligible(start_time, now=None):
 
 
 # Find one slot in the doctor's DynamoDB partition using its slotId.
+# PURPOSE: Locate a doctor's slot in DynamoDB, paging through that doctor's partition when necessary.
 def _slot(doctor_id, slot_id):
     # The canonical key is doctorId + (startTimeUTC#slotId). The client only
     # supplies doctorId/slotId, so query the doctor's partition and filter ID.
@@ -184,6 +225,7 @@ def _slot(doctor_id, slot_id):
         kwargs["ExclusiveStartKey"] = key
 
 # Reserve one slot seat safely, retrying if another booking updates the slot concurrently.
+# PURPOSE: Atomically increment bookedCount only if the slot is still available and has capacity.
 def _reserve_seat(doctor_id, slot):
     slot_key = {"doctorId": str(doctor_id), "slotKey": slot["slotKey"]}
 
@@ -204,6 +246,7 @@ def _reserve_seat(doctor_id, slot):
 
                 # Reject the booking when the slot has no remaining capacity.
         if capacity < 1 or booked >= capacity:
+            _metric("BookingsRejectedFull", 1, {"Environment": os.environ.get("ENVIRONMENT", "unknown")})
             raise ApiError(409, "Slot is full")
 
         try:
@@ -218,7 +261,8 @@ def _reserve_seat(doctor_id, slot):
                     "#st = :available AND #v = :version "
                     "AND bookedCount = :booked "
                     "AND #cap = :capacity "
-                    "AND bookedCount < :capacity"
+                    "AND bookedCount < :capacity "
+                    "AND attribute_not_exists(holdOfferId)"
                 ),
                 ExpressionAttributeNames={
                     "#st": "status",
@@ -233,6 +277,7 @@ def _reserve_seat(doctor_id, slot):
                     ":capacity": capacity,
                 },
             )
+            _metric("SlotUtilisationPercent", round(((booked + 1) / capacity) * 100, 2), {"Environment": os.environ.get("ENVIRONMENT", "unknown")}, unit="Percent")
             return
 
         except ClientError as exc:
@@ -254,6 +299,7 @@ def _reserve_seat(doctor_id, slot):
 
     raise ApiError(409, "Booking contention; please retry")
 
+# PURPOSE: Claim a patient's idempotency key or safely replay/recover an earlier booking request.
 def _claim_idempotency(key, patient_id, request_hash):
     """
     Claim an idempotency key for a booking request.
@@ -348,6 +394,7 @@ def _claim_idempotency(key, patient_id, request_hash):
     raise ApiError(409, "Booking request cannot be processed. Please retry.")
 
 # Save the successful appointment response against the patient's request key.
+# PURPOSE: Save the successful booking response so a retry returns the same appointment.
 def _complete_idempotency(key, patient_id, appointment):
     _idempotency.update_item(
         Key={"idempotencyKey": f"{patient_id}#{key}"},
@@ -363,6 +410,7 @@ def _complete_idempotency(key, patient_id, appointment):
 
 
 # Recover a booking from RDS if COMMIT succeeded but the caller did not receive the response.
+# PURPOSE: Check RDS for a committed appointment if the original booking response was interrupted.
 def _recover_committed_booking(key, patient_id):
     """Recover an appointment if RDS committed but the caller lost the response."""
     request_key = f"{patient_id}#{key}"
@@ -416,6 +464,7 @@ def _recover_committed_booking(key, patient_id):
 
 
 # Undo a DynamoDB seat reservation when the corresponding RDS booking was not committed.
+# PURPOSE: Compensate for a booking failure by decrementing the DynamoDB seat reservation.
 def _release_seat(doctor_id, slot_key):
     """Compensate a DynamoDB seat reservation when no RDS booking committed."""
     _slots.update_item(
@@ -434,6 +483,7 @@ def _release_seat(doctor_id, slot_key):
 
 
 # Insert an event into the RDS outbox in the same transaction as the related business change.
+# PURPOSE: Add a pending event to the RDS outbox within the caller's current database transaction.
 def _outbox(cur, aggregate_type, aggregate_id, event_type, payload):
     cur.execute(
         """INSERT INTO event_outbox
@@ -445,6 +495,7 @@ def _outbox(cur, aggregate_type, aggregate_id, event_type, payload):
 
 
 # BOOKING: validate the patient/request, reserve capacity, create the appointment, and queue an event.
+# PURPOSE: Validate and create a patient booking, reserve DynamoDB capacity, commit the RDS appointment, and queue an outbox event.
 def book(event, correlation):
     patient_id, _ = _identity(event, "PATIENT")
     headers = {str(k).lower(): v for k, v in (event.get("headers") or {}).items()}
@@ -551,6 +602,7 @@ def book(event, correlation):
         conn.commit()
         committed = True
         _complete_idempotency(idem_key, patient_id, appointment)
+        _metric("AppointmentsBooked", 1, {"Environment": os.environ.get("ENVIRONMENT", "unknown")})
         return response(201, appointment, correlation)
     except Exception:
         try:
@@ -590,6 +642,7 @@ def book(event, correlation):
 
 
 # LIST: return recent appointments belonging to the authenticated patient or doctor.
+# PURPOSE: Return the authenticated patient's or doctor's recent appointment records.
 def list_appointments(event, correlation):
     user_id, role = _identity(event)
     conn = db_connection()
@@ -607,6 +660,7 @@ def list_appointments(event, correlation):
 
 
 # DETAIL: return one appointment only when the authenticated user owns it.
+# PURPOSE: Return one appointment only if it belongs to the authenticated patient or doctor.
 def appointment_detail(event, correlation):
     user_id, role = _identity(event)
     raw = (event.get("pathParameters") or {}).get("appointmentId")
@@ -629,6 +683,7 @@ def appointment_detail(event, correlation):
 
 
 # PATIENT CANCELLATION: calculate the refund, cancel the appointment, and queue events.
+# PURPOSE: Cancel a patient's confirmed appointment, calculate its refund, write the ledger, and queue seat-release events.
 def cancel_appointment(event, correlation):
     patient_id, _ = _identity(event, "PATIENT")
     raw = (event.get("pathParameters") or {}).get("appointmentId")
@@ -644,6 +699,7 @@ def cancel_appointment(event, correlation):
             appt = cur.fetchone()
             if not appt:
                 raise ApiError(404, "Appointment not found")
+            _assert_not_rescheduling(cur, appointment_id)
             if appt["status"] != "CONFIRMED":
                 raise ApiError(409, "Appointment is not cancellable")
             start = appt["start_time_utc"].replace(tzinfo=timezone.utc) if appt["start_time_utc"].tzinfo is None else appt["start_time_utc"].astimezone(timezone.utc)
@@ -679,6 +735,7 @@ def cancel_appointment(event, correlation):
         except Exception:
             log.exception("Immediate seat release failed; outbox dispatcher will retry appointmentId=%s", appointment_id)
         _metric("CancellationsByTier", 1, {"Environment": os.environ.get("ENVIRONMENT", "unknown"), "Tier": tier})
+        _metric("RefundAmountTotal", float(refund), {"Environment": os.environ.get("ENVIRONMENT", "unknown")}, unit="None")
         return response(200, {"appointmentId": appointment_id, "status": "CANCELLED_BY_PATIENT", "refundPercentage": str(percentage), "refundAmount": str(refund), "deductionAmount": str(deduction), "refundTier": tier, "reason": cancellation_reason}, correlation)
     except Exception:
         conn.rollback()
@@ -688,6 +745,7 @@ def cancel_appointment(event, correlation):
 
 
 # DOCTOR SLOT CANCELLATION: deactivate the slot and cancel its confirmed appointments.
+# PURPOSE: Disable a doctor's entire slot, cancel its confirmed appointments, and record full refunds.
 def cancel_doctor_slot(event, correlation):
     doctor_id, _ = _identity(event, "DOCTOR")
     slot_id = (event.get("pathParameters") or {}).get("slotId")
@@ -720,6 +778,7 @@ def cancel_doctor_slot(event, correlation):
             now_utc = datetime.now(timezone.utc)
                         # Apply the cancellation and full-refund process to each confirmed appointment in this slot.
             for appt in appointments:
+                _assert_not_rescheduling(cur, appt["appointment_id"])
                 appointment_start = appt["start_time_utc"]
                 if appointment_start.tzinfo is None:
                     appointment_start = appointment_start.replace(tzinfo=timezone.utc)
@@ -748,6 +807,7 @@ def cancel_doctor_slot(event, correlation):
         conn.commit()
         for _ in appointments:
             _metric("CancellationsByTier", 1, {"Environment": os.environ.get("ENVIRONMENT", "unknown"), "Tier": "DOCTOR_CANCELLED"})
+            _metric("RefundAmountTotal", float(fee), {"Environment": os.environ.get("ENVIRONMENT", "unknown")}, unit="None")
         return response(200, {"slotId": slot_id, "cancelledAppointments": len(appointments), "fullRefunds": len(appointments), "status": "INACTIVE"}, correlation)
     except Exception:
         conn.rollback()
@@ -769,6 +829,7 @@ def cancel_doctor_slot(event, correlation):
 
 
 # DOCTOR CANCELLATION: cancel one confirmed appointment and record a full refund.
+# PURPOSE: Let a doctor cancel one confirmed appointment and record the full refund.
 def cancel_doctor_appointment(event, correlation):
     """Cancel one appointment for this doctor and record a full refund."""
     doctor_id, _ = _identity(event, "DOCTOR")
@@ -785,6 +846,7 @@ def cancel_doctor_appointment(event, correlation):
             appt = cur.fetchone()
             if not appt:
                 raise ApiError(404, "Appointment not found")
+            _assert_not_rescheduling(cur, appointment_id)
             if appt["status"] != "CONFIRMED":
                 raise ApiError(409, "Only confirmed appointments can be cancelled")
             appointment_start = appt["start_time_utc"]
@@ -814,6 +876,7 @@ def cancel_doctor_appointment(event, correlation):
 
 
 # DOCTOR LIST: return filtered appointments and attach each slot's scheduled end time.
+# PURPOSE: Return the doctor's appointments with optional date/status filters and slot end-time data.
 def doctor_appointments(event, correlation):
     doctor_id, _ = _identity(event, "DOCTOR")
     params = event.get("queryStringParameters") or {}
@@ -851,6 +914,7 @@ def doctor_appointments(event, correlation):
 
 
 # OUTCOME: allow the owning doctor to mark a confirmed appointment COMPLETED or NO_SHOW.
+# PURPOSE: Let the owning doctor mark a confirmed appointment COMPLETED or NO_SHOW when its time rule is met.
 def appointment_outcome(event, correlation):
     doctor_id, _ = _identity(event, "DOCTOR")
     raw = (event.get("pathParameters") or {}).get("appointmentId")
@@ -868,6 +932,7 @@ def appointment_outcome(event, correlation):
             appt = cur.fetchone()
             if not appt:
                 raise ApiError(404, "Appointment not found")
+            _assert_not_rescheduling(cur, int(raw))
             if appt["status"] != "CONFIRMED":
                 raise ApiError(409, "Only confirmed appointments can receive an outcome")
                         # A completion outcome is allowed only after the scheduled slot end time.
@@ -904,7 +969,16 @@ def appointment_outcome(event, correlation):
             if outcome == "NO_SHOW":
                 fee = Decimal(str(appt["fee"]))
                 cur.execute("INSERT INTO refund_ledger (appointment_id,refund_percentage,refund_amount,deduction_amount,reason) VALUES (%s,0.00,0.00,%s,'NO_SHOW')", (int(raw), fee))
+        if outcome == "NO_SHOW":
+            with conn.cursor() as metric_cur:
+                metric_cur.execute("SELECT COUNT(*) AS total, SUM(status='NO_SHOW') AS no_shows FROM appointments")
+                totals = metric_cur.fetchone()
+            rate = (float(totals["no_shows"] or 0) / max(1, int(totals["total"] or 0))) * 100
+        else:
+            rate = None
         conn.commit()
+        if rate is not None:
+            _metric("NoShowRate", round(rate, 2), {"Environment": os.environ.get("ENVIRONMENT", "unknown")}, unit="Percent")
         return response(200, {"appointmentId": int(raw), "status": outcome, "refundAmount": "0.00" if outcome == "NO_SHOW" else None}, correlation)
     except Exception:
         conn.rollback()
@@ -914,6 +988,7 @@ def appointment_outcome(event, correlation):
 
 
 # REFUND HISTORY: return refund-ledger records belonging to the authenticated patient.
+# PURPOSE: Return refund-ledger entries for the authenticated patient.
 def refund_history(event, correlation):
     patient_id, _ = _identity(event, "PATIENT")
     conn = db_connection()
@@ -928,6 +1003,7 @@ def refund_history(event, correlation):
 
 
 # BLACKOUT CLEANUP: deactivate a blackout-date slot after its final booking is cancelled.
+# PURPOSE: Keep a slot inactive on a blackout date after its final booked seat has been released.
 def _deactivate_blackout_slot_if_empty(doctor_id, slot_key, appointment_id):
     """Keep a booked slot until its final appointment is cancelled on a blackout day."""
     try:
@@ -982,6 +1058,7 @@ def _deactivate_blackout_slot_if_empty(doctor_id, slot_key, appointment_id):
 
 
 # IDEMPOTENT RELEASE: decrement bookedCount exactly once for each cancelled appointment.
+# PURPOSE: Release a cancelled appointment's seat exactly once using an atomic DynamoDB transaction.
 def _release_seat_once(payload):
     """Release one booked seat exactly once for a cancelled appointment.
 
@@ -1043,6 +1120,10 @@ def _release_seat_once(payload):
             slot_key,
         )
         _deactivate_blackout_slot_if_empty(doctor_id, slot_key, appointment_id)
+        current_slot = _slot(doctor_id, payload.get("slotId")) if payload.get("slotId") else None
+        if current_slot and int(current_slot.get("capacity", 0)) > 0:
+            utilisation = (int(current_slot.get("bookedCount", 0)) / int(current_slot["capacity"])) * 100
+            _metric("SlotUtilisationPercent", round(utilisation, 2), {"Environment": os.environ.get("ENVIRONMENT", "unknown")}, unit="Percent")
 
     except ClientError as exc:
         code = exc.response.get("Error", {}).get("Code")
@@ -1074,6 +1155,7 @@ def _release_seat_once(payload):
 
 
 # OUTBOX DISPATCH: process pending RDS events, release seats, and publish events to EventBridge.
+# PURPOSE: Process pending RDS outbox events, perform retry-safe seat releases, and publish events to EventBridge.
 def dispatch_outbox(event, correlation):
     if event.get("source") != "medislot.outbox.scheduler" and event.get("operation") != "dispatch_outbox":
         raise ApiError(403, "Internal dispatcher invocation required")
@@ -1091,6 +1173,7 @@ def dispatch_outbox(event, correlation):
                 payload = row["payload"]
                 if isinstance(payload, str):
                     payload = json.loads(payload)
+                payload.setdefault("eventId", row["event_id"])
                                 # Release the DynamoDB seat before publishing a seat-freed event.
                 if row["event_type"] == "SlotSeatFreed":
                     payload["slotKey"] = payload.get("slotKey") or _slot(payload["doctorId"], payload["slotId"])["slotKey"]
@@ -1123,6 +1206,7 @@ def dispatch_outbox(event, correlation):
 
 
 # ENTRY POINT: route scheduler invocations and API Gateway requests to their handlers.
+# PURPOSE: Main Lambda entry point; route internal scheduler events and API Gateway requests to their handlers.
 def lambda_handler(event, context):
     correlation = cid(event)
     try:
